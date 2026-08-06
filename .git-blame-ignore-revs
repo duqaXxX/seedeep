@@ -1,0 +1,9 @@
+# Commits that only moved whitespace. `git blame` should skip them and keep pointing at whoever
+# wrote a line, so run this once per clone:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# (GitHub's blame view reads this file on its own.)
+
+# style: apply the formatter and import ordering across the tree
+7034746dedf30ccc60b19dec2473b65c86b9a4e1

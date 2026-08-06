@@ -1,0 +1,16 @@
+node_modules/
+*.log
+.DS_Store
+dist/
+.superpowers/
+
+# `bun run dev` and `bun run tray:dev` keep their state here (SEEDEEP_HOME, SEEDEEP_TRAY_HOME), so a
+# checkout can run beside an installed release without either rewriting the other's config.
+.seedeep-dev/
+
+# apps/tray: Rust build output and the panel UI's bundle
+apps/tray/src-tauri/target/
+apps/tray/ui/dist/
+
+# apps/tray: Tauri regenerates these capability schemas on every build
+apps/tray/src-tauri/gen/schemas/

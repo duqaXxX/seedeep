@@ -1,0 +1,39 @@
+{
+  "name": "seedeep",
+  "version": "0.12.0",
+  "private": true,
+  "type": "module",
+  "description": "Live context & subagent visualizer for Claude Code",
+  "license": "MIT",
+  "scripts": {
+    "start": "bun run apps/server/src/server/main.ts",
+    "dev": "SEEDEEP_HOME=.seedeep-dev bun run apps/server/src/server/main.ts --port 44843",
+    "build:client": "bun build apps/server/src/client/app.ts --outdir apps/server/public/lib --target browser --format esm",
+    "build:server": "bun run apps/server/scripts/build-binaries.ts --host",
+    "build:server:all": "bun run apps/server/scripts/build-binaries.ts",
+    "build:npm": "bun run apps/server/scripts/build-npm.ts",
+    "build:tray-ui": "bun build apps/tray/ui/index.html --outdir apps/tray/ui/dist",
+    "check:rust": "command -v cargo >/dev/null || { echo 'seedeep: cargo is not on PATH, so the tray cannot be built. Run  source $HOME/.cargo/env  in this shell, or add that line to your shell profile — rustup does not always add it. If Rust is not installed at all: https://rustup.rs' >&2; exit 1; }",
+    "tray:dev": "bun run check:rust && export SEEDEEP_HOME=$PWD/.seedeep-dev && cd apps/tray && bunx tauri dev",
+    "tray:build": "bun run check:rust && cd apps/tray && bunx tauri build",
+    "test": "bun test . ./.github/scripts",
+    "test:tray": "bun run check:rust && cd apps/tray/src-tauri && cargo test",
+    "test:node": "tsx --test apps/server/tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "generate:favicon": "bun run apps/server/scripts/generate-favicon.ts",
+    "doc-shots": "bun run apps/server/scripts/capture-demo.ts doc-shots",
+    "doc-shots:check": "bun run apps/server/scripts/doc-shots-check.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.6",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/bun": "^1.1.0",
+    "@types/node": "^22.0.0",
+    "playwright-core": "^1.61.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

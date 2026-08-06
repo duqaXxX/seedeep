@@ -1,0 +1,82 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // Build artifacts and fixtures: their shape is the bundler's business and the fixtures must
+    // stay byte-faithful to what Claude Code writes.
+    "includes": [
+      "**",
+      "!apps/server/public/lib",
+      "!apps/server/data",
+      "!apps/server/tests/fixtures",
+      "!apps/tray/ui/dist",
+      "!apps/tray/src-tauri/target",
+      "!apps/tray/src-tauri/gen"
+    ]
+  },
+  // The style is the one the codebase already had, measured rather than chosen: 2-space indent,
+  // single quotes, semicolons, trailing commas. lineWidth 120 sits above the 99th percentile of the
+  // existing lines (131 max outside generated code), so the formatter reflows the outliers instead
+  // of rewrapping code that was already deliberate.
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // The tsconfig sets noUncheckedIndexedAccess, which makes `xs[0]!` the normal way to use an
+        // index already proven present — 722 of them. Banning it means either dropping that flag or
+        // adding a redundant runtime check at every access.
+        "noNonNullAssertion": "off",
+        // Concatenation vs template literal is a preference, and 423 rewrites buy nothing.
+        "useTemplate": "off",
+        // Reordering CSS rules by specificity is a visual change; these six are deliberate overrides.
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {
+        // `any` lives at the parser's edges, where the input is a JSONL line whose shape Anthropic
+        // owns and changes between releases.
+        "noExplicitAny": "off",
+        // Fires on the regexes that strip ANSI escapes — which is what they are for.
+        "noControlCharactersInRegex": "off",
+        // `while ((m = re.exec(s)))` and friends: idiomatic here, and rewriting them is not safer.
+        "noAssignInExpressions": "off",
+        // Flags `xs.forEach((x) => map.set(...))`, where the returned value is the setter's, unused.
+        "useIterableCallbackReturn": "off"
+      },
+      "a11y": {
+        // The only SVG in the repo is the favicon, where a <title> would name the browser tab.
+        "noSvgWithoutTitle": "off"
+      },
+      "complexity": {
+        // obj['key'] is used deliberately where the key is data rather than an identifier.
+        "useLiteralKeys": "off",
+        // `a && a.b` is not `a?.b` when the result is used as a value rather than a condition
+        // (falsy `a` vs undefined), so the 25 rewrites are a style preference with a real trap in it.
+        "useOptionalChain": "off",
+        // !important in the stylesheets is deliberate, and its 5 uses are documented at the rule.
+        "noImportantStyles": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // A test's stub often is the degenerate case: a generator that throws before its first
+      // yield IS the failure under test, and rewriting it to satisfy the rule would test nothing.
+      "includes": ["apps/server/tests/**", "apps/tray/tests/**"],
+      "linter": { "rules": { "correctness": { "useYield": "off" } } }
+    }
+  ]
+}

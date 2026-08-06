@@ -1,0 +1,169 @@
+/* Two separate rails. TOP rail (default): tool toasts, stacked vertically top-right
+   as before. BOTTOM rail (.bottom): subagent toasts, a horizontal row along the
+   bottom edge where newest enters from the right and older ones slide left
+   (row-reverse → append() renders rightmost). Capped at 5 by pushToast(). Bottom
+   toasts are width-bounded so 5 fit a wide viewport. */
+.toasts {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+  width: min(320px, 80vw);
+  transition: right 0.22s ease;
+}
+.toasts.bottom {
+  top: auto;
+  bottom: 1rem;
+  flex-direction: row-reverse;
+  width: auto;
+  max-width: calc(100vw - 2rem);
+  gap: 0.6rem;
+}
+.toasts.shifted {
+  right: calc(min(500px, 94vw) + 1.5rem);
+}
+.toast {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid var(--cache);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  backdrop-filter: blur(4px);
+  animation: toastIn 0.28s ease;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+/* subagent (bottom) toasts are fixed-width so they align evenly across the row */
+.toasts.bottom .toast {
+  width: min(300px, 26vw);
+  flex: none;
+  align-items: stretch;
+}
+.toast.out {
+  animation: toastOut 0.3s ease forwards;
+}
+.toasts.bottom .toast.out {
+  animation: toastOutRow 0.3s ease forwards;
+}
+/* subagent toasts are green (--good) to stand apart from the cyan tool toasts. */
+.toast.sub {
+  background: rgba(110, 231, 183, 0.12);
+  border-color: var(--good);
+}
+.toast .ticon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-size: 0.8rem;
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--cache);
+}
+.toast.sub .ticon {
+  background: rgba(110, 231, 183, 0.22);
+  color: var(--good);
+}
+.toast .tmain {
+  min-width: 0;
+  flex: 1;
+}
+.toast .tname {
+  font: 0.8rem var(--mono);
+  color: var(--hi);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toast .targ2 {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The model a spawn runs on. Its line is always present (' ' until known), so a model
+   arriving seconds after the toast fills it in place instead of resizing the toast. */
+/* Fixed line-height AND a matching min-height: an empty line box is shorter than a filled
+   one, so without both the toast grows by ~2px the moment the model lands. */
+.toast .tmodel {
+  font: 0.72rem var(--mono);
+  color: var(--good);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  min-height: 1.3em;
+}
+.toast .tkind {
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cache);
+  flex: none;
+  align-self: flex-start;
+}
+.toast.sub .tkind {
+  color: var(--good);
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Column exit: slide back out the way it came in (the inverse of toastIn). Without
+   it the .out class animates nothing and the toast sits still for its 320ms
+   removal delay, then vanishes abruptly. */
+@keyframes toastOut {
+  to {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+}
+/* Horizontal-rail exit: slide right and collapse WIDTH (+ negative margin so the
+   row closes up), mirroring the column exit which collapses height. */
+@keyframes toastOutRow {
+  to {
+    opacity: 0;
+    transform: translateX(30px);
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    margin-right: calc(-0.6rem);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.out {
+    animation: none;
+  }
+}
+
+/* Verdict toast (top rail, crit only) */
+.toast.v-crit {
+  background: rgba(251, 113, 133, 0.12);
+  border-color: var(--crit);
+}
+.toast.v-crit .ticon {
+  background: rgba(251, 113, 133, 0.22);
+  color: var(--crit);
+}
+.toast.v-crit .tkind {
+  color: var(--crit);
+}
+.toast.v-warn {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: var(--warn);
+}

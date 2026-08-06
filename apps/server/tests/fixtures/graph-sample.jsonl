@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2020-01-01T00:00:00.000Z","message":{"role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":1000,"output_tokens":50,"cache_creation_input_tokens":200,"cache_read_input_tokens":800},"content":[{"type":"text","text":"working"},{"type":"tool_use","id":"toolu_grep_1","name":"Grep","input":{}}]}}
+{"type":"user","timestamp":"2020-01-01T00:00:00.120Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_grep_1","content":[]}]}}
+{"type":"assistant","timestamp":"2020-01-01T00:00:01.000Z","message":{"role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":1200,"output_tokens":30,"cache_creation_input_tokens":0,"cache_read_input_tokens":1000},"content":[{"type":"tool_use","id":"toolu_agent_2","name":"Agent","input":{}}]}}
+{"type":"system","timestamp":"2020-01-01T00:00:02.000Z","compactMetadata":{"preTokens":41000,"postTokens":12000,"durationMs":340}}

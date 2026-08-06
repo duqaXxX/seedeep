@@ -1,0 +1,104 @@
+/* The NOW panel (V1): sits between the Live activity header and the feed. Answers
+   "what is the agent trying to do right now" in <2s — latest intent, age, mechanical flags. */
+/* flex:none — the intent stays pinned above the feed; only the feed (flex:1) flexes. */
+.nowpanel {
+  border: 1px solid var(--border2);
+  background: var(--panel2);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.65rem;
+  flex: none;
+}
+.nowpanel.hidden {
+  display: none;
+}
+.nowhead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.nowlbl {
+  font-size: 0.64rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--good);
+  font-weight: 600;
+}
+.nowage {
+  font: 0.7rem var(--mono);
+  color: var(--lo2);
+  margin-left: auto;
+}
+/* Clamped to 2 lines. When it overflows, `.nowmore` (shown via the `.clamped` class the JS
+   sets by measuring overflow) sits at the end of the second line and opens the full text,
+   rendered, in the output modal. The gradient masks the text it overlays. */
+.nowtextwrap {
+  position: relative;
+}
+.nowtext {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--hi);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.nowtext::before {
+  content: "“";
+  color: var(--lo2);
+}
+.nowtext::after {
+  content: "”";
+  color: var(--lo2);
+}
+.nowtext.empty {
+  color: var(--lo2);
+}
+.nowtext.empty::before,
+.nowtext.empty::after {
+  content: "";
+}
+/* blocked on the user: the panel that says what the agent is doing says, in amber, that
+   it is doing nothing until you answer. Same shape, so the eye finds it where it looks. */
+.nowpanel.waiting {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.07);
+}
+.nowpanel.waiting .nowlbl {
+  color: var(--warn);
+}
+.nowpanel.waiting .nowage {
+  color: var(--warn);
+}
+/* seedeep speaking, not the agent — so no quote marks around it. */
+.nowtext.plain::before,
+.nowtext.plain::after {
+  content: "";
+}
+.nowmore {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--agent);
+  background: linear-gradient(90deg, transparent, var(--panel2) 1.6rem);
+  padding: 0 0 0 2.4rem;
+}
+.nowmore::before {
+  content: "… ";
+  color: var(--lo2);
+  font-weight: 400;
+}
+.nowmore:hover {
+  color: var(--hi);
+}
+.nowtextwrap.clamped .nowmore {
+  display: block;
+}

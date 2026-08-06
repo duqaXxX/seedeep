@@ -1,0 +1,225 @@
+/* Live subagent monitor: dense rows, active-first. */
+.sublivecard {
+  display: flex;
+  flex-direction: column;
+}
+.slhead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.slcount {
+  margin-bottom: 0;
+  margin-top: 2px;
+}
+/* Bounded, not growing: the monitor holds exactly THREE running rows whole, then
+   scrolls — so many concurrent subagents never stretch the cockpit (and the page)
+   downward, and the common case never cuts a row in half. The height is derived from
+   the row, not guessed: --subrow-h is the measured height of a live row (title +
+   type line + context line) at these font sizes, so the two stay in step if the row
+   ever gains a line. It was a flat 200px, which clipped the third row by 30px once
+   the type moved onto its own line. */
+/* --subrow-h is a FALLBACK: graph.js overwrites it with the row's real rendered height,
+   because a row one pixel taller than this constant raises a scrollbar with nothing to
+   scroll. The +10px on top of three rows is deliberate slack over that measurement —
+   an empty strip below the third row costs nothing, a scrollbar on three rows is a bug.
+   --subgap is also the gutter between the rows' border and the scrollbar.
+   The scrollbar is the ONLY overflow affordance: no fade, no footer. */
+.sublist {
+  --subrow-h: 73px;
+  --subgap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--subgap);
+  margin-top: 0.9rem;
+  height: calc(3 * var(--subrow-h) + 2 * var(--subgap) + 10px);
+  overflow-y: auto;
+  padding-right: var(--subgap);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+/* A system scrollbar cuts across the card's edge; this one is part of the panel. */
+.sublist::-webkit-scrollbar {
+  width: 6px;
+}
+.sublist::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 3px;
+}
+.sublist::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* Ended session: the monitor can never show a running subagent again, so instead of a
+   one-line collapse it fills the left column with the COMPLETE list of subagents that ran,
+   scrolling inside the fixed cockpit height — this keeps the two columns symmetric.
+   flex:1 1 0 (basis 0), NOT flex:1: with basis auto the list's own content sets its size and
+   inflates the left column past the right when many subagents ran; basis 0 makes the list
+   take only the space the row already has (driven by the right column) and scroll. */
+.sublivecard.fulllist {
+  overflow: hidden;
+}
+.sublivecard.fulllist .sublist {
+  height: auto;
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* A finished subagent as a compact one-line row (dot · title · model · duration). Reuses the
+   neutral base .subrow grid; the live .subrow.act two-line row is a different shape. */
+.subrow .smid {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.subrow .smid b {
+  font: 600 0.8rem var(--mono);
+  color: var(--hi);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subrow .sdur {
+  font: 0.72rem var(--mono);
+  color: var(--lo2);
+  white-space: nowrap;
+}
+
+/* empty state (nothing running) — centred so it fills the card and keeps the cockpit symmetric */
+.slempty {
+  margin: auto;
+  align-self: center;
+  text-align: center;
+  padding: 1rem;
+}
+.slempty-t {
+  font-size: 0.85rem;
+  color: var(--lo2);
+  margin-bottom: 0.3rem;
+}
+.slempty-s {
+  font-size: 0.75rem;
+  color: var(--lo);
+}
+.subrow {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.45rem 0.6rem;
+  border-radius: 9px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.subrow:hover {
+  border-color: var(--border2);
+}
+.subrow .sdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lo);
+  justify-self: center;
+}
+.subrow .schip {
+  font: 0.68rem var(--mono);
+  color: var(--lo2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 0 5px;
+  white-space: nowrap;
+  flex: none;
+}
+/* active row: two lines, green accent, live context bar */
+.subrow.act {
+  display: block;
+  border-color: var(--good);
+  background: linear-gradient(180deg, rgba(110, 231, 183, 0.1), rgba(110, 231, 183, 0.02));
+}
+.subrow.act .sl1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.subrow.act .sdot {
+  background: var(--good);
+  box-shadow: 0 0 0 4px rgba(110, 231, 183, 0.18);
+  display: inline-block;
+}
+/* The title is the launch intent, so it can be a sentence: it truncates rather than
+   shoving the elapsed time out of the row. */
+.subrow.act .sl1 b {
+  font: 600 0.8rem var(--mono);
+  color: var(--hi);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The type, demoted under the title. Height is reserved even when empty (the sidecar
+   that names the type lands a moment after the spawn) so the row never grows. */
+.subrow.act .stype {
+  font: 0.68rem var(--mono);
+  color: var(--lo);
+  margin-top: 0.22rem;
+  min-height: 1em;
+}
+/* flex:none + nowrap: with a long title the elapsed time wrapped onto a second line
+   and grew the row by 13px, which is what still made three rows scroll. The title is
+   the only elastic part of this line — it truncates, everything else holds its size. */
+.subrow.act .sel {
+  margin-left: auto;
+  color: var(--good);
+  font: 0.72rem var(--mono);
+  flex: none;
+  white-space: nowrap;
+}
+.subrow.act .sl2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.subrow.act .sclbl {
+  font: 0.66rem var(--mono);
+  color: var(--lo);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex: none;
+}
+/* Fixed width, NOT flex: the bar is a quantity compared ACROSS rows, so every subagent's
+   must be the same length. As flex:1 it shrank whenever the action text got long, and two
+   equal fills drew as different bars. The action absorbs the slack instead (see .sact). */
+.subrow.act .scbar {
+  flex: none;
+  width: 132px;
+  height: 7px;
+  border-radius: 5px;
+  background: var(--border);
+  overflow: hidden;
+}
+.subrow.act .scbar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--cache), var(--create));
+}
+.subrow.act .scnum {
+  font: 0.7rem var(--mono);
+  color: var(--lo2);
+  flex: none;
+}
+.subrow.act .sact {
+  font: 0.7rem var(--mono);
+  color: var(--agent);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(125, 211, 252, 0.08);
+}

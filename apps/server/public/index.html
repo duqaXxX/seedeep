@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>seedeep</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <!-- Load order IS the cascade: several rules rely on it (e.g. `.hidden` must beat the
+       equally-specific `.live`/`.endbadge`, which is why utilities.css comes last). -->
+  <link rel="stylesheet" href="./css/tokens.css">
+  <link rel="stylesheet" href="./css/chrome.css">
+  <link rel="stylesheet" href="./css/home.css">
+  <link rel="stylesheet" href="./css/compare.css">
+  <link rel="stylesheet" href="./css/search.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="stylesheet" href="./css/changed-files.css">
+  <link rel="stylesheet" href="./css/commits.css">
+  <link rel="stylesheet" href="./css/tracker-cards.css">
+  <link rel="stylesheet" href="./css/live-monitor.css">
+  <link rel="stylesheet" href="./css/now-panel.css">
+  <link rel="stylesheet" href="./css/feed.css">
+  <link rel="stylesheet" href="./css/context-dial.css">
+  <link rel="stylesheet" href="./css/session-cards.css">
+  <link rel="stylesheet" href="./css/drawer.css">
+  <link rel="stylesheet" href="./css/toasts.css">
+  <link rel="stylesheet" href="./css/timeline.css">
+  <link rel="stylesheet" href="./css/picker.css">
+  <link rel="stylesheet" href="./css/trace.css">
+  <link rel="stylesheet" href="./css/settings.css">
+  <link rel="stylesheet" href="./css/utilities.css">
+</head>
+<body>
+  <header>
+    <!-- Home / Compare / Search: fixed surfaces, so they live in a menu, not in the tab strip. -->
+    <div id="nav"></div>
+    <strong>seedeep</strong>
+    <div id="tabs"></div>
+    <!-- Speaks only when the live feed is broken; silent the rest of the time. -->
+    <div id="conn"></div>
+    <div id="dropdown"></div>
+  </header>
+  <div id="panels"></div>
+  <script type="module" src="./lib/app.js"></script>
+</body>
+</html>

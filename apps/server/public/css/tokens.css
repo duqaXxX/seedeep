@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --panel: #0e1420;
+  --panel2: #131a28;
+  --border: #1e2739;
+  --border2: #2b3242;
+  --ink: #dbe1ec;
+  --hi: #eef2fb;
+  --lo: #8593ad;
+  --lo2: #9aa7c2;
+  --agent: #7dd3fc;
+  --cache: #38bdf8;
+  --create: #a78bfa;
+  --input: #f472b6;
+  --good: #6ee7b7;
+  --warn: #fbbf24;
+  --crit: #fb7185;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: ui-sans-serif, system-ui, sans-serif;
+  /* Span-category colour tokens for trace.js (absent from graph tokens above). */
+  /* Span colours, hues chosen so that NO successful category sits near the error hue
+     (351°) — a step that worked must never read as one that failed:
+       prompt 255  api 213  tool 99  skill 156  spawn 199  result 43  error 351
+     `api` was orange (#fb923c, 13° from --sp-result); `tool` was pink (#f472b6) at
+     22° from --sp-error, and it is the MOST frequent category of all. `tool` now sits
+     at hue 99 — 108° from the error, 56° from its nearest neighbour, which is the
+     furthest any free hue can be from all the others. These tokens are Trace-only. */
+  --sp-prompt: #a78bfa;
+  --sp-api: #60a5fa;
+  --sp-tool: #99db76;
+  --sp-skill: #6ee7b7;
+  --sp-spawn: #7dd3fc;
+  --sp-result: #fbbf24;
+  --sp-error: #fb7185;
+  /* Group-block hues (trace): rounds and chapters must read apart from the
+     api-blue step blocks and from each other. */
+  --sp-round: #2dd4bf;
+  --sp-chapter: #818cf8;
+}
+
+:root {
+  --panel3: #0f1826;
+}

@@ -1,0 +1,140 @@
+/* Changed files: hero total + one proportional bar per extension (own `fchg` namespace, modelled
+   on the Home tab's .rt-brow but not sharing it — `rt-` is the Home namespace, and mixing the
+   two is how a rule silently reskins a widget). The bar is scaled to the LARGEST kind, so the
+   "one kind dominates" shape reads instantly. Tint comes from --ft, declared by the .ft-* class
+   ON the element, with a neutral fallback — no specificity battle, no source-order dependency. */
+/* Row spacing lives on the container as a flex gap, not as per-row margins: adjacent block
+   margins collapse, so a margin here reads as half of what it says. */
+.fchgbars {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.62rem;
+}
+.fchgbar {
+  display: grid;
+  grid-template-columns: 52px 1fr 30px;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.74rem;
+}
+.fchgbn {
+  font-family: var(--mono);
+  color: var(--ft, var(--ink));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fchgbt {
+  height: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.fchgbt i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--ft, var(--lo));
+  opacity: 0.85;
+}
+.fchgbv {
+  text-align: right;
+  font-family: var(--mono);
+  color: var(--lo2);
+  font-variant-numeric: tabular-nums;
+}
+/* Remainder row — shown only when the type cap hides kinds, so the bars never stop summing to
+   the hero total without saying so. Doubles as the pointer to the drawer. */
+.fchgmore {
+  font: 0.74rem var(--mono);
+  color: var(--lo2);
+  padding: 0.6rem 0 0;
+  cursor: pointer;
+}
+.fchgmore:hover {
+  color: var(--ink);
+}
+/* Scratchpad tally — the session's temporaries, excluded from the hero and the bars. One row, not
+   a second set of bars: this card is the narrowest column and shares its height with its siblings.
+   Dimmer than .fchgmore and rule-separated, so it reads as "outside the count above" rather than
+   as one more kind of project file. */
+.fchgscr {
+  font: 0.72rem var(--mono);
+  color: var(--lo2);
+  opacity: 0.8;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.fchgscr:hover {
+  color: var(--ink);
+  opacity: 1;
+}
+/* Drawer group heading (Project / Scratchpad). Rendered only while BOTH groups are on screen —
+   a heading names a separation, so a list showing one group gets none. */
+.fchggrp {
+  font: 0.68rem var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lo2);
+  margin: 0.7rem 0 0.3rem;
+}
+.fchggrp:first-child {
+  margin-top: 0.2rem;
+}
+/* Drawer type filter: the chip row sits under the text input, both narrowing the same list. */
+.fchgtypes {
+  margin-top: 0.4rem;
+  padding-top: 0.5rem;
+}
+/* Active filter chip. Colour is `--ft` when the chip is tinted, ink otherwise — deliberately
+   the SAME value `.tchip.ft-*` resolves to, so the two equal-specificity rules agree and which
+   one wins is irrelevant. Declaring a conflicting colour here would have made the active state
+   depend on source order, the trap this file has already been bitten by twice. */
+.tchip.on {
+  border-color: var(--agent);
+  color: var(--ft, var(--ink));
+  background: rgba(125, 211, 252, 0.1);
+}
+/* Filename/extension tint by kind (Changed-files chips + its drawer rows). Grouped code/doc/
+   markup/data/style/shell → existing palette vars, so it stays on-theme. The hue is declared
+   ONCE as --ft; the two consumers then claim it with enough specificity to beat the neutral
+   base they sit on (.tchip sets its own colour, .tn's is inherited). Deliberately NOT relying
+   on source order — that is exactly how the .frow collision silently reskinned these rows.
+   The count inside a chip keeps `.tchip b`'s ink, so only the extension takes the tint. */
+.ft-code {
+  --ft: var(--agent);
+}
+.ft-doc {
+  --ft: var(--good);
+}
+.ft-markup {
+  --ft: var(--warn);
+}
+.ft-data {
+  --ft: var(--create);
+}
+.ft-style {
+  --ft: var(--cache);
+}
+.ft-shell {
+  --ft: var(--crit);
+}
+.tchip.ft-code,
+.tchip.ft-doc,
+.tchip.ft-markup,
+.tchip.ft-data,
+.tchip.ft-style,
+.tchip.ft-shell {
+  color: var(--ft);
+}
+.tn > .ft-code,
+.tn > .ft-doc,
+.tn > .ft-markup,
+.tn > .ft-data,
+.tn > .ft-style,
+.tn > .ft-shell {
+  color: var(--ft);
+}

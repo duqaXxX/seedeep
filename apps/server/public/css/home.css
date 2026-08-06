@@ -1,0 +1,508 @@
+/* --- the minute-zero retrospective (the Home surface; its menu entry is in chrome.css) --- */
+.home-panel {
+  color: var(--ink);
+}
+/* All retro classes are `rt-`-prefixed: the app has no CSS scoping, and generic names
+   (card, num, wrow, legend…) collide with graph/drawer rules — a stray `.wrow` red border
+   once bled a nub onto every waste row. The prefix is the isolation mechanism. */
+
+.rt-root {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.rt-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+.rt-kick {
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lo2);
+  font-family: var(--mono);
+}
+.rt-title {
+  font: 600 1.7rem / 1.1 var(--sans);
+  color: var(--hi);
+  margin: 0.28rem 0 0;
+  letter-spacing: -0.01em;
+}
+.rt-title b {
+  color: var(--cache);
+  font-weight: 700;
+}
+.rt-scope {
+  font: 0.74rem var(--mono);
+  color: var(--lo);
+  margin-top: 0.35rem;
+}
+.rt-empty {
+  color: var(--lo);
+  border: 1px dashed var(--border2);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin: 1.1rem 0;
+  text-align: center;
+}
+.rt-filter {
+  display: flex;
+  align-items: center;
+}
+.rt-seglbl {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lo);
+  font-family: var(--mono);
+  margin: 0 0.55rem 0.12rem 0;
+  align-self: flex-end;
+}
+.rt-seg {
+  display: inline-flex;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 2px;
+}
+.rt-seg button {
+  font: inherit;
+  font-size: 0.76rem;
+  background: none;
+  border: none;
+  color: var(--lo);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.rt-seg button:hover {
+  color: var(--ink);
+}
+.rt-seg button.on {
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--hi);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+.rt-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 0.85rem;
+}
+.rt-card {
+  background: linear-gradient(180deg, var(--panel), var(--panel3));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+}
+.rt-ctitle {
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--lo2);
+  font-family: var(--mono);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.rt-ctitle .rt-hint {
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--lo);
+  font-size: 0.68rem;
+}
+.rt-kpi {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.rt-kpi .rt-num {
+  font: 650 1.7rem / 1 var(--sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--hi);
+  letter-spacing: -0.02em;
+}
+.rt-kpi.rt-accent .rt-num {
+  color: var(--cache);
+}
+.rt-kpi.rt-crit .rt-num {
+  color: var(--crit);
+}
+.rt-kpi .rt-lbl {
+  font-size: 0.7rem;
+  color: var(--lo);
+  margin-top: 0.35rem;
+}
+.rt-kpi .rt-sub {
+  font-size: 0.64rem;
+  color: var(--lo2);
+  font-family: var(--mono);
+}
+.rt-hero {
+  grid-column: span 8;
+}
+.rt-hist {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  height: 172px;
+  margin: 1rem 0 0.3rem;
+  position: relative;
+}
+.rt-hbar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  position: relative;
+}
+/* single colour: a distribution is not a severity — no red "tail" that reads as crit */
+.rt-hbar i {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, var(--cache), rgba(56, 189, 248, 0.28));
+  transition: height 0.4s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.rt-hbar .rt-hv {
+  font: 0.64rem var(--mono);
+  color: var(--lo2);
+  margin-bottom: 0.2rem;
+}
+.rt-hbar .rt-hl {
+  font: 0.6rem var(--mono);
+  color: var(--lo);
+  margin-top: 0.35rem;
+  white-space: nowrap;
+}
+.rt-pmark {
+  position: absolute;
+  top: 0;
+  bottom: 18px;
+  width: 0;
+  border-left: 1px dashed rgba(147, 167, 194, 0.5);
+  pointer-events: none;
+}
+.rt-pmark span {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 0.58rem var(--mono);
+  color: var(--lo2);
+  background: var(--panel);
+  padding: 0 0.25rem;
+  white-space: nowrap;
+}
+.rt-pmark.rt-p95 {
+  border-color: rgba(147, 167, 194, 0.8);
+}
+.rt-activity {
+  grid-column: span 4;
+}
+.rt-weeks {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  height: 172px;
+  margin: 1rem 0 0.3rem;
+}
+/* the column owns the value label; the bar keeps overflow:hidden for the severity stack's radius */
+.rt-wkcol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+.rt-wkv {
+  font: 0.58rem var(--mono);
+  color: var(--lo2);
+  text-align: center;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+}
+.rt-wk {
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+.rt-wk i {
+  display: block;
+}
+.rt-wk i.rt-good {
+  background: rgba(56, 189, 248, 0.5);
+}
+.rt-wk i.rt-warn {
+  background: var(--warn);
+}
+.rt-wk i.rt-crit {
+  background: var(--crit);
+}
+/* single colour when the metric is a volume, not a severity (same rule as the histogram) */
+.rt-wk i.rt-solid {
+  background: linear-gradient(180deg, var(--cache), rgba(56, 189, 248, 0.28));
+}
+.rt-legend .rt-k.rt-solid {
+  background: var(--cache);
+}
+/* metric tabs inside the activity card's title — mirrors .rt-seg, one size down */
+.rt-mtabs {
+  display: inline-flex;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 2px;
+}
+.rt-mtabs button {
+  font: inherit;
+  font-size: 0.68rem;
+  font-family: var(--mono);
+  background: none;
+  border: none;
+  color: var(--lo);
+  padding: 0.22rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.rt-mtabs button:hover {
+  color: var(--ink);
+}
+.rt-mtabs button.on {
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--hi);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+.rt-wklbl {
+  display: flex;
+  justify-content: space-between;
+  font: 0.6rem var(--mono);
+  color: var(--lo);
+  margin: 0.15rem 0 0.5rem;
+}
+/* where-the-waste gets more room; tokens-by-model and tool-calls are narrower */
+.rt-third-wide {
+  grid-column: span 6;
+}
+.rt-third-narrow {
+  grid-column: span 3;
+}
+/* shared labelled horizontal-bar rows (waste + tools) */
+.rt-brow {
+  display: grid;
+  grid-template-columns: 100px 1fr 44px;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.42rem 0;
+  font-size: 0.74rem;
+}
+/* wider card gets a wider label column so labels aren't truncated */
+.rt-third-wide .rt-brow {
+  grid-template-columns: 175px 1fr 44px;
+}
+.rt-brow .rt-bn {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rt-brow .rt-btrack {
+  height: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.rt-brow .rt-btrack i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+}
+.rt-brow i.rt-fill-crit {
+  background: linear-gradient(90deg, var(--crit), rgba(251, 113, 133, 0.5));
+}
+.rt-brow i.rt-fill-warn {
+  background: linear-gradient(90deg, var(--warn), rgba(251, 191, 36, 0.5));
+}
+.rt-brow i.rt-fill-tool {
+  background: linear-gradient(90deg, var(--cache), rgba(56, 189, 248, 0.4));
+}
+.rt-brow .rt-bv {
+  text-align: right;
+  font-family: var(--mono);
+  color: var(--lo2);
+}
+/* tokens-by-model: a stacked bar + legend, in a COOL palette (never the severity colours) */
+.rt-mbar {
+  display: flex;
+  height: 24px;
+  border-radius: 7px;
+  overflow: hidden;
+  margin: 1rem 0 0.7rem;
+  background: var(--panel2);
+}
+.rt-mbar i {
+  display: block;
+}
+.rt-mleg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+}
+.rt-mrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.rt-mrow .rt-k {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.rt-mrow .rt-mn {
+  color: var(--ink);
+}
+.rt-mrow .rt-mv {
+  margin-left: auto;
+  font-family: var(--mono);
+  color: var(--lo2);
+}
+.rt-verdict {
+  grid-column: span 8;
+  display: flex;
+  flex-direction: column;
+}
+.rt-rbar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel2);
+  margin: 1rem 0 0.55rem;
+}
+.rt-rbar i.rt-crit {
+  background: var(--crit);
+}
+.rt-rbar i.rt-warn {
+  background: var(--warn);
+}
+.rt-rbar i.rt-good {
+  background: rgba(56, 189, 248, 0.55);
+}
+.rt-legend {
+  display: flex;
+  gap: 1.1rem;
+  font-size: 0.72rem;
+  color: var(--lo);
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+.rt-legend .rt-k {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+.rt-legend .rt-k.rt-crit {
+  background: var(--crit);
+}
+.rt-legend .rt-k.rt-warn {
+  background: var(--warn);
+}
+.rt-legend .rt-k.rt-good {
+  background: rgba(56, 189, 248, 0.55);
+}
+.rt-legend b {
+  color: var(--ink);
+}
+.rt-foot {
+  grid-column: span 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+.rt-foot .rt-cta {
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid var(--cache);
+  color: var(--hi);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.42rem 0.9rem;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.rt-note {
+  font-size: 0.66rem;
+  color: var(--lo2);
+  font-family: var(--mono);
+}
+@media (max-width: 900px) {
+  .rt-kpi {
+    grid-column: span 6;
+  }
+  .rt-hero,
+  .rt-activity,
+  .rt-third-wide,
+  .rt-third-narrow,
+  .rt-verdict,
+  .rt-foot {
+    grid-column: span 12;
+  }
+}
+#panels {
+  padding: 1rem;
+}
+.empty-hint {
+  color: #7a8394;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* --- loading: shown while the session's history is being replayed into the reducer.
+   Reuses the bento's own grid (.toprow/.stack/.sublivecard/.statsrow) so the real view
+   lands in the same boxes and the layout never jumps. --- */
+.sk-note {
+  color: #7a8394;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.85rem;
+}
+.sk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  justify-content: center;
+  min-height: 96px;
+}
+.sk-bar {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #1a1f2b 25%, #262d3c 50%, #1a1f2b 75%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-bar {
+    animation: none;
+  }
+}

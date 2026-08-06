@@ -1,0 +1,230 @@
+{
+  "note": "Every cropped still docs/features.md uses, declared rather than collected. `bun run doc-shots` regenerates the whole set from the saved transcript bundle (no model calls, no tokens); `bun run doc-shots:check` names the ones a diff has just invalidated. A shot is never taken by hand: a hand-taken screenshot is a claim about the UI that nothing in the suite can falsify. A shot with a `scene` is photographed on a written transcript, so the scene file invalidates it too: change what a scene contains and its figure is claiming the old thing.",
+  "usedIn": "docs/features.md",
+  "outDir": "docs/assets/shots",
+  "shots": [
+    {
+      "id": "subagent-windows",
+      "subject": "The live monitor during the fan-out: three subagents, three different denominators",
+      "cue": "fanout",
+      "selector": ".sublivecard",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/live-monitor.css"
+      ]
+    },
+    {
+      "id": "context-dial",
+      "subject": "The context card when the turn ends: how full the window is, and what fills it",
+      "cue": "end",
+      "selector": ".card:has(.wtitle:text-is(\"Context\"))",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/context-dial.css"
+      ]
+    },
+    {
+      "id": "activity-feed",
+      "subject": "The feed: every API call with its latency, interleaved with the tools it fired",
+      "cue": "end",
+      "selector": ".livecard",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/feed.css",
+        "apps/server/public/css/layout.css"
+      ]
+    },
+    {
+      "id": "session-tokens",
+      "subject": "The Session card: what the turn was billed, by category, and the subagents split by model",
+      "cue": "end",
+      "selector": ".card:has(.wtitle:has-text(\"Session\"))",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/layout.css",
+        "apps/server/public/css/context-dial.css"
+      ]
+    },
+    {
+      "id": "main-tools",
+      "subject": "Main tools: which calls actually consumed the context, biggest first",
+      "cue": "end",
+      "selector": ".card:has(.wtitle:has-text(\"Main tools\"))",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/timeline.css"
+      ]
+    },
+    {
+      "id": "subagents-grid",
+      "subject": "Every subagent of the turn in launch order, with its model, volume and what it returned",
+      "cue": "end",
+      "selector": ".card:has(.wtitle:has-text(\"in launch order\"))",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/session-cards.css"
+      ]
+    },
+    {
+      "id": "subagent-drawer",
+      "subject": "A subagent's drawer: its launch intent, its tools, and the verbatim output it returned",
+      "cue": "end",
+      "click": [
+        ".subcard"
+      ],
+      "selector": ".drawer",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/drawer.css"
+      ]
+    },
+    {
+      "id": "trace-chapters",
+      "subject": "The Trace with its rounds folded into chapters, landmarks left visible",
+      "cue": "trace",
+      "click": [
+        "role=button[name=\"Trace\"]"
+      ],
+      "selector": ".trace-canvas",
+      "invalidatedBy": [
+        "apps/server/src/client/trace.ts",
+        "apps/server/src/core/trace-group.ts",
+        "apps/server/src/core/span-store.ts",
+        "apps/server/public/css/trace.css"
+      ]
+    },
+    {
+      "id": "waiting-on-you",
+      "subject": "A session stopped on a permission prompt: what it wants approved, and for how long",
+      "cue": "waiting",
+      "selector": ".nowpanel",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/server/open-sessions.ts",
+        "apps/server/public/css/now-panel.css"
+      ]
+    },
+    {
+      "id": "timeline-strip",
+      "subject": "The timeline: everything you sent, coloured by what it cost",
+      "cue": "end",
+      "scene": "busy-day",
+      "click": [
+        ".scope-banner"
+      ],
+      "selector": ".tstrip",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/timeline.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "verdict-lens",
+      "subject": "The Verdict lens: per turn, what went wrong, what it cost, what went well",
+      "cue": "end",
+      "scene": "busy-day",
+      "click": [
+        ".scope-banner",
+        ".fchip.waste"
+      ],
+      "selector": ".tstrip",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/core/verdict.ts",
+        "apps/server/public/css/timeline.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "skills-commands",
+      "subject": "Skills and Commands: what drove the session, and what you typed",
+      "cue": "end",
+      "scene": "busy-day",
+      "selector": ".card:has(.wtitle:has-text(\"Skills used\"))",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/layout.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "failed-tool",
+      "subject": "A tool that failed carries a red badge wherever it appears",
+      "cue": "end",
+      "scene": "busy-day",
+      "selector": ".livecard",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/feed.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "broken-session",
+      "subject": "The quietest failure there is: the call that ended the session, with the message Claude Code showed",
+      "cue": "end",
+      "scene": "broken",
+      "selector": ".livecard",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/server/parser.ts",
+        "apps/server/public/css/feed.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "home-retrospective",
+      "subject": "Home: how you actually use the agent, across every session on the machine",
+      "cue": "end",
+      "scene": "corpus",
+      "click": [
+        ".nav-btn",
+        ".nav-item:has-text(\"Home\")"
+      ],
+      "selector": ".home-panel",
+      "invalidatedBy": [
+        "apps/server/src/client/home-view.ts",
+        "apps/server/public/css/home.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "compare-leaderboard",
+      "subject": "Compare: which session weighed the most, in tokens weighted by model",
+      "cue": "end",
+      "scene": "corpus",
+      "click": [
+        ".nav-btn",
+        ".nav-item:has-text(\"Compare\")"
+      ],
+      "selector": ".cmp-rank-card",
+      "invalidatedBy": [
+        "apps/server/src/client/compare-view.ts",
+        "apps/server/public/css/compare.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "search-results",
+      "subject": "Search: the sessions whose dialogue holds every word, ranked by density",
+      "cue": "end",
+      "scene": "corpus",
+      "click": [
+        ".nav-btn",
+        ".nav-item:has-text(\"Search\")"
+      ],
+      "type": {
+        "selector": ".sr-input",
+        "text": "503 spike"
+      },
+      "selector": ".sr-list",
+      "invalidatedBy": [
+        "apps/server/src/client/search-view.ts",
+        "apps/server/src/server/search-index.ts",
+        "apps/server/public/css/search.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    }
+  ]
+}

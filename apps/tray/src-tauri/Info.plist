@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merged into the bundle's generated Info.plist because Tauri looks for this file beside
+  tauri.conf.json (verified in tauri-utils, `MacConfig::info_plist`) — so there is no config entry
+  to keep in sync with it.
+
+  One key, and it exists so a permission dialog explains itself. macOS asks before an app may reach
+  the local network, and the tray reaches it for one reason: a server announces the address it
+  answers on, and with remote access configured that address is a hostname on the LAN rather than
+  loopback. Without this string the system shows the request with no reason attached, which is the
+  same "documented, not discovered" rule the README applies to Gatekeeper.
+-->
+<plist version="1.0">
+<dict>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>seedeep connects to the seedeep server at the address it announces. With remote access configured that address is a name on your local network, so macOS asks first. Declining means pasting the server's URL by hand instead.</string>
+</dict>
+</plist>

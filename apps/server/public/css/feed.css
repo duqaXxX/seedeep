@@ -1,0 +1,264 @@
+.led {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.4rem 0.6rem;
+  margin-top: 0.85rem;
+}
+.led .lk {
+  font: 0.82rem var(--mono);
+  color: var(--lo);
+  white-space: nowrap;
+}
+.led .ld {
+  border-bottom: 1px dotted var(--border);
+  transform: translateY(-3px);
+}
+.led .lv {
+  font: 0.82rem var(--mono);
+  color: var(--ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.led .sep {
+  border-top: 1px solid var(--border);
+  padding-top: 0.4rem;
+  margin-top: 0.15rem;
+}
+.led .lk.sep {
+  color: var(--agent);
+}
+/* Names the axis of the three category rows. Without it the ledger reads as four items of
+   one list, and the hero (which adds the subagents) stops looking like their sum. */
+/* Same hue as the Subagents row label (.lk.sep → var(--agent)): the identity line and the
+   row it frames read as one family. */
+.ledlbl {
+  font-size: 0.62rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--agent);
+  margin-top: 0.85rem;
+}
+.ledlbl + .led {
+  margin-top: 0.35rem;
+}
+
+.minig {
+  height: 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  margin-top: 0.7rem;
+  overflow: hidden;
+}
+.minig > i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.atype-chip {
+  font-size: 0.62rem;
+  font-family: var(--mono);
+  padding: 0.07rem 0.48rem;
+  border-radius: 20px;
+  background: rgba(125, 211, 252, 0.12);
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  color: var(--agent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.amodel-chip {
+  align-self: flex-start;
+  font-size: 0.62rem;
+  font-family: var(--mono);
+  padding: 0.07rem 0.48rem;
+  border-radius: 20px;
+  background: rgba(167, 139, 250, 0.13);
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  color: #a78bfa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  margin-top: 0.25rem;
+}
+
+.badge {
+  font-size: 0.64rem;
+  padding: 0.08rem 0.5rem;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+.b-done {
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--good);
+}
+.b-running {
+  background: rgba(34, 211, 238, 0.15);
+  color: #67e8f9;
+}
+/* failed/killed are outcomes, not errors of ours: warn-coloured, not alarming. `unknown`
+   is deliberately mute — it says seedeep never learned the outcome, which is information,
+   not a fault. */
+.b-failed {
+  background: rgba(248, 113, 113, 0.14);
+  color: var(--crit);
+}
+.b-killed {
+  background: rgba(251, 191, 36, 0.14);
+  color: var(--warn);
+}
+.b-unknown {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--lo);
+}
+
+/* The two bars are the ranked signal — grouped in their own block, tighter
+   within, looser from the rest. */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+/* Fixed name column (1st track): each row is its own grid, so an `auto` name column sizes
+   to that row's own name and the arg column starts at a different x per row — a fixed width
+   lands every arg on the same line. Long names ellipsize (full name on hover). */
+.fev {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, max-content) 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.fev:hover {
+  background: rgba(125, 211, 252, 0.06);
+}
+.fev .fn {
+  color: var(--hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fev .fa {
+  color: var(--lo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fev .ft {
+  color: var(--lo2);
+  font-size: 0.72rem;
+  flex: none;
+  padding-left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  white-space: nowrap;
+  min-width: 5.5rem;
+  justify-content: flex-end;
+}
+.fev .fagent {
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--create);
+  background: rgba(167, 139, 250, 0.16);
+  border-radius: 5px;
+  padding: 0.05rem 0.4rem;
+}
+/* A failed activity: a left rule + a red name, so a scan down the feed catches it. The
+   badge in the third column names the failure ('error' for a tool, the status for a call). */
+.fev.err {
+  box-shadow: inset 2px 0 0 var(--crit);
+}
+.fev.err .fn {
+  color: var(--crit);
+}
+.fev .ferr {
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--crit);
+  background: rgba(251, 113, 133, 0.16);
+  border-radius: 5px;
+  padding: 0.05rem 0.4rem;
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--good);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+/* quiet counterpart of the LIVE badge for a session that can no longer grow */
+.endbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--lo);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.endbadge .edot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border2);
+}
+.live .pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--good);
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.5);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 5px rgba(110, 231, 183, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live .pulse {
+    animation: none;
+  }
+}
+
+.loadmore {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 0.4rem;
+  font: 0.78rem var(--mono);
+  color: var(--cache);
+  cursor: pointer;
+  text-align: center;
+}
+.loadmore:hover {
+  border-color: var(--cache);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+/* Result preview block at the top of the activity card */

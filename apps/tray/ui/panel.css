@@ -1,0 +1,57 @@
+/* The popover's shell only — the urgency bands and the portal's own tokens land with the
+   panel itself; nothing here anticipates their layout. */
+
+:root {
+  --bg: #0b0d12;
+  --fg: #e2e8f0;
+  --muted: #64748b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* Transparent, so the corners below are real: the window is `transparent` and this is the only
+     layer between it and the panel. Painting the background here would square them again. */
+  background: transparent;
+  color: var(--fg);
+  font:
+    13px / 1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  /* The popover is chromeless, so the whole surface would otherwise be a text-selection
+     target — a panel you can accidentally highlight reads as a web page, not an app. */
+  user-select: none;
+}
+
+/* Held for the instant the panel measures itself (see `fit` in `panel.ts`): with the height freed,
+   the bands stop being a scroll box and lay out at their content's size, which is the number the
+   window has to be told. Removed in the same synchronous block, so nothing is ever painted in it. */
+.panel--measure {
+  height: auto !important;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  /* A menu-bar popover is rounded on both platforms it ships to, and a hard rectangle under the
+     menu bar reads as a window that lost its frame rather than as a menu. The value is macOS's own
+     for a panel of this size; the OS draws the shadow around whatever is opaque, which is this. */
+  border-radius: 12px;
+  /* The footer's rule and the bands' rows reach both edges, so without clipping they would paint
+     the corners back square. */
+  overflow: hidden;
+  /* No padding here: the footer's rule has to reach both edges, so every surface pads its own
+     content instead. */
+}

@@ -1,0 +1,181 @@
+/* The settings view. Reuses the connection screen's tokens (--line, --field, --accent, --muted)
+   and its button/field classes — this surface introduces no palette of its own, because it is the
+   same panel with a different subject. */
+
+.set-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 18px;
+}
+
+.set-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--muted);
+  /* The way back is the primary element here, so the title does not compete with it. */
+  letter-spacing: 0.02em;
+}
+
+.set-back {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: 600 13px / 1 inherit;
+  padding: 0;
+}
+
+.set-main {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 16px 18px 18px;
+  /* Same rule as the connection screen: the popover cannot be resized, so a long surface scrolls
+     inside itself rather than pushing its own controls out of reach. */
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.set-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.set-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.set-sub {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 6px 0 0;
+}
+
+.set-host {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  /* Selectable, like the fingerprint: an address is something a user copies into a browser. */
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* Monospace and selectable, like `.set-host`: a version is something a user copies into an issue. */
+.set-version {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  user-select: text;
+}
+
+/* Amber, the panel's colour for "worth your attention, nothing is broken" — the same ink the bands
+   use for a session waiting on you. A version behind npm is news, never a fault. */
+.set-version--update {
+  color: var(--warn);
+  margin-top: 8px;
+}
+
+.set-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* A receipt, not a failure: the same slot as .conn-error, in the colour of an ordinary line. */
+.set-said {
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* A diagnostic, so it is not drawn like the one button on the surface that changes something. */
+.set-test {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  font: 13px / 1 inherit;
+  padding: 9px 12px;
+  width: 100%;
+}
+
+.set-test:hover {
+  border-color: var(--muted);
+}
+
+/* The same outline as the test button, in the alert colour: this surface already spends that colour
+   on "an action with consequences" (`conn-go--alert`), and stopping the server takes the portal in
+   the browser down with it. Not a filled button — it is not the thing this screen is for. */
+.set-stop {
+  background: transparent;
+  border: 1px solid var(--alert);
+  border-radius: 6px;
+  color: var(--alert);
+  cursor: pointer;
+  font: 13px / 1 inherit;
+  padding: 9px 12px;
+  width: 100%;
+}
+
+.set-stop:hover {
+  background: color-mix(in srgb, var(--alert) 12%, transparent);
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.set-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.set-toggle {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  /* Fixed size: the knob is positioned inside it, so the track cannot be allowed to follow its
+     content. */
+  flex: 0 0 auto;
+  height: 20px;
+  width: 34px;
+  padding: 0;
+  position: relative;
+}
+
+.set-toggle--on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.set-knob {
+  background: var(--muted);
+  border-radius: 50%;
+  height: 14px;
+  width: 14px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition:
+    left 120ms ease,
+    background 120ms ease;
+}
+
+.set-toggle--on .set-knob {
+  background: #06121c;
+  left: 17px;
+}

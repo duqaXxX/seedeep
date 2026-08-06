@@ -1,0 +1,8 @@
+/* Conditional bits (the Input button, the live badge) hide with this instead of being
+   left out of the DOM, so the renderer stays declarative and a ResizeObserver can flip
+   them without a re-render. Showing the Input button narrows .sbprompt, which is
+   self-consistent: it is only shown while the prompt overflows, and it can only make it
+   overflow more — so the measurement settles instead of flip-flopping. */
+.hidden {
+  display: none;
+}

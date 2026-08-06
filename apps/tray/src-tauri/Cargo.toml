@@ -1,0 +1,76 @@
+[package]
+name = "seedeep-tray"
+version = "0.0.0"
+description = "seedeep's menu-bar client"
+edition = "2021"
+# The highest floor anything in the locked graph declares, so a too-old toolchain fails with a
+# readable message instead of a wall of trait errors. DERIVED, never guessed — re-derive it after
+# any dependency change with:
+#   cargo metadata --format-version 1 | jq -r '.packages[].rust_version' | sort -V | tail -1
+# (today: notify-rust 4.18, via tauri-plugin-notification. A floor stated from the crate one
+# happens to remember is a claim the lockfile has already outgrown.)
+rust-version = "1.89.0"
+
+# No `[lib]` section: mobile is not a target (see docs/tray.md), and the staticlib/cdylib
+# split exists only to let iOS and Android link the app. A plain binary is the whole app.
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `tauri-plugin-http` is deliberately ABSENT: it exists to give the webview a `fetch`, and a
+# webview fetch cannot pin a certificate — its only knob is "accept invalid certs", which would
+# void the reason the server has TLS. So the HTTP client is Rust's, and it declares its own TLS.
+# No default features: they bring native-tls (a second TLS stack) and h2, which the server does
+# not need — without it rustls advertises only http/1.1 and Bun answers on http/1.1.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+# Declared directly because `pin.rs` implements one of its traits. The provider feature must be
+# the one reqwest's `rustls` feature already picks (aws-lc-rs) — asking for `ring` here compiles
+# BOTH providers into the binary rather than replacing one.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# Pinned to the version already in the locked graph (reqwest's), so naming it here adds a name and
+# not a second copy. A PEM is one base64 body between two markers, and the co-located server's
+# fingerprint is read from that FILE rather than learned from a handshake — see
+# `LocalServer::credentials` for why that distinction is the whole point.
+base64 = "0.22"
+# `macos-private-api` is what a transparent window costs on macOS, and a transparent window is what
+# rounded corners cost: without it the webview paints an opaque rectangle under the radius. The
+# build script refuses to compile if this and `macOSPrivateApi` in tauri.conf.json disagree.
+# The documented consequence is that the app cannot be accepted to the App Store — which seedeep
+# never ships through: the macOS deliverable is a DMG (docs/tray.md, Packaging and releases).
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-notification = "2"
+# Opening the portal in the default browser. The v1 `tauri::api::shell::open` moved out of the
+# framework in v2, and this is the canonical replacement; it is called from RUST, so no capability
+# entry is needed (the ACL gates what a webview may invoke, and the webview never sees this).
+tauri-plugin-opener = "2"
+# `time` for the poll's sleep, `sync` for the notify that changes its cadence the moment the panel
+# opens, and `process` for the two things `local.rs` runs: the user's shell, asked where seedeep is,
+# and the server itself. Already in the graph via tauri's own runtime — declared because this crate
+# names it.
+tokio = { version = "1", features = ["time", "sync", "process"] }
+
+# One call each, and both need the platform rather than std: whether a pid is still there, and — on
+# unix — SIGTERM and `setsid`. A tray that could not answer the first would offer to stop a server
+# that a crash left only a file behind for.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Pinned to the version already in the locked graph (tauri's), so asking for it here adds a name and
+# not a second copy of the bindings.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[profile.release]
+# The tray is a download-and-run artifact (CLAUDE.md's distribution invariant), so size is a
+# user-facing property, not a build detail.
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt"] }

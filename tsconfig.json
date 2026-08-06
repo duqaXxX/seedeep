@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "types": ["node", "bun"],
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["apps/server/src", "apps/server/tests", "apps/tray/ui", "apps/tray/tests"],
+  // `allowJs` plus a directory include would otherwise pull the tray panel's BUILT bundle into
+  // the check the moment anyone runs `build:tray-ui`, making a future error in generated output
+  // indistinguishable from one in source. Naming `exclude` replaces its default, so
+  // `node_modules` has to be listed again.
+  "exclude": ["node_modules", "apps/tray/ui/dist"]
+}

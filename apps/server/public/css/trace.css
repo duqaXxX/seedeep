@@ -1,0 +1,865 @@
+/* ── Trace modal (src/client/trace.ts) ───────────────────────────────────────────
+   All prototype class names are scoped under .trace-modal to avoid clashing
+   with graph.js generics (.drawer, .card, .dot, .badge, .conn, etc.).
+   The modal itself uses dedicated .trace-* prefixed names. */
+
+.trace-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 14, 0.65);
+  z-index: 60;
+  display: none;
+}
+.trace-scrim.on {
+  display: block;
+}
+.trace-modal {
+  position: fixed;
+  inset: 2vh 2vw;
+  z-index: 61;
+  display: none;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+}
+.trace-modal.on {
+  display: flex;
+}
+
+.trace-hdr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: none;
+  z-index: 3;
+}
+.trace-htitle {
+  color: var(--hi);
+  font-weight: 600;
+  font-size: 13px;
+  flex: none;
+}
+.trace-hsubj {
+  color: var(--lo2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.trace-hspacer {
+  flex: 1;
+}
+.trace-zoom {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.trace-zbtn {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--panel2);
+  color: var(--ink);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.trace-zbtn:hover {
+  border-color: var(--sp-api);
+  color: var(--hi);
+}
+.trace-follow {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel2);
+  color: var(--sp-api);
+  border: 1px solid var(--sp-api);
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+  flex: none;
+}
+.trace-follow.hidden {
+  display: none;
+}
+.trace-close {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  font-size: 1rem;
+  flex: none;
+}
+.trace-close:hover {
+  color: var(--hi);
+  border-color: var(--lo2);
+}
+
+/* The stage is the SCROLL container: the spine is a list of turn rows, and a natively
+   scrolled list gets a scrollbar, the wheel, the keyboard and browser find for free.
+   The 2D canvas it replaces cost all four and bought only a right-hand strip. */
+.trace-stage {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+  background: radial-gradient(1100px 800px at 20% -5%, #0f1727 0%, transparent 55%), var(--bg);
+}
+/* width + min-width:0 keep an open turn's strip INSIDE its own scroller: without
+   them the widest strip stretched its row past the stage, and that row's header
+   columns slid right while every collapsed row stayed put. */
+.trace-canvas {
+  position: relative;
+  padding: 18px 22px 60px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.trace-spine {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Turn segments and headers */
+.trace-modal .cap {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--lo);
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+}
+.trace-modal .cap.start {
+  color: var(--sp-prompt);
+  padding-bottom: 8px;
+}
+/* The last turn's border sits right above it; without this the cap reads as part of
+   that row rather than as the end of the session. */
+.trace-modal .cap.end {
+  color: var(--sp-result);
+  margin-top: 16px;
+}
+
+/* What the cap above it names. Full-width, unlike a strip block: this is the document's
+   closing line, not one step among many — and the answer is prose, which 166px cannot hold. */
+.trace-modal .finres {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 6px 8px 0;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--sp-result);
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    border-color 0.1s,
+    box-shadow 0.1s;
+}
+.trace-modal .finres:hover {
+  box-shadow: 0 0 0 1px var(--sp-result);
+}
+/* Nothing to open, so nothing that invites a click. */
+.trace-modal .finres.empty {
+  cursor: default;
+  color: var(--lo);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.trace-modal .finres.empty:hover {
+  box-shadow: none;
+}
+.trace-modal .finres .fnid {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sp-result);
+}
+/* Two lines: the drawer holds the whole answer, and a long one must not push the end of the
+   document off the bottom of the spine. */
+.trace-modal .finres .fntext {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--hi);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* One turn = one full-width row of a document. The left rule carries the turn's
+   STATE — it used to cycle a golden-ratio hue per index, which said nothing that
+   "T7" did not already say and landed on the error colour twice per cycle. */
+.trace-modal .tseg {
+  display: block;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--tstate, transparent);
+}
+.trace-modal .tseg:hover {
+  background: rgba(255, 255, 255, 0.012);
+}
+.trace-modal .tseg.open {
+  background: rgba(255, 255, 255, 0.018);
+}
+.trace-modal .tseg.has-err {
+  --tstate: var(--sp-error);
+}
+.trace-modal .tseg.is-live {
+  --tstate: var(--sp-result);
+}
+
+/* Sticky: inside a long turn you always know which turn you are in. */
+.trace-modal .thead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  background: var(--panel);
+  cursor: pointer;
+  user-select: none;
+}
+.trace-modal .thead:hover {
+  background: var(--panel2);
+}
+.trace-modal .tseg.open .thead {
+  box-shadow: 0 1px 0 var(--border2);
+}
+/* Fixed-width slots, always emitted: on a long session the metrics must line up in
+   columns, or comparing two rows means re-reading both. */
+/* box-sizing, or `width:100%` plus 28px of padding makes the header 28px wider than
+   its own row — and every right-hand column, the duration bar included, slides. */
+.trace-modal .thead .hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+}
+.trace-modal .thead .id {
+  flex: none;
+  width: 96px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--lo2);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trace-modal .tseg.has-err .thead .id {
+  color: var(--sp-error);
+}
+.trace-modal .thead .id .chev {
+  transition: transform 0.12s;
+  display: inline-block;
+}
+.trace-modal .tseg.open .thead .id .chev {
+  transform: rotate(90deg);
+}
+.trace-modal .thead .ttl {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--hi);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The turn's shape, in place of per-type counts: `82 api  99 tool` says how much a
+   turn did and never what it looked like, so a long tool burst and alternating
+   api/tool cycles read identically. */
+.trace-modal .tspark {
+  flex: none;
+  width: 196px;
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.trace-modal .tspark .bins {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+}
+.trace-modal .tspark .bins i {
+  width: 4px;
+  height: 11px;
+  border-radius: 1px;
+  display: block;
+  opacity: 0.9;
+}
+.trace-modal .tspark .bins i.err {
+  opacity: 1;
+}
+.trace-modal .tspark .n {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--lo);
+  white-space: nowrap;
+  width: 56px;
+  text-align: right;
+}
+.trace-modal .thead .chips {
+  flex: none;
+  width: 168px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--lo);
+}
+.trace-modal .thead .chips .c {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.trace-modal .thead .chips .c i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+.trace-modal .thead .fk {
+  flex: none;
+  width: 40px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sp-spawn);
+}
+/* A collapsed turn used to hide its failures entirely — measured on 16.3% of turns.
+   The badge states the COUNT: a bare "failed" reads as "the turn failed", when what
+   failed is n of its steps. */
+.trace-modal .thead .errslot {
+  flex: none;
+  width: 104px;
+  text-align: right;
+}
+/* The badge is a BUTTON: it jumps to each failed step in turn. A count the user
+   wants to click and cannot is a dead end — reaching a failure by hand measured
+   7 clicks, or a 33,000px strip to scan. */
+.trace-modal .terr {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--sp-error);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--sp-error) 45%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.trace-modal .terr:hover {
+  background: color-mix(in srgb, var(--sp-error) 16%, transparent);
+  color: var(--hi);
+}
+/* The step the jump landed on, so it is findable among its neighbours. A Workflow lane
+   draws a tile instead of a strip, so the tile is what the jump can land on. */
+.trace-modal .snode.hit,
+.trace-modal .amini.hit {
+  box-shadow:
+    0 0 0 2px var(--sp-error),
+    0 0 18px color-mix(in srgb, var(--sp-error) 55%, transparent);
+}
+/* Duration as a share of the longest turn: the number alone has to be read and
+   converted before two turns can be compared. The number is a FIXED-WIDTH column, so
+   the bars line up down the session — sized against them all is variable-width
+   ("60s" vs "76m 4s") and every bar slid with it. */
+.trace-modal .tdur {
+  flex: none;
+  width: 118px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  cursor: help;
+}
+.trace-modal .tdur b {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  color: var(--lo);
+  width: 56px;
+  text-align: right;
+  flex: none;
+}
+.trace-modal .tbar {
+  width: 46px;
+  flex: none;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border2);
+  overflow: hidden;
+}
+/* Neutral on purpose: tinting it red repeated a signal the left rule, the badge and
+   the sparkline already carry, and only asked "why is this bar red?". */
+.trace-modal .tbar i {
+  display: block;
+  height: 100%;
+  background: var(--lo2);
+}
+/* A control command that ran nothing is one dim line, not a full row. */
+.trace-modal .tseg.is-idle .thead .hd {
+  padding: 6px 14px;
+  opacity: 0.5;
+}
+.trace-modal .tseg.is-idle .thead .ttl {
+  font-size: 11px;
+  color: var(--lo2);
+}
+.trace-modal .tseg.is-idle .chev {
+  visibility: hidden;
+}
+
+/* The body belongs to its header: indented, on a rail in the turn's own state colour.
+   The vertical rhythm is symmetric — the body used to open 4px under the header and
+   close 26px later (14 here + 12 in the scroller), so every turn read bottom-heavy. */
+.trace-modal .tbody {
+  display: none;
+  flex-direction: column;
+  margin-left: 26px;
+  padding: 10px 0 10px 18px;
+  border-left: 1px solid color-mix(in srgb, var(--tstate, var(--border2)) 55%, transparent);
+}
+.trace-modal .tseg.open .tbody {
+  display: flex;
+}
+
+/* Detail flow (expanded turn body) */
+.trace-modal .dflow {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: max-content;
+}
+/* A step block opens its drawer, so it must look clickable: it inherited the stage's
+   `grab` cursor and had no hover, reading as draggable canvas instead. */
+.trace-modal .snode {
+  --c: var(--sp-api);
+  flex: none;
+  width: 166px;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--c);
+  border-radius: 9px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.1s,
+    box-shadow 0.1s;
+}
+.trace-modal .snode:hover {
+  box-shadow: 0 0 0 1px var(--c);
+}
+/* A mid-turn `reply` is the one block that opens nothing: the reducer keeps only the
+   turn's LAST answer, so opening an earlier one would show the wrong text. */
+.trace-modal .snode.end.mid {
+  cursor: default;
+}
+.trace-modal .snode.end.mid:hover {
+  box-shadow: none;
+}
+.trace-modal .snode .sl {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--hi);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* Every block title is ONE line — long spawn intents ellipsize, never wrap. */
+.trace-modal .snode .sl .st {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* `bg` marker on a background launch — same chip as the Graph's running-command rows, sized to
+   leave the 166px block's title room: a Bash label is short, and the chip must never push it out. */
+.trace-modal .snode .sl .sbg {
+  font: 8.5px var(--mono);
+  color: var(--lo2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 0 4px;
+  line-height: 13px;
+  white-space: nowrap;
+  flex: none;
+}
+.trace-modal .snode .sl i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c);
+  flex: none;
+}
+.trace-modal .snode .ss {
+  font-size: 9px;
+  color: var(--lo);
+  font-family: var(--mono);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* An empty sub-line still reserved a text row under every prompt/result block. */
+.trace-modal .snode .ss:empty {
+  display: none;
+}
+/* Duration as a share of the widest block in the strip — without it the strip encodes
+   sequence only, and a 96ms step is as wide as a six-minute one. */
+.trace-modal .dbar {
+  margin-top: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border2);
+  overflow: hidden;
+}
+.trace-modal .dbar i {
+  display: block;
+  height: 100%;
+  background: var(--c, var(--g));
+  opacity: 0.85;
+}
+.trace-modal .gnode .dbar i {
+  background: var(--g);
+}
+.trace-modal .snode.err {
+  border-color: var(--sp-error);
+}
+/* Mid-turn reply: the model closed and was re-woken — NOT the turn's end. */
+.trace-modal .snode.end.mid {
+  border-style: dashed;
+  opacity: 0.75;
+}
+/* Newest block of a live turn's raw tail. Named `tail`, not `live`: `.live` is the
+   Live-activity badge's UNSCOPED global class, and it deformed this block. */
+.trace-modal .snode.tail {
+  box-shadow:
+    0 0 0 1px var(--c),
+    0 0 14px color-mix(in srgb, var(--c) 45%, transparent);
+}
+.trace-modal .snode.start {
+  --c: var(--sp-prompt);
+}
+.trace-modal .snode.end {
+  --c: var(--sp-result);
+}
+/* Spawn = the subagent: cyan gradient fill sets it apart from api-blue steps
+   and from the teal/indigo group blocks. */
+.trace-modal .snode.spawn {
+  --c: var(--sp-spawn);
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.12), rgba(125, 211, 252, 0.03)), var(--panel2);
+}
+.trace-modal .snode.spawn.on,
+.trace-modal .snode.spawn:hover {
+  box-shadow: 0 0 0 1px var(--sp-spawn);
+}
+/* Spawns that ran in PARALLEL are one block: drawing them in a row with arrows
+   between them asserts a sequence that never happened. Stacked edges say "several". */
+.trace-modal .snode.par {
+  width: 212px;
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.18), rgba(125, 211, 252, 0.04)), var(--panel2);
+  box-shadow:
+    3px 3px 0 -1px rgba(125, 211, 252, 0.18),
+    6px 6px 0 -2px rgba(125, 211, 252, 0.1);
+}
+.trace-modal .snode.par.on,
+.trace-modal .snode.par:hover {
+  box-shadow: 0 0 0 1px var(--sp-spawn);
+}
+/* One rule per subagent, in launch order: the block keeps saying how many ran and
+   which failed, which a single merged label would hide. */
+.trace-modal .snode.par .pk {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+}
+.trace-modal .snode.par .pk i {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sp-spawn);
+  opacity: 0.55;
+}
+.trace-modal .snode.par .pk i.err {
+  background: var(--sp-error);
+  opacity: 1;
+}
+.trace-modal .conn {
+  flex: none;
+  width: 38px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.trace-modal .conn svg {
+  overflow: visible;
+}
+
+/* Grouped strip: collapsed group blocks + in-place expansion frames */
+.trace-modal .gnode {
+  --g: var(--sp-api);
+  flex: none;
+  width: 172px;
+  box-sizing: border-box;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--g);
+  border-radius: 9px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.trace-modal .gnode:hover {
+  box-shadow: 0 0 0 1px var(--g);
+}
+/* A group that folds a failure: red left rule (overriding the round/chapter hue) so the
+   collapsed strip shows WHERE a failure is without opening every block. */
+.trace-modal .gnode.err {
+  border-left-color: var(--sp-error);
+}
+.trace-modal .gnode.err:hover {
+  box-shadow: 0 0 0 1px var(--sp-error);
+}
+.trace-modal .gnode .gl {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--hi);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A round named by its intent: two clamped lines instead of one ellipsized. Measured on the real
+   block (172px, mono 11.5px): one line shows 21 chars of a p50 129-char first line, two show 41.
+   The class is `gnamed`, not `named` — a single-word class collides with a global rule, which is
+   exactly how the tail marker once inherited the Live badge's uppercase (see docs/trace.md). */
+.trace-modal .gnode.gnamed .gl {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
+}
+.trace-modal .gnode .gs {
+  font-size: 9px;
+  color: var(--lo);
+  font-family: var(--mono);
+  margin-top: 3px;
+}
+.trace-modal .gnode .gx {
+  font-size: 9px;
+  color: var(--g);
+  font-family: var(--mono);
+  margin-top: 4px;
+}
+.trace-modal .gdots {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  margin-top: 5px;
+}
+.trace-modal .gdots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 1.5px;
+  display: inline-block;
+}
+.trace-modal .gdots i.err {
+  background: var(--sp-error);
+}
+.trace-modal .gdots .more {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--lo);
+  margin-left: 3px;
+}
+.trace-modal .gholder {
+  display: inline-flex;
+}
+.trace-modal .gframe {
+  --g: var(--sp-api);
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed color-mix(in srgb, var(--g) 55%, transparent);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--g) 4%, transparent);
+}
+.trace-modal .gcap {
+  flex: none;
+  writing-mode: sideways-lr;
+  margin-right: 8px;
+  background: none;
+  cursor: pointer;
+  border: none;
+  border-right: 2px solid var(--g, var(--sp-api));
+  color: var(--g, var(--sp-api));
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 6px 2px 2px;
+  max-height: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trace-modal .gcap:hover {
+  color: var(--hi);
+}
+.trace-modal .gcap.err {
+  border-right-color: var(--sp-error);
+}
+.trace-modal .ginner {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+/* Lives in the body now: a full-width header is a column grid, and two links inside
+   it would break the alignment the columns exist for. */
+.trace-modal .tctl {
+  display: flex;
+  gap: 12px;
+}
+.trace-modal .tctl a {
+  padding: 1px 0;
+}
+.trace-modal .tctl a {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--lo);
+  cursor: pointer;
+}
+.trace-modal .tctl a:hover {
+  color: var(--sp-api);
+}
+
+/* Merged spawn block + parallel child lanes (replaces the old fork/branch) */
+.trace-modal .snode.spawn.on {
+  box-shadow: 0 0 0 1px var(--sp-spawn);
+}
+.trace-modal .snode .gi {
+  margin-left: auto;
+  color: var(--lo);
+  font-size: 10px;
+  cursor: pointer;
+}
+.trace-modal .snode .gi:hover {
+  color: var(--sp-spawn);
+}
+.trace-modal .dflow {
+  position: relative;
+}
+/* The strip and its lanes share ONE horizontal scroller, so a lane stays under its
+   spawn at every scroll offset; two scrollers would drift the moment either moved. */
+.trace-modal .striproll {
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+  padding: 8px 14px 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.trace-modal .lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  width: max-content;
+}
+.trace-modal .lane-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  border-left: 2px dashed rgba(125, 211, 252, 0.45);
+  padding-left: 14px;
+}
+.trace-modal .lane-empty {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--lo);
+  padding: 2px 0 2px 14px;
+}
+.trace-modal .lane-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sp-spawn);
+  cursor: pointer;
+  padding: 2px 0 2px 14px;
+}
+.trace-modal .lane-name:hover {
+  color: var(--hi);
+}
+.trace-modal .wf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 4px;
+  max-width: 860px;
+}
+.trace-modal .amini {
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.5), rgba(125, 211, 252, 0.16));
+  border: 1px solid rgba(125, 211, 252, 0.5);
+  font-size: 9px;
+  color: var(--hi);
+  line-height: 20px;
+  text-align: center;
+  font-family: var(--mono);
+  overflow: hidden;
+}
+.trace-modal .amini.err {
+  border-color: var(--sp-error);
+}
+
+/* Density, in place of a zoom that only made a document smaller. */
+.trace-zbtn.on {
+  border-color: var(--sp-api);
+  color: var(--hi);
+}
+.trace-modal.dense .snode,
+.trace-modal.dense .gnode {
+  width: 156px;
+  padding: 6px 9px;
+}
+.trace-modal.dense .ss,
+.trace-modal.dense .gs,
+.trace-modal.dense .gx {
+  display: none;
+}
+.trace-modal.dense .conn {
+  width: 20px;
+}
+.trace-modal.dense .conn svg {
+  width: 20px;
+}

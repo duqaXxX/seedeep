@@ -1,0 +1,30 @@
+# Every action in .github/workflows/ is pinned to a commit SHA, which is what stops a tag being
+# moved under a build that publishes to npm. The cost of that is a frozen dependency: a fix
+# released upstream never arrives on its own. This file is the other half - it opens the pull
+# request that moves the SHA, so pinning does not quietly become "never updated".
+#
+# It also covers the blind spot the pin creates: GitHub's own docs state that "Dependabot only
+# creates alerts for vulnerable actions that use semantic versioning and will not create alerts for
+# actions pinned to SHA values". Security alerts do not reach a pinned action, so the weekly
+# version update is the only thing that will.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    # `/` is the value GitHub's reference names for this ecosystem: it searches .github/workflows,
+    # not a path relative to it.
+    directory: /
+    schedule:
+      interval: weekly
+    # Assigned, not merely opened: GitHub subscribes you to a conversation you are assigned to, so
+    # the notification does not depend on the repository's watch level - which on a public repo has
+    # to stay quiet enough to be readable. It also makes the pull request findable later
+    # (`gh pr list --assignee @me`), rather than only catchable at the moment it arrives.
+    assignees:
+      - duqaXxX
+    # One pull request for the lot, not one per action: eight of them arriving separately is what
+    # teaches people to close them unread. The pin only helps if the update is actually looked at.
+    groups:
+      actions:
+        patterns:
+          - '*'

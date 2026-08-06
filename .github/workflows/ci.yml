@@ -1,0 +1,91 @@
+# Runs on every push and pull request, which is the point: the rules this repo already states in
+# CONTRIBUTING.md ("`bun run typecheck` must pass") were enforced by nothing, and the type-checker
+# was red on main while every local `bun test` stayed green.
+#
+# Two jobs rather than one, because the two failures mean different things and one must not hide
+# the other: `scan` guards what must never enter a public history, `check` guards whether the code
+# is correct. A leak is not a reason to stop reporting a broken test.
+#
+# The tray's Rust tests (`bun run test:tray`) are deliberately NOT here: building the Tauri crate on
+# a Linux runner needs system webkit packages, and a pipeline that is red for its own dependencies
+# teaches people to ignore red. Run them locally on macOS until that job is worth its setup.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A branch only needs its latest commit checked; superseded runs are cancelled rather than queued.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Sensitive-data scan
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the scan diffs against a base commit, which a shallow clone does not have.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The range is computed in the shell and the refs arrive through the environment, never
+      # interpolated into the script: a branch name on a pull request from a fork is attacker-
+      # controlled text, and `${{ }}` inside a `run:` block would paste it straight into bash.
+      - name: Scan the pushed changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            # Three dots: what this branch ADDS since it forked, not every change on the base
+            # since then — otherwise a busy main makes each pull request look like it wrote it.
+            git diff "origin/$BASE_REF...HEAD"
+          elif [ -n "${BEFORE:-}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git diff "$BEFORE..$SHA"
+          else
+            # First push of a branch, or a force-push whose old tip is gone: scan the tip commit.
+            git show "$SHA"
+          fi | bash .github/scripts/scan-sensitive-diff.sh
+
+  check:
+    name: Tests, types, client bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - run: bun install --frozen-lockfile
+
+      # `bun run test`, not `bun test`: the runner skips dot-directories when it scans for test
+      # files, so a bare `bun test` silently leaves the gate in .github/scripts/ untested. The
+      # script names both roots.
+      - run: bun run test
+
+      # Tests do not type-check, so a type error survives a green suite — which is exactly how one
+      # lived on main until this workflow existed.
+      - run: bun run typecheck
+
+      # Formatting and lint in one pass. It reports rather than rewrites here: CI's job is to say
+      # what is wrong, and a pipeline that edits the code under review hides the difference between
+      # what an author wrote and what a machine changed.
+      - run: bun run lint
+
+      # public/lib/app.js is a BUILT artifact that is nevertheless committed, so that a clone runs
+      # the GUI without a build step. That only holds while the committed bytes match the source:
+      # rebuild it here and fail if anything moved.
+      - name: The committed client bundle matches its source
+        run: |
+          bun run build:client
+          git diff --exit-code -- apps/server/public/lib/app.js \
+            || { echo "::error::apps/server/public/lib/app.js is stale — run 'bun run build:client' and commit it"; exit 1; }

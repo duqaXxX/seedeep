@@ -1,0 +1,284 @@
+/* --- app chrome (header, tabs, dropdown) --- */
+
+body {
+  font: 14px / 1.5 var(--sans);
+  margin: 0;
+  background: var(--bg);
+  color: #d7dbe4;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1a1e28;
+}
+#tabs {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+  overflow-x: auto;
+}
+
+/* --- the fixed-surface menu (Home / Compare / Search) --- */
+/* Quiet by default: the strip next to it is the loud surface, and a permanently-lit control
+   left of the wordmark would compete with the session that is actually generating. */
+.nav {
+  position: relative;
+  flex: none;
+}
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--lo2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.nav-btn svg {
+  display: block;
+}
+.nav-btn:hover,
+.nav.open .nav-btn {
+  color: var(--hi);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border2);
+}
+/* `on` = a fixed surface is on screen. It is then the ONLY thing saying where you are — no
+   tab in the strip is active — so the name comes with it, not just the accent. */
+.nav-btn.on {
+  color: var(--cache);
+  border-color: rgba(56, 189, 248, 0.45);
+  background: #161a24;
+}
+.nav-cur {
+  white-space: nowrap;
+}
+.nav-cur::before {
+  content: "\2726";
+  margin-right: 0.3rem;
+}
+/* Empty on a session: the span collapses rather than leaving the ✦ stranded (::before does
+   not count as content for :empty, which is what makes one span enough for both states). */
+.nav-cur:empty {
+  display: none;
+}
+
+/* Same glass as the picker's popover — one menu idiom in the header, not two. */
+.nav-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 232px;
+  z-index: 50;
+  padding: 0.35rem;
+  background: rgba(14, 20, 32, 0.74);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 24px 64px -16px rgba(0, 0, 0, 0.78),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.nav:not(.open) .nav-pop {
+  display: none;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-item:hover,
+.nav-item:focus-visible {
+  background: rgba(125, 211, 252, 0.1);
+  color: var(--hi);
+}
+.nav-item .ic {
+  color: var(--cache);
+  flex: none;
+  width: 1rem;
+  text-align: center;
+}
+.nav-item .sub {
+  margin-left: auto;
+  color: var(--lo);
+  font-size: 0.72rem;
+}
+.nav-item.active {
+  background: #1d2535;
+  color: var(--hi);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.3);
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #1a1e28;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab.active {
+  background: #1d2535;
+  border-color: rgba(56, 189, 248, 0.55);
+  color: var(--hi);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.15),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.tab-close {
+  background: none;
+  border: none;
+  color: #7a8394;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+/* 8px, the same as the picker's .pk-dot: this dot IS the tab's state — who, and whether
+   it is working — so it is sized as a signal, not as a decoration. */
+/* margin-right, not a bigger .tab gap: the gap also spaces the × away from the label,
+   and only the dot needed the room. 4px gap + 2px = 6px between the signal and the text. */
+.tab-busy {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3f4a63;
+  display: inline-block;
+  flex: none;
+  margin-right: 2px;
+}
+.tab-busy.on {
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  animation: pkpulse 1.8s infinite;
+}
+/* waiting for the user: amber, and last — a session that is blocked is not generating,
+   so this must win over .on even in the poll where both are momentarily set. */
+.tab-busy.wait {
+  background: var(--warn);
+  box-shadow: 0 0 9px var(--warn);
+  animation: pkpulse 1.4s infinite;
+}
+/* the session's last model call FAILED: red, and last of all — it outranks both of the above.
+   A blocked session is still healthy; a failed one has stopped and will not restart on its own
+   (measured: 39 of 47 real API errors were the last model line their session ever wrote). No
+   pulse: a pulse says "something is happening", and nothing is. */
+.tab-busy.err {
+  background: var(--crit);
+  box-shadow: 0 0 9px var(--crit);
+  animation: none;
+}
+/* ended: the whole tab goes quiet. Not a badge — everything inside it is frozen history.
+   The one you are reading stays legible: being dim must not mean being unreadable. */
+.tab.ended {
+  opacity: 0.5;
+}
+.tab.ended.active {
+  opacity: 0.85;
+}
+
+/* --- live-feed health --- */
+/* Silent while healthy: an empty #conn is pulled out of the header's flex row, so it does
+   not even leave a gap behind. Styled by ID with namespaced state classes — a bare `.conn`
+   rule would also hit the Trace's connector element, which is what `.conn` already means
+   there (trace.ts renderItems); the CSS-scope guard catches exactly that. */
+#conn:empty {
+  display: none;
+}
+#conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#conn::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+/* Amber, the same register as a session waiting on the user: something needs to resolve,
+   nothing is broken beyond repair. Pulsing because a reconnect is in progress, not settled. */
+#conn.feed-lost {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: var(--warn);
+}
+#conn.feed-lost::before {
+  background: var(--warn);
+  animation: pkpulse 1.4s infinite;
+}
+#conn.feed-resync {
+  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  color: var(--agent);
+}
+#conn.feed-resync::before {
+  background: var(--agent);
+}
+
+/* --- the session-id chip (shared: picker rows, search rows) ---
+   Lives here, not in one surface's stylesheet, because the component is shared: a chip styled in
+   search.css would be unstyled in the picker whenever the load order changed. */
+.idchip {
+  font: 0.68rem var(--mono);
+  color: var(--lo);
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 0 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.idchip::before {
+  content: "⧉ ";
+  opacity: 0.7;
+}
+.idchip:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.03);
+}
+.idchip.copied {
+  color: var(--good);
+  border-color: rgba(110, 231, 183, 0.4);
+}
+
+/* The development mark — see `client/build-mark.ts`. Present only on a portal a checkout is
+   serving, so it is never a decoration: if you can see it, you are not looking at a release. Amber
+   because that is the palette's "pay attention to this", and small because it sits beside the
+   brand rather than competing with it. */
+.build-mark {
+  align-self: center;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid #b45309;
+  border-radius: 4px;
+  color: #f59e0b;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}

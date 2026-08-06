@@ -1,0 +1,620 @@
+.whead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.xbtn {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: 0.15s;
+}
+.xbtn:hover {
+  color: var(--hi);
+  border-color: var(--agent);
+}
+
+.scrollbox {
+  max-height: 340px;
+  overflow-y: auto;
+  margin-right: -0.3rem;
+  padding-right: 0.3rem;
+}
+
+/* overlays: scrim + drawer, output modal (above drawer), toasts */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 14, 0.6);
+  display: none;
+  z-index: 70;
+}
+.scrim.on {
+  display: block;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(500px, 94vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border2);
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  z-index: 71;
+  padding: 1.4rem 1.5rem;
+  overflow-y: auto;
+}
+.drawer-spacer {
+  height: 20px;
+  flex-shrink: 0;
+}
+.drawer.on {
+  transform: none;
+}
+.drawer h3 {
+  margin: 0.2rem 0 0.1rem;
+  font-size: 1.05rem;
+  color: var(--hi);
+}
+.drawer .breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.drawer .breadcrumb .crumb-link {
+  color: var(--cache);
+  cursor: pointer;
+}
+.drawer .breadcrumb .crumb-link:hover {
+  text-decoration: underline;
+}
+.drawer .breadcrumb .crumb-sep {
+  color: var(--lo);
+  padding: 0 0.1rem;
+}
+/* z-index:3 keeps the close button ABOVE the sticky header: .dhead paints an opaque
+   background at z-index:2 and would otherwise hide it — the drawer would have no visible
+   way out but Escape or the scrim. */
+.drawer .close {
+  position: absolute;
+  top: 1rem;
+  right: 1.1rem;
+  z-index: 3;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0.2rem 0.55rem;
+  font-size: 1rem;
+  line-height: 1;
+  transition: 0.15s;
+}
+.drawer .close:hover {
+  color: var(--hi);
+  border-color: var(--agent);
+}
+.drawer .drow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.83rem;
+}
+.drawer .drow .dk {
+  color: var(--lo);
+}
+.drawer .drow .dv {
+  color: var(--ink);
+  font-family: var(--mono);
+  text-align: right;
+}
+/* Drawer header: sticky so the title survives scrolling a long prompt. The negative
+   margins cancel the drawer's own padding, so the opaque background spans its full width
+   and the content scrolls UNDER the header rather than beside it. */
+.drawer .dhead {
+  position: sticky;
+  top: -1.4rem;
+  background: var(--panel);
+  margin: -1.4rem -1.5rem 0;
+  padding: 1.4rem 3.4rem 0.7rem 1.5rem;
+  z-index: 2;
+}
+.drawer .deyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.drawer .dchip {
+  font: 0.62rem var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--agent);
+  background: rgba(125, 211, 252, 0.14);
+  border-radius: 5px;
+  padding: 0.1rem 0.45rem;
+}
+.drawer .dchip.err {
+  color: var(--crit);
+  background: rgba(251, 113, 133, 0.16);
+  margin-left: 0.4rem;
+}
+/* `background` sits beside the kind (and beside `failed` when both apply): a state of the call,
+   muted, never competing with the failure chip for attention. */
+.drawer .dchip.bg {
+  color: var(--lo2);
+  background: none;
+  border: 1px solid var(--border2);
+  margin-left: 0.4rem;
+}
+/* Identity line: WHAT the entity is (type, model, owner) — never a measurement. */
+.drawer .dsub {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+  margin-top: 0.3rem;
+}
+.drawer .dsub .sep {
+  color: var(--border2);
+  padding: 0 0.35rem;
+}
+/* The 2–3 headline facts. --n is set per drawer; the grid is even so two tiles do not
+   leave a ragged third column. */
+.drawer .kpis {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), 1fr);
+  gap: 0.5rem;
+  margin: 1rem 0 0.2rem;
+}
+.drawer .kpi {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  min-width: 0;
+}
+.drawer .kpi .kl {
+  font: 0.62rem var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer .kpi .kv {
+  font: 600 1.05rem var(--mono);
+  color: var(--hi);
+  margin-top: 0.15rem;
+  letter-spacing: -0.01em;
+}
+.drawer .kpi .kv small {
+  font-size: 0.7rem;
+  color: var(--lo2);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+/* Pending value: dim and un-bold, so a placeholder never reads as a real figure. */
+.drawer .kpi .kv.wait {
+  color: var(--lo);
+  font-weight: 400;
+}
+/* The bar-head trio (.chead/.clbl/.cval) was only ever declared UNDER `.crow`, so the
+   stacked bar — which has a head but no .crow — rendered it unstyled: label and figure
+   glued together, both at body size. Re-declared for the drawer, .crow or not. */
+.drawer .chead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.drawer .clbl {
+  font-size: 0.64rem;
+  color: var(--lo2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.drawer .cval {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+  white-space: nowrap;
+}
+/* Stacked proportion bar — one <i> per category, widths summing to 100%. */
+.drawer .dstack {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.055);
+  margin: 0.15rem 0 0.6rem;
+}
+.drawer .dstack > i {
+  display: block;
+  height: 100%;
+}
+.drawer .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1.1rem;
+  font: 0.71rem var(--mono);
+  color: var(--lo);
+}
+.drawer .legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.drawer .legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+.drawer .legend b {
+  color: var(--ink);
+  font-weight: 400;
+}
+/* Demoted bookkeeping: no per-row borders — the ledger look is what made 11 equal rows
+   unscannable in the first place. */
+.drawer .meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 1rem;
+  font-size: 0.78rem;
+  margin: 0;
+}
+.drawer .meta dt {
+  color: var(--lo);
+}
+.drawer .meta dd {
+  margin: 0;
+  font-family: var(--mono);
+  color: var(--lo2);
+  text-align: right;
+}
+.drawer .block {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border2);
+}
+.drawer .block:first-of-type {
+  margin-top: 1.25rem;
+}
+.drawer .blabel {
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--agent);
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+}
+/* The only link in the app, so it carries its own affordance rather than inheriting one: accent,
+   underlined, and mono because a URL is an identifier and not prose. break-all, because these are
+   unbroken 60-character strings in a 500px panel — wrapping on word boundaries would overflow. */
+.drawer .dlink {
+  color: var(--agent);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  word-break: break-all;
+}
+.drawer .dlink:hover {
+  color: var(--hi);
+}
+.drawer .dlink:focus-visible {
+  outline: 2px solid var(--agent);
+  outline-offset: 2px;
+}
+
+.drawer pre {
+  background: #090c12;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.drawer .morebtn {
+  margin-top: 0.5rem;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--agent);
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.drawer .morebtn:hover {
+  border-color: var(--agent);
+}
+.drawer .morerow {
+  font-size: 0.72rem;
+  color: var(--agent);
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+}
+.drawer .morerow:hover {
+  text-decoration: underline;
+}
+
+/* Share card preview modal — above everything, closed by clicking the backdrop or Escape */
+.spmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(4, 7, 14, 0.84);
+  cursor: pointer;
+}
+.spmodal.on {
+  display: flex;
+}
+/* The card is a 1200px-wide frame: shown in a 720px box it was displayed at 57%, which shrank
+   every label below what it was designed to be read at. Near its natural size, it is legible. */
+.spbox {
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: min(94vw, 1100px);
+  width: 100%;
+  cursor: default;
+}
+.spbox img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  border: 1px solid var(--border);
+}
+.spfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sptitle {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+}
+.spactions {
+  display: flex;
+  gap: 0.5rem;
+}
+.omodal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem;
+}
+.omodal.on {
+  display: flex;
+}
+.omodal .oscrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 7, 14, 0.78);
+}
+.omodal .obox {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  width: min(860px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.omodal .ohead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.3rem;
+  border-bottom: 1px solid var(--border);
+}
+.omodal .ohead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--hi);
+}
+.omodal .osub {
+  font-size: 0.74rem;
+  color: var(--lo);
+  margin-top: 0.15rem;
+}
+.omodal .oclose {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0.25rem 0.6rem;
+  font-size: 1rem;
+}
+/* The modal body is rendered markdown (see src/client/markdown.ts): prose in the sans
+   stack, code in mono. No white-space:pre-wrap here — hard-wrapping every line would
+   fight the block layout; only <pre> keeps its literal whitespace. */
+.omodal .obody {
+  overflow-y: auto;
+  padding: 1.3rem 1.5rem;
+  font-size: 0.86rem;
+  line-height: 1.65;
+  color: var(--ink);
+  word-break: break-word;
+}
+.obody > *:first-child {
+  margin-top: 0;
+}
+.obody > *:last-child {
+  margin-bottom: 0;
+}
+.obody p {
+  margin: 0 0 0.85rem;
+}
+.obody h1,
+.obody h2,
+.obody h3,
+.obody h4,
+.obody h5,
+.obody h6 {
+  color: var(--hi);
+  line-height: 1.3;
+  margin: 1.4rem 0 0.6rem;
+  font-weight: 650;
+}
+.obody h1 {
+  font-size: 1.15rem;
+}
+.obody h2 {
+  font-size: 1.05rem;
+}
+.obody h3 {
+  font-size: 0.95rem;
+}
+.obody h4,
+.obody h5,
+.obody h6 {
+  font-size: 0.88rem;
+  color: var(--lo2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.obody ul,
+.obody ol {
+  margin: 0 0 0.85rem;
+  padding-left: 1.35rem;
+}
+.obody li {
+  margin: 0.2rem 0;
+}
+.obody blockquote {
+  margin: 0 0 0.85rem;
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  border-left: 2px solid var(--border2);
+  color: var(--lo2);
+}
+.obody hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.2rem 0;
+}
+.obody code {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  background: rgba(125, 211, 252, 0.09);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.05rem 0.3rem;
+  color: var(--agent);
+}
+.obody pre {
+  background: #090c12;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin: 0 0 0.9rem;
+  overflow-x: auto;
+}
+/* inside a block the chip styling would fight the code box — the <pre> IS the box */
+.obody pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre;
+}
+/* raw tool output: not markdown, so the text sits straight in the <pre> (no <code> child).
+   It wraps — a log line or a minified file would otherwise scroll sideways forever. */
+.obody pre.opre {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* a wide table scrolls inside its own box; the modal body must never scroll sideways */
+.obody table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 0.9rem;
+  font-size: 0.8rem;
+}
+.obody th,
+.obody td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.obody th {
+  background: var(--panel2);
+  color: var(--lo2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.obody a {
+  color: var(--cache);
+}
+.obody strong {
+  color: var(--hi);
+  font-weight: 650;
+}
+.obody em {
+  color: var(--ink);
+  font-style: italic;
+}
+
+/* Timeline entry point (lives in the Session card footer) */
+.obtn {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--agent);
+  font: inherit;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.obtn:hover {
+  border-color: var(--agent);
+  color: var(--hi);
+}

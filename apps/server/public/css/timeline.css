@@ -1,0 +1,595 @@
+.toolchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+.tchip {
+  font-size: 0.73rem;
+  font-family: var(--mono);
+  color: var(--lo);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.15rem 0.55rem;
+  white-space: nowrap;
+}
+.tchip b {
+  color: var(--ink);
+}
+.tchip.clk {
+  cursor: pointer;
+  transition: 0.15s;
+}
+.tchip.clk:hover {
+  border-color: var(--agent);
+  color: var(--ink);
+}
+.tcount {
+  font-size: 0.84rem;
+  color: var(--hi);
+  font-weight: 600;
+  margin-right: 0.3rem;
+}
+
+.tracebtn {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: 0.15s;
+  margin-left: 0.5rem;
+}
+.tracebtn:hover {
+  color: var(--hi);
+  border-color: var(--agent);
+}
+
+.tfilterbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.6rem 0 0.3rem;
+}
+.tfilter {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  padding: 0.35rem 0.6rem;
+  font: 0.8rem var(--mono);
+  color: var(--ink);
+  outline: none;
+}
+.tfilter::placeholder {
+  color: var(--lo);
+}
+.tfilter:focus {
+  border-color: var(--cache);
+}
+.tsort {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  padding: 0.3rem 0.55rem;
+  font: 0.72rem var(--mono);
+  color: var(--lo2);
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.tsort:hover {
+  border-color: var(--cache);
+  color: var(--cache);
+}
+.tcount2 {
+  font-size: 0.72rem;
+  color: var(--lo);
+  margin: 0.1rem 0 0.25rem 0.5rem;
+}
+
+.trow2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 90px auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.32rem 0.5rem;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.trow2:hover {
+  background: rgba(125, 211, 252, 0.07);
+}
+.trow2 .tn {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--cache);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.trow2 .tn.crit {
+  color: var(--crit);
+}
+.trow2 .tn .targ {
+  color: var(--lo);
+  padding-left: 0.35rem;
+}
+.trow2 .tbar {
+  height: 12px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+.trow2 .tbar > i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+.trow2 .tv {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ttrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ttrow:hover {
+  background: rgba(125, 211, 252, 0.07);
+}
+.ttrow .tn {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--cache);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ttrow .tn .targ {
+  color: var(--lo);
+  padding-left: 0.35rem;
+}
+.ttrow .tv {
+  font: 0.7rem var(--mono);
+  color: var(--lo);
+  text-align: right;
+  white-space: nowrap;
+}
+/* All-activity list (the Live activity card's Expand all). Rows keep a `t-<type>`
+   class as a semantic hook, but carry no type marker of their own: the name already
+   says what the row is. The one exception is failure — a red rule + badge, below. */
+/* Subagent rows: indented under the spawn that created them. */
+.ttrow.lane {
+  border-left: 2px solid rgba(125, 211, 252, 0.22);
+  border-radius: 0 6px 6px 0;
+}
+.ttrow.lane .tn {
+  padding-left: 0.8rem;
+}
+.ttrow .aagent {
+  font: 0.58rem var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--create);
+  background: rgba(167, 139, 250, 0.16);
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.35rem;
+}
+/* A failed row in either expand-all list — same red as the feed badge and the Trace span,
+   so the same failure reads identically wherever it is shown. The lane rule wins its left
+   border, so a failed subagent row shows the error via its name + badge, not a second rule. */
+.ttrow.err {
+  box-shadow: inset 2px 0 0 var(--crit);
+}
+.ttrow.err.lane {
+  box-shadow: none;
+}
+.ttrow.err .tn {
+  color: var(--crit);
+}
+.ttrow .terr {
+  font: 0.58rem var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--crit);
+  background: rgba(251, 113, 133, 0.16);
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.35rem;
+}
+.ttrow .run {
+  color: var(--good);
+}
+/* Chronological activity number — dim prefix inside the name cell. Stable across
+   filter and sort so "#42" always refers to the same activity. */
+.ttrow .tnum {
+  font-size: 0.63rem;
+  color: var(--lo);
+  opacity: 0.5;
+  margin-right: 0.3rem;
+  white-space: nowrap;
+}
+/* Turn separator — a labelled rule that groups activities by the turn that produced
+   them. The first child never needs a top rule (nothing above it to separate). */
+.turn-sep {
+  padding: 0.5rem 0.5rem 0.1rem;
+  font: 0.6rem / 1 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--lo);
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+.turn-sep:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0.1rem;
+}
+
+/* Turn strip (opens ABOVE toprow when Explore is clicked) */
+.tstrip {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+.sbars {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 74px;
+  margin-top: 0.9rem;
+  justify-content: flex-start;
+}
+.sb {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 26px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+.sb .up {
+  display: flex;
+  align-items: flex-end;
+  height: 50px;
+}
+.sb .up > i {
+  width: 100%;
+  background: var(--cache);
+  border-radius: 2px 2px 0 0;
+  transition: 0.13s;
+}
+.sb .up > i.esc {
+  background: var(--crit);
+}
+.sb .up > i.cmp {
+  background: var(--create);
+}
+.sb .up > i.lv {
+  background: var(--good);
+}
+.sb .up > i.loc {
+  background: var(--lo);
+}
+.sb .base {
+  height: 1px;
+  background: var(--border2);
+}
+.sb .dn {
+  height: 23px;
+  display: flex;
+  align-items: flex-start;
+}
+.sb .dn > i {
+  width: 100%;
+  background: var(--create);
+  border-radius: 0 0 2px 2px;
+}
+.sb .dn > i.lv {
+  background: var(--good);
+}
+.sb .dn > i.cmp {
+  background: var(--create);
+}
+.sb:hover .up > i {
+  filter: brightness(1.5);
+}
+.sb.sel::after {
+  content: "";
+  position: absolute;
+  inset: -3px -1px;
+  border: 1px solid var(--cache);
+  border-radius: 4px;
+}
+.sb.dim {
+  opacity: 0.22;
+}
+.slegend {
+  display: flex;
+  gap: 1.1rem;
+  font: 0.68rem var(--mono);
+  color: var(--lo);
+  margin-top: 0.7rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.slegend .lg {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.slegend .sw {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+/* Filter chips */
+.fchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.15rem 0.35rem 0.1rem;
+}
+.fchip {
+  font: 0.68rem var(--mono);
+  color: var(--lo);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  transition: 0.13s;
+}
+.fchip:hover {
+  border-color: var(--agent);
+  color: var(--ink);
+}
+.fchip.on {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: var(--cache);
+  color: var(--hi);
+}
+.fchip.esc.on {
+  background: rgba(251, 113, 133, 0.14);
+  border-color: var(--crit);
+  color: #ffd7dd;
+}
+/* Filtered turn list (shown when a non-all filter is active) */
+.flist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 0.9rem;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.frow {
+  display: grid;
+  grid-template-columns: auto 40px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+}
+.frow:hover {
+  background: rgba(125, 211, 252, 0.07);
+}
+.frow.sel {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: var(--cache);
+}
+.frow .st {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--good);
+  flex: none;
+}
+.frow .st.esc {
+  background: var(--crit);
+}
+.frow .st.cmp {
+  background: var(--create);
+}
+.frow .st.loc {
+  background: var(--lo);
+}
+.frow .st.lv {
+  background: var(--good);
+}
+.frow .id {
+  font: 600 0.72rem var(--mono);
+  color: var(--lo2);
+}
+.frow .pr {
+  color: var(--lo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.frow.sel .pr {
+  color: var(--ink);
+}
+.frow .dv {
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+  text-align: right;
+}
+.fchip.waste {
+  color: var(--crit);
+  border-color: rgba(251, 113, 133, 0.35);
+}
+.fchip.waste.on {
+  background: rgba(251, 113, 133, 0.14);
+  border-color: var(--crit);
+  color: #ffd7dd;
+}
+/* Verdict as a LENS: a flagged column gets an underline attached to it, only in the Waste
+   view. Two tiers — rose = crit (waste that happened), amber = warn (Esc, oversized turn). */
+.sb .wunder {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--crit);
+}
+.sb .wunder.warn {
+  background: var(--warn);
+}
+/* Waste lens payload — one expandable findings row per flagged turn */
+.wcount {
+  margin: 0.9rem 0 -0.5rem;
+}
+.wlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 1rem;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.wrow {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--crit);
+  background: var(--panel2);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.wrow:hover {
+  border-color: var(--agent);
+  border-left-color: var(--crit);
+}
+.wrow.warn,
+.wrow.warn:hover {
+  border-left-color: var(--warn);
+}
+/* A clean row carried the crit stripe (only .warn overrode it), so a turn stating "good"
+   was painted as the thing it is not. The stripe follows the row's own severity. */
+.wrow.good,
+.wrow.good:hover {
+  border-left-color: var(--good);
+}
+/* The scoped row — same language .frow.sel speaks, since it means the same thing. */
+.wrow.sel {
+  border-color: var(--cache);
+  background: rgba(56, 189, 248, 0.07);
+}
+.wrh {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr auto auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.7rem;
+  font: 0.76rem var(--mono);
+}
+.wrh .wt {
+  color: var(--lo2);
+}
+.wrh .ws {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wrh .wc {
+  color: var(--crit);
+  font-weight: 650;
+}
+.wrh .wchev {
+  color: var(--lo2);
+  transition: 0.13s;
+  width: 0.55rem;
+  text-align: center;
+}
+.wrh .wc.warn {
+  color: var(--warn);
+}
+.wrh .wc.good {
+  color: var(--good);
+}
+/* Share is per-ROW, not per-scope: it is the same button as the banner's, sized for a list. */
+.wrh .sbout-share {
+  font-size: 0.66rem;
+  padding: 0.1rem 0.42rem;
+}
+.wrow.open .wchev {
+  transform: rotate(90deg);
+}
+.wrb {
+  display: none;
+  padding: 0.1rem 0.7rem 0.55rem;
+  border-top: 1px solid var(--border);
+}
+.wrow.open .wrb {
+  display: block;
+}
+.wfind {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.26rem 0;
+}
+.wfind .wdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  justify-self: center;
+  transform: translateY(2px);
+  background: var(--crit);
+}
+.wfind .wdot.warn {
+  background: var(--warn);
+}
+.wfind .wwhat {
+  font-size: 0.79rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.wfind .wcost {
+  font: 0.76rem var(--mono);
+  color: var(--lo2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* The verdict's second face: a followed practice. Quieter than a finding on purpose — it is
+   context for the reader, never something to act on. */
+.wfind.good .wtick {
+  justify-self: center;
+  color: var(--good);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.wfind.good .wwhat {
+  color: var(--lo2);
+}

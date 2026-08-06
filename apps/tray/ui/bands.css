@@ -1,0 +1,441 @@
+/* The three bands — the shape chosen over an accordion (which moved the list) and a master-detail
+   (which collapsed rows to nothing).
+
+   Density no longer follows urgency, and that is deliberate: a working row and an idle
+   row are now the same six-part shape — identity, model and effort, the agent's words, what ran,
+   which agents, how full — so a session does not change form under the eye when it stops. What
+   differs is which parts have anything to say: an idle session has no calls in flight and no
+   agents at work, so those lines are simply absent. A row stopped on the user keeps its own
+   layout, because the thing it has to show is a question, not a state. */
+
+.bands {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 14px 4px;
+  /* The list is uncapped, so it is the list that scrolls — never the window, which cannot be
+     resized. `min-height: 0` or a flex child refuses to shrink below its content and the overflow
+     becomes unreachable instead of scrollable. */
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.band {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.band-head {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* The only coloured headings: the two bands the user has to act on. Red above amber, the same
+   order the icon uses — a session stopped on an approval resumes the moment it is answered, a
+   broken one does not resume at all. */
+.band--failed .band-head {
+  color: var(--alert);
+}
+
+.band--waiting .band-head {
+  color: var(--warn);
+}
+
+.bands-empty {
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* The spacing was chosen by rendering four densities of the SAME row at 392px and looking at
+   them — the row carries six kinds of line now, and at the original 5px they read as one block.
+   The extra height is affordable only because the window follows its content: the
+   pixels are spent when there are sessions to show, never as void. */
+.row {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  gap: 11px;
+  /* Left, not centre: every row is read as a line of text, and a button's default centring would
+     make the project name wander with the length of what is next to it. */
+  text-align: left;
+  padding: 14px 12px;
+  width: 100%;
+}
+
+.row:hover {
+  border-color: #2b3444;
+}
+
+.row:active {
+  transform: translateY(1px);
+}
+
+/* Amber down the side rather than a tinted fill: the row's own text stays as legible as any other,
+   and the mark survives at the edge of vision, which is where a menu-bar panel is read. */
+.row--wait {
+  border-left: 3px solid var(--warn);
+}
+
+/* The same device at the top of the scale — one language, now four states. */
+.row--fail {
+  border-left: 3px solid var(--alert);
+}
+
+/* The same device, one step down in urgency — ONE language for the whole panel, three states:
+   amber for a session stopped on you, accent for one at work, nothing for one at rest.
+
+   A tinted background was built and rejected against this: it changed the text's contrast row by
+   row (the muted Context line worst of all), it was the first thing lost at the edge of vision,
+   and on a surface where every row is a button it read as "selected" rather than as "working".
+   Idle is deliberately left unmarked and NOT dimmed — `opacity` already means `ended` here, and one
+   signal cannot carry two meanings. */
+.row--work {
+  border-left: 3px solid var(--accent);
+}
+
+/* An ended session keeps its place until the panel closes, and has to look like history while it
+   does — dimmed, but still readable, because it is the row someone is probably looking at. */
+.row--ended {
+  opacity: 0.62;
+}
+
+.row-head {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  /* One line, whatever the subject: the row's height must not depend on how long the first prompt
+     of the session was. */
+  min-width: 0;
+}
+
+.row-project {
+  color: var(--fg);
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.row-subject {
+  color: var(--muted);
+  flex: 1 1 auto;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-ended {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  text-transform: uppercase;
+}
+
+.row-ask {
+  color: var(--warn);
+}
+
+/* The command about to be authorised. Monospace and wrapping: it is capped at 200 characters by
+   the server, so at this width it can run to three lines — and a shell line whose end is cut off
+   is the one detail that decides the answer. */
+.row-arg {
+  background: #0d1017;
+  border-radius: 5px;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 5px 7px;
+  /* Selectable, alone on this surface: a command someone wants to check belongs in a terminal. */
+  user-select: text;
+}
+
+.row-age {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.row-line {
+  color: #94a3b8;
+  font-size: 12px;
+  /* Two lines, then cut: the activity line names at most three tool families, and the fallback
+     quote is a prompt of up to 200 characters that must not grow the row without limit. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* The agent's own request, not seedeep's summary of it — quoted, so the two are never confused. */
+.row-line--quote {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* What NOW says: the agent's live intent while it works, its final output once the turn has
+   answered, or seedeep's count of what it did since it last spoke. Two lines then cut, like
+   `.row-line` — the server caps the text at 200 characters and a row's height must not follow the
+   model's verbosity. */
+.row-say {
+  color: #cbd5e1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  font-style: italic;
+  overflow: hidden;
+}
+
+/* A finished turn's words are settled, not current: the same voice, one step back. */
+.row-say--out {
+  color: var(--muted);
+}
+
+/* seedeep counting, not the agent speaking — the same distinction the portal's `.nowtext.plain`
+   makes, and for the same reason: italics are the quote marks this row does not print. */
+.row-say--plain {
+  font-style: normal;
+}
+
+/* How long the thing NOW names has been running. Right of the words, tabular so it does not jiggle
+   as the digits change — the portal's age chip, on the surface that polls it. */
+.say-age {
+  color: #475569;
+  font-size: 10px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  margin-left: 6px;
+}
+
+/* `now` / `output`, inline with the words. The row above is a quote (the prompt) and this is a
+   second italic block: with nothing to tell them apart they read as one paragraph, which is what
+   the rendered candidates showed. Upright on purpose — a label in italics joins the sentence. */
+.say-lbl {
+  color: #475569;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  margin-right: 6px;
+  text-transform: uppercase;
+}
+
+/* Model and effort ride on the CONTEXT line — the pair is pushed right by ONE rule on the wrapper,
+   so an effort with no model to precede it lands exactly where the model would have. */
+.ctx-meta {
+  align-items: baseline;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.meta-model {
+  color: #c4b5fd;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.meta-effort {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The separator belongs to the effort, not between the two spans: with no effort to show there is
+   no chip and therefore no orphan dot. */
+.meta-effort::before {
+  color: #334155;
+  content: "·";
+  margin-right: 6px;
+}
+
+/* The background commands still running. Monospace because they are commands, and one line each:
+   a command reports nothing between its launch and its notification, so there is nothing else about
+   it to draw. The dot is amber, not the accent — this is the session waiting on something, which is
+   a different claim from the agent working. */
+.row-bgs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.row-bg {
+  align-items: baseline;
+  color: #cbd5e1;
+  display: flex;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.row-bg .bgdot {
+  background: var(--warn);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 6px;
+  width: 6px;
+}
+
+/* One line, cut: a command can be 200 characters and the row's height must not follow it. */
+.row-bg .bg-cmd {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-bg .bg-age {
+  color: #475569;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* How many subagents the session launched. Same label typography as the context block: both are
+   a named figure about the session as a whole, and one of them is directly above the other. */
+.row-subs {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+}
+
+.subs-num {
+  color: var(--fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* `launched` qualifies the figure, it is not part of it — the same weight the denominator has. */
+.subs-num small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* The agents at work. Not monospace: a subagent's title is prose (its launch description). */
+.row-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent {
+  align-items: baseline;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.agent-title {
+  color: #cbd5e1;
+  flex: 1 1 auto;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mark that says "this line is an agent, not a call" — the two lists sit next to each other
+   and are otherwise the same shape. */
+.agent-title::before {
+  color: var(--accent);
+  content: "◇";
+  font-size: 9px;
+  margin-right: 6px;
+}
+
+.agent-model,
+.agent-pct {
+  color: #94a3b8;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-pct {
+  color: var(--muted);
+}
+
+/* The context block: label, figure, percentage, then the bar under all three. */
+.row-ctx {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ctx-line {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+}
+
+.ctx-lbl {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.ctx-num {
+  color: var(--fg);
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The denominator is context for the figure, not a second figure. */
+.ctx-num small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.fill {
+  background: #1b2230;
+  border-radius: 2px;
+  flex: 1 1 auto;
+  height: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fill-in {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+}
+
+.row-pct {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+  /* Tabular figures: the number changes every second and a proportional 1 makes the row twitch. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* The idle row is a working row without the live parts, so it needs no rules of its own beyond
+   this: the quiet time is pinned to the end of the identity line. */
+.row-quiet {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+}

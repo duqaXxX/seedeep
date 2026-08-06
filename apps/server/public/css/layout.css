@@ -1,0 +1,138 @@
+/* --- Graph view: bento layout (replicated 1:1 from the design prototype) --- */
+.graph-root {
+  font: 15px / 1.55 var(--sans);
+  color: var(--ink);
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+}
+.wtitle {
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--lo2);
+  margin-bottom: 0.15rem;
+}
+.wdesc {
+  font-size: 0.76rem;
+  color: var(--lo);
+  margin-bottom: 0.85rem;
+  line-height: 1.4;
+}
+/* Top cockpit: the two live signals side by side. Left column = Context + the live
+   subagent monitor; right = the activity feed. align-items:stretch keeps the two
+   columns the same height; the subagent monitor grows (flex:1) to fill the left column
+   and its list scrolls, so the cockpit stays symmetric whichever side is taller.
+
+   The left column is ONE STRIP CARD WIDE — the same calc the stats strip and the output row
+   use — so Context, Subagents, Session and Commits all share the page's left vertical. It used
+   to be 35%, which missed that line by a few pixels and read as a misalignment rather than as
+   a wider column on purpose. The 360px floor stays: below it the dial and the subagent rows
+   stop fitting, and the layout collapses to one column anyway. */
+.toprow {
+  display: grid;
+  grid-template-columns: minmax(360px, calc((100% - 2rem) / 3)) 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: stretch;
+}
+.toprow .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+/* flex:1 — the lower card fills the stretched stack, so its bottom edge lines up with the
+   Live activity card in the other column (the grid stretches the columns equal, but without
+   this the left cards size to content and leave a few px of dead space below Subagents). On
+   an ended session the card carries .fulllist and its list scrolls inside this stretched
+   height (below). */
+.toprow .stack .sublivecard {
+  min-height: 0;
+  flex: 1;
+}
+/* overflow:auto (not hidden) is load-bearing: a scroll container's automatic minimum size
+   is 0 per CSS Grid spec, so the grid row is sized by the left stack, not by the feed's
+   content height. The feed (flex:1, overflow-y:auto) scrolls inside. */
+.toprow .livecard {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+}
+.toprow .livecard .feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+@media (max-width: 820px) {
+  .toprow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stats strip: retrospective widgets, all the same height (grid stretch + full-height cards).
+   THREE EQUAL columns — Session (tokens + turn KPIs), Skills+Commands (one card via
+   .combo / .cpart) and Changed files. Main tools used to take a wider fourth column here and now
+   opens `.outrow` below, where at half the row it stops truncating the paths it is the only card
+   to carry and Changed files gains the width it lacked. Order and ratio are a product decision. */
+/* align-items:stretch (grid default) alone equalises the card heights; adding
+   height:100% on top double-stretched them past the row box and into the section
+   below (a visible overlap). Stretch is enough. */
+.statsrow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: stretch;
+}
+/* 3 cards → one column at mid width rather than 2+1: an orphan card stretched across a full row
+   reads as a layout bug, and these three are summaries that lose nothing by stacking. */
+@media (max-width: 1100px) {
+  .statsrow {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .statsrow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Reserve the cockpit height so capping the feed at 10 rows (from 12) does not shrink
+   the widget, and a 2–3 line intent grows into the freed rows instead of adding height. The
+   feed (flex:1) fills whatever the intent leaves; 10 rows + a clamped intent always fit, so
+   it never grows a scroll. */
+.graph-root .toprow .livecard {
+  min-height: 29rem;
+}
+/* Ended session: the SAME fixed height as live (min above + this max) so the cockpit does
+   not jump when a session ends and NEITHER column drives the row. The feed fills it and
+   scrolls (no separate cap); the subagent list (.fulllist) fills the left column and scrolls
+   Without the max, an ended feed longer than 10 rows would grow the cockpit. */
+.graph-root.ended .toprow .livecard {
+  max-height: 29rem;
+}
+
+.statw .num {
+  font: 650 2rem / 1 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+.statw .num.good {
+  color: var(--good);
+}
+.statw .num.crit {
+  color: var(--crit);
+}
+.statw .line {
+  font-size: 0.8rem;
+  color: var(--lo);
+  margin-top: 0.4rem;
+}
+.statw .line b {
+  color: var(--ink);
+  font-family: var(--mono);
+}

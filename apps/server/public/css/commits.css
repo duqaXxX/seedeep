@@ -1,0 +1,130 @@
+/* Commits: the session's own commits, in the output row beside Main tools, and in full in the
+   drawer. Own `cmt` namespace — the file-kind tints (`fchg`) and the Home rows (`rt-`) are other
+   widgets' vocabularies, and borrowing one is how a rule silently reskins a card. */
+
+/* The output row: Main tools · Commits · Cards, in that order, ALWAYS all three. Main tools leads
+   because it is the widest card and the one with the most to read; Commits and Cards used to join
+   only once they had content, which left a session with neither unable to say so, and now carry
+   their own empty state instead. */
+.outrow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: stretch;
+}
+/* 50 / 25 / 25 — expressed in fr so the two gaps come out of the shared space rather than
+   overflowing the row, which literal percentages would. `minmax(0, …)` is what makes the ratio
+   hold: a bare `1fr` floors at the track's min-content, and Main tools carries full shell commands,
+   so it took a third of the row for itself and the three cards measured 33/35/32. */
+.outrow.triple {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 980px) {
+  .outrow.triple {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cmtlist {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+/* hash | subject — no time column here: at 25% of the row the subject needs every pixel, and
+   the drawer is where the full record lives. */
+/* Flex, not grid: the row has three items or two depending on whether the commit is pushed, and
+   a grid track for an absent chip leaves a phantom gap. */
+.cmtrow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.cmtrow.nolink {
+  cursor: default;
+}
+.cmth {
+  font-family: var(--mono);
+  color: var(--agent);
+  font-size: 0.72rem;
+  flex: 0 0 auto;
+}
+.cmtlocal,
+.cmtt {
+  flex: 0 0 auto;
+}
+/* Says on the row why it does not open. Muted and bordered like the tool chips rather than
+   coloured as a warning: an unpushed commit is a normal state, not a problem. */
+.cmtlocal {
+  font: 0.62rem var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--lo2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 0 0.28rem;
+  white-space: nowrap;
+}
+
+/* An unpushed commit has no page to open — the hash goes quiet so the row still reads as a
+   commit but not as a link. */
+.cmtrow.nolink .cmth,
+.cmtdrow.nolink .cmth {
+  color: var(--lo2);
+}
+.cmts {
+  color: var(--lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* min-width:0 is what lets a flex item shrink below its content and ellipsise at all */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cmts.wrap {
+  white-space: normal;
+}
+.cmtrow:not(.nolink):hover .cmts,
+.cmtdrow:not(.nolink):hover .cmts {
+  color: var(--ink);
+}
+.cmtt {
+  font-family: var(--mono);
+  color: var(--lo2);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Same shape as Changed files' remainder row, and for the same reason: without it the six rows
+   above would silently stop summing to the hero count. */
+.cmtmore {
+  font: 0.74rem var(--mono);
+  color: var(--lo2);
+  padding: 0.6rem 0 0;
+  cursor: pointer;
+}
+.cmtmore:hover {
+  color: var(--ink);
+}
+
+/* Drawer: every commit, oldest first, subjects wrapped rather than clipped. */
+.cmtdlist {
+  margin-top: 0.4rem;
+}
+.cmtdrow {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.cmtdrow.nolink {
+  cursor: default;
+}
+/* The time is pushed to the right edge whether or not the row carries a chip. */
+.cmtdrow > .cmtt {
+  margin-left: auto;
+}

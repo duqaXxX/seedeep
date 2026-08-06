@@ -1,0 +1,4 @@
+{"type":"mode","sessionId":"synthetic-1","cwd":"/home/dev/demo"}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00.000Z","sessionId":"synthetic-1","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":200}}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:01.000Z","sessionId":"synthetic-1","attributionSkill":"brainstorming","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input_tokens":1200,"output_tokens":30,"cache_creation_input_tokens":0,"cache_read_input_tokens":300}}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:02.000Z","sessionId":"synthetic-1","isCompactSummary":true,"message":{"role":"assistant"}}

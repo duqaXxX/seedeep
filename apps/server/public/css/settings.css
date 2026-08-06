@@ -1,0 +1,254 @@
+/* Settings panel — trigger button, drawer form elements, save bar. */
+
+/* ── header trigger ─────────────────────────────────────────────── */
+.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  color: var(--lo);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.settings-btn:hover {
+  color: var(--hi);
+  border-color: var(--agent);
+}
+.settings-btn.active {
+  color: var(--agent);
+  border-color: var(--agent);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+/* ── remote access warning banner ───────────────────────────────── */
+.sbanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: rgba(251, 191, 36, 0.07);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 9px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--warn);
+  margin-bottom: 1.2rem;
+}
+.sbanner svg {
+  flex: none;
+  margin-top: 2px;
+}
+.sbanner strong {
+  display: block;
+  margin-bottom: 0.1rem;
+  font-size: 0.82rem;
+}
+
+/* ── form rows ───────────────────────────────────────────────────── */
+.srow {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.srow:last-child {
+  border-bottom: none;
+}
+
+.slabel {
+  font-size: 0.8rem;
+  color: var(--lo);
+  padding-top: 0.35rem;
+  line-height: 1.3;
+}
+.slabel small {
+  display: block;
+  font-size: 0.68rem;
+  color: #505a70;
+  margin-top: 0.1rem;
+}
+
+/* ── inputs ──────────────────────────────────────────────────────── */
+.sinput {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  color: var(--ink);
+  font: 0.82rem var(--mono);
+  padding: 0.35rem 0.6rem;
+  width: 100%;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.sinput:focus {
+  border-color: var(--agent);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.12);
+}
+/* Remote-mode fields use amber focus to signal they're security-relevant. */
+.sinput-warn:focus {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.1);
+}
+.sinput[readonly] {
+  color: var(--lo2);
+  cursor: default;
+}
+.sinput::placeholder {
+  color: #404a62;
+}
+
+/* Read-only text, not a disabled field: nothing about the version is editable, and drawing it in an
+   input would put a save affordance next to a fact. Same monospace and muted ink as `.sinput[readonly]`
+   so the two read as the same kind of value. */
+.sversion {
+  font: 0.82rem var(--mono);
+  color: var(--lo2);
+  padding-top: 0.35rem;
+  user-select: text;
+}
+
+/* Amber, like every other "worth your attention, nothing is broken" in the panel: a version behind
+   npm is news, not a fault, and the row is hidden entirely when there is none. */
+.supdate {
+  color: var(--warn);
+}
+
+.sinput-err {
+  font-size: 0.7rem;
+  color: var(--crit);
+  margin-top: 0.25rem;
+}
+/* A consequence, not an error: the value is valid, saving it breaks something elsewhere. Amber
+   for that distinction — the same signal the remote-mode fields already use. */
+.sinput-note {
+  font-size: 0.7rem;
+  color: var(--warn);
+  margin-top: 0.25rem;
+  line-height: 1.35;
+}
+
+/* ── toggle ──────────────────────────────────────────────────────── */
+.stoggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-top: 0.35rem;
+}
+.stoggle-track {
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--border2);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+  transition: background 0.18s;
+}
+.stoggle-track.on {
+  background: var(--agent);
+}
+.stoggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s;
+}
+.stoggle-track.on .stoggle-thumb {
+  transform: translateX(15px);
+}
+.stoggle-label {
+  font-size: 0.8rem;
+  color: var(--lo);
+}
+
+/* ── token row ───────────────────────────────────────────────────── */
+.stoken-wrap {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.stoken-wrap .sinput {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── save bar (sticky at drawer bottom) ─────────────────────────── */
+/* Mirrors the .dhead negative-margin trick so the bar background spans the full
+   drawer width and content scrolls under it rather than beside it. */
+.settings-save {
+  position: sticky;
+  bottom: -1.4rem;
+  margin: 1.2rem -1.5rem -1.4rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.srestart-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--warn);
+  margin-right: auto;
+}
+
+.smsg {
+  font-size: 0.75rem;
+  color: var(--good);
+  margin-right: auto;
+  /* Never both at once: JS always clears one before showing the other. */
+}
+.smsg.err {
+  color: var(--crit);
+}
+
+/* Restart now — amber to signal "this is a disruptive action". */
+.s-restart-btn {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.s-restart-btn:hover:not(:disabled) {
+  color: var(--hi);
+  border-color: var(--warn);
+}
+.s-restart-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Primary save — same construction as the existing action buttons but sky-filled. */
+.s-save-btn {
+  background: var(--agent);
+  color: #04090f;
+  border-color: var(--agent);
+  font-weight: 600;
+}
+.s-save-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  border-color: var(--agent);
+  color: #04090f;
+}
+.s-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: none;
+}

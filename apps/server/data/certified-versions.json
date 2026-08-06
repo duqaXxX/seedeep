@@ -1,0 +1,17 @@
+{
+  "_note": "Claude Code versions the schema probe has passed, with what each run actually covered. A version is listed ONLY when every claim the probe can prove by itself holds — 'nothing broke' is not 'I checked'. `open` lists claims certification does NOT cover: they need the manual checklist the run prints. The probe runs only on a version absent from here, so the guard cannot be forgotten.",
+  "versions": {
+    "2.1.212": {
+      "certifiedAt": "2026-07-17",
+      "proven": 19,
+      "open": [
+        "C14",
+        "C15",
+        "C16",
+        "C20",
+        "C21",
+        "C22"
+      ]
+    }
+  }
+}

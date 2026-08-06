@@ -1,0 +1,232 @@
+/* --- Search tab (pinned): full-text over the sessions' dialogue ---
+   `sr-`-prefixed for the same reason `rt-`/`cmp-` are: the app has no CSS scoping, and generic
+   names (row, meta, list…) collide with the graph and drawer rules. */
+
+.sr-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 0.55rem 0.8rem;
+  margin-bottom: 0.45rem;
+}
+.sr-form:focus-within {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18);
+}
+.sr-icon {
+  color: var(--lo);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.sr-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--hi);
+  font: 15px var(--sans);
+}
+.sr-input::placeholder {
+  color: var(--lo);
+}
+.sr-input::-webkit-search-cancel-button {
+  display: none;
+} /* the form owns the clear affordance */
+.sr-clear {
+  background: none;
+  border: none;
+  color: var(--lo);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.sr-clear:hover {
+  color: var(--ink);
+}
+/* the typed words, echoed as the AND terms they are — the query is never a mystery */
+.sr-terms {
+  display: flex;
+  gap: 0.3rem;
+}
+.sr-term {
+  font: 0.68rem var(--mono);
+  color: var(--agent);
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  background: rgba(125, 211, 252, 0.08);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+}
+.sr-hint {
+  font: 0.7rem var(--mono);
+  color: var(--lo);
+  margin-bottom: 1rem;
+}
+.sr-hint b {
+  color: var(--lo2);
+  font-weight: 500;
+}
+
+.sr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.sr-row {
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  gap: 0.85rem;
+  align-items: start;
+  background: linear-gradient(180deg, var(--panel), var(--panel3));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  cursor: pointer;
+}
+.sr-row:hover {
+  border-color: var(--border2);
+}
+.sr-row:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.5);
+  outline-offset: 2px;
+}
+/* the number the list is ORDERED by — never a second metric dressed as the first */
+.sr-score {
+  text-align: center;
+}
+.sr-score b {
+  display: block;
+  font: 650 1.25rem / 1 var(--sans);
+  color: var(--cache);
+  font-variant-numeric: tabular-nums;
+}
+.sr-score span {
+  font: 0.58rem var(--mono);
+  color: var(--lo);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sr-body {
+  min-width: 0;
+} /* lets the clamped subject actually clip inside the grid column */
+.sr-subj {
+  color: var(--hi);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-subj.sr-unnamed {
+  color: var(--lo2);
+  font-style: italic;
+}
+.sr-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.3rem;
+  font: 0.72rem var(--mono);
+  color: var(--lo);
+}
+.sr-proj {
+  color: var(--lo2);
+}
+.sr-sep {
+  color: var(--border2);
+}
+.sr-badge {
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 0 0.35rem;
+  color: var(--lo2);
+}
+.sr-badge.sr-auto {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.07);
+}
+/* the snippet is the reason the row is here, and it says WHO said it */
+.sr-snip {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid var(--border2);
+  border-radius: 0 7px 7px 0;
+  padding: 0.38rem 0.6rem;
+}
+.sr-snip + .sr-snip {
+  margin-top: 0.3rem;
+}
+.sr-who {
+  font: 0.6rem var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 0.45rem;
+}
+.sr-who.sr-you {
+  color: var(--sp-prompt);
+}
+.sr-who.sr-claude {
+  color: var(--good);
+}
+.sr-snip mark {
+  background: rgba(56, 189, 248, 0.22);
+  color: var(--hi);
+  border-radius: 3px;
+  padding: 0 0.12rem;
+}
+
+.sr-acts {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.sr-open {
+  font: 0.76rem var(--sans);
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--hi);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sr-open:hover {
+  background: rgba(56, 189, 248, 0.24);
+}
+/* the full uuid sits on the meta line: it must not stretch or wrap, and it keeps the meta line's
+   own dimmer register — it is an identifier to read and copy, not a call to action */
+.sr-uid {
+  flex: none;
+}
+
+/* the automated species: kept aside, never hidden in silence — the button states its own count */
+.sr-more {
+  margin-top: 0.8rem;
+  background: none;
+  border: 1px dashed var(--border2);
+  border-radius: 10px;
+  color: var(--lo2);
+  font: 0.76rem var(--sans);
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.sr-more:hover {
+  color: var(--ink);
+  border-color: #3a445c;
+}
+.sr-autohead {
+  font: 0.68rem var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lo);
+  margin: 1rem 0 0.5rem;
+}

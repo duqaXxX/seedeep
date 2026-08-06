@@ -1,0 +1,101 @@
+/* Tracker cards: what the session was working ON, under Commits in the output column, and in full
+   in the drawer. Own `crd` namespace — `cmt` belongs to the commit rows, and reusing it is how one
+   card silently restyles the other. Deliberately the same geometry as `cmt`, though: the two sit in
+   one column and must read as a pair, not as two widgets that happen to be adjacent. */
+
+.crdlist {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+/* Flex, not grid: the `read` chip is present on a minority of rows (80% of touches are writes), and
+   a grid track for an absent chip leaves a phantom gap. */
+.crdrow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.crdrow.nolink {
+  cursor: default;
+}
+/* Violet, not the commits' cyan: a card and a commit are different objects, and colour is the
+   fastest way the eye tells the two stacked lists apart. */
+.crdid {
+  font-family: var(--mono);
+  color: var(--create);
+  font-size: 0.72rem;
+  flex: 0 0 auto;
+}
+.crdrow.nolink .crdid,
+.crddrow.nolink .crdid {
+  color: var(--lo2);
+}
+/* Marks the exception: the session only looked at this card. Muted and bordered like the commits'
+   `local` chip — reading a card is a normal state, not a problem. */
+.crdlvl {
+  font: 0.62rem var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--lo2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 0 0.28rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.crdt {
+  color: var(--lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* min-width:0 is what lets a flex item shrink below its content and ellipsise at all */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.crdt.wrap {
+  white-space: normal;
+}
+.crdrow:not(.nolink):hover .crdt,
+.crddrow:not(.nolink):hover .crdt {
+  color: var(--ink);
+}
+.crdtime,
+.crdn {
+  font-family: var(--mono);
+  color: var(--lo2);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+.crdmore {
+  font: 0.74rem var(--mono);
+  color: var(--lo2);
+  padding: 0.6rem 0 0;
+  cursor: pointer;
+}
+.crdmore:hover {
+  color: var(--ink);
+}
+
+/* Drawer: every card, newest first, titles wrapped rather than clipped. */
+.crddlist {
+  margin-top: 0.4rem;
+}
+.crddrow {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.crddrow.nolink {
+  cursor: default;
+}
+/* The time is pushed to the right edge whether or not the row carries a chip. */
+.crddrow > .crdtime {
+  margin-left: auto;
+}

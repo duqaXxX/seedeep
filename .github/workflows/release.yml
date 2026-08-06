@@ -1,0 +1,318 @@
+# Builds what a user downloads: the tray's installers and the server's executables. A TAG is the
+# only thing that publishes: a manual run builds the same artifacts and leaves them on the workflow
+# run, so the pipeline can be proven without cutting a release, which is the one step here that
+# cannot be taken back.
+#
+# Both halves come out of ONE tag, which is what lets the digest contract between them skip a
+# compatibility matrix (CLAUDE.md, Distribution invariant).
+#
+# Windows is the reason this exists as CI rather than a script on a laptop. Tauri's own recipe uses
+# one runner per platform, and building the Windows installer from a Mac is documented as possible
+# for NSIS only "with caveats" and "not tested as much" - never for `.msi`. The macOS half could be
+# built locally; it is here so both halves of a version come out of the same commit and the same
+# recipe.
+#
+# Every asset carries the name of the app it belongs to - `seedeep-server_…`, `seedeep-tray_…`. The
+# bundler names its output after `productName`, which is `seedeep-tray`, so nothing has to be renamed
+# on the way to the release. It used to: both apps were called `seedeep`, and the download page was
+# the only surface that told them apart. They are called different things everywhere now - which is
+# also what lets a permission dialog name the one that is actually asking.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# The draft is created here and the assets are uploaded by each build job.
+permissions:
+  contents: write
+
+jobs:
+  # The release the build jobs upload into. Its own job, and it runs even without a tag: `needs`
+  # treats a SKIPPED dependency as a reason to skip, so a draft job that vanished on a manual run
+  # would take both build jobs with it - and a manual run has to keep building, that is what it is
+  # for. So the job always runs and only its one writing step is conditional.
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      # Idempotent on purpose: re-running a tag's workflow must not fail on the release that the
+      # first run already created. Through the environment, never interpolated into the command -
+      # a ref name is repository input, and a shell that expands it is one that can be told to run
+      # something else.
+      - if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        # Install instructions, not a disclaimer. Each system interrupts the first launch, and a
+        # release note that does not say so lets that interruption read as a broken download - so it
+        # carries the gesture that gets past each one, in the words the system actually uses, and
+        # never a label about how the build was made.
+        run: |
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || \
+          gh release create "$TAG" --repo "$REPO" --draft --title "seedeep $TAG" --notes '
+          ### The server
+
+          Download the file for your platform (`seedeep-server_…`), make it executable and run it —
+          there is no runtime to install first. On macOS the first launch is refused; the way past
+          it is the same gesture as below.
+
+          ### The tray (optional)
+
+          **macOS** — open the `.dmg` and drag **seedeep-tray** to Applications. The first launch is
+          refused: macOS says it *"could not verify that seedeep-tray.app is free of malware"*. Open
+          **System Settings -> Privacy & Security -> Security** and press **Open Anyway**, then your
+          login password. That button is offered for about an hour after the refused attempt, so
+          launch the app first and go to Settings second.
+
+          **Windows** — run the `-setup.exe`. SmartScreen shows *"Windows protected your PC"*:
+          choose **More info -> Run anyway**. It installs for the current user, so it never asks for
+          Administrator rights.
+
+          The README has the same steps with more context.'
+
+  tray:
+    needs: draft
+    strategy:
+      # Both platforms are reported even when one fails: a release with half its installers is a
+      # thing to know about in full, not one failure at a time.
+      fail-fast: false
+      matrix:
+        include:
+          # ONE universal DMG rather than one per architecture, so the download page never asks the
+          # reader which processor their Mac has - a question people get wrong, and the wrong answer
+          # is an app that will not start.
+          - runner: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin --bundles dmg
+          # NSIS, not MSI: its default `currentUser` install mode needs no Administrator rights, and
+          # a UAC prompt for an unknown publisher is exactly where an unsigned installer loses people.
+          - runner: windows-latest
+            targets: ''
+            args: --bundles nsis
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      # `stable`, not the floor in Cargo.toml: that floor exists so a contributor's old toolchain
+      # fails readably, and it is not a claim that the release should be built with it.
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          # Named here rather than left to the ref: this action reads the toolchain from the input,
+          # and the `stable` branch supplies it only as that branch's default - which a commit SHA
+          # no longer names. Pinning without this line would make the build depend on a default
+          # buried in the pinned action.yml.
+          toolchain: stable
+          # Both halves of the universal binary. Empty on Windows, where the host target is the
+          # only one built.
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: apps/tray/src-tauri
+
+      - run: bun install --frozen-lockfile
+
+      # BUILD ONLY. `tagName` is what makes tauri-action touch the repository at all, and it is
+      # deliberately never set: the assets have to be renamed before they are uploaded, so the upload
+      # is the step below. `uploadWorkflowArtifacts` is off for the same reason - it would attach the
+      # bundler's own names to the run.
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Undoes tauri-action's own default of `true`, which would make the bundler run the
+          # Finder-prettifying AppleScript even under CI. That step is what failed when this DMG
+          # was first built locally, it needs an automatable Finder to succeed, and it applies a
+          # window layout this app does not configure - so it can only cost a release, never
+          # improve one. With `false` the bundler passes `--skip-jenkins` and the DMG is plain.
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
+        with:
+          projectPath: apps/tray
+          # The CLI pinned in the root's devDependencies. `apps/tray` has no package.json of its
+          # own, so the action's own detection would find nothing there and install a global copy -
+          # a second, unpinned version of the tool that builds what people download.
+          tauriScript: bunx tauri
+          args: ${{ matrix.args }}
+          tagName: ''
+          uploadWorkflowArtifacts: false
+
+      # Collected into `dist/`, the same place the server's job puts its own, so both halves of a
+      # release are uploaded from one path. `shell: bash` because this runs on the Windows runner
+      # too, where the default is PowerShell.
+      #
+      # No longer a RENAME: `productName` is `seedeep-tray`, so the bundler already writes
+      # `seedeep-tray_<version>_universal.dmg` and the copy keeps the name it found. The rename
+      # existed because both apps were called `seedeep` and only the download page could tell them
+      # apart; they are called different things now, on every surface a user meets.
+      #
+      # The emptiness check is the point of the step, and it is now the ONLY check of its kind:
+      # tauri-action throws "No artifacts were found" only when it was configured to upload
+      # something (`if (releaseId || tagName || shouldUploadWorkflowArtifacts)`, src/index.ts) - with
+      # both switched off above, a build that produced nothing returns SUCCESSFULLY. So a naming
+      # change in Tauri, or a bundle that never appeared, has to stop the release here.
+      - name: Collect the installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find apps/tray/src-tauri/target -path '*/release/bundle/*' -type f \
+            \( -name 'seedeep-tray_*.dmg' -o -name 'seedeep-tray_*-setup.exe' \) -print0 |
+          while IFS= read -r -d '' f; do
+            cp "$f" "dist/$(basename "$f")"
+          done
+          test -n "$(ls -A dist)" || { echo "no bundle matched - has Tauri's naming changed?"; exit 1; }
+          ls -l dist
+
+      # Independent of the release, so the artifacts exist whether or not this run published
+      # anything - which is what a manual run is for. Named per runner: artifact names are unique
+      # within a run, and both matrix legs reach this step.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tray-${{ matrix.runner }}
+          path: dist/*
+          if-no-files-found: error
+
+      # `--clobber` for the same reason the draft is created idempotently: "Re-run all jobs" is the
+      # standard recovery gesture after a flaky runner, and without it the second run dies on the
+      # assets the first one already uploaded (gh: "Delete and re-upload existing assets of the same
+      # name"; the API answers 422 otherwise) - leaving the release a draft nobody can publish
+      # without deleting assets by hand. What it overwrites came from a fresh build in this same run.
+      - if: github.ref_type == 'tag'
+        # `shell: bash` for the same reason the rename step above declares it, and it is not
+        # cosmetic: this job's matrix includes the Windows runner, where the default shell is
+        # PowerShell - and there `"$TAG"` is a PowerShell variable that was never assigned, so it
+        # expands to the EMPTY STRING (env vars are `$env:TAG`). gh then looks up a release with no
+        # tag and answers "release not found", twice in a row, while the installer it was meant to
+        # upload sits finished on disk. Measured on v0.6.0.
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
+
+  # The server's executables - one per platform, all five cross-compiled from ONE runner, which is
+  # what `bun build --compile --target=…` buys and the tray cannot have (its matrix exists because
+  # Tauri needs each platform's own SDK).
+  server:
+    needs: draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - run: bun install --frozen-lockfile
+
+      # Rebuilds the browser GUI and embeds it — never a bare `bun build --compile`, which would
+      # ship whatever bundle happened to be in the checkout.
+      - run: bun run build:server:all
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: server-binaries
+          path: dist/*
+          if-no-files-found: error
+
+      # `--clobber`, for the reason spelled out in the tray's job: a re-run must not die on its own
+      # first run's uploads.
+      - if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
+
+  # The npm channel: the same five executables, each wrapped in a package npm resolves by `os`/`cpu`,
+  # under one `seedeep` wrapper whose postinstall puts the binary where `bin` already points. Node is
+  # needed to INSTALL, never to run. It exists because a binary that arrives through a package
+  # manager is not quarantined - macOS sets that flag in the browser that downloads, not in npm - so
+  # this is the one channel with no first-launch refusal to explain.
+  #
+  # Deliberately NOT a dependency of `publish`: if a publish to npm fails, the release page is still
+  # worth having, and the failure is red here where it can be re-run.
+  npm:
+    needs: server
+    # A tag AND a switch. Publishing to npm cannot be taken back (unpublish is restricted after 72
+    # hours), and the FIRST publish of a package has to be manual anyway - a trusted publisher can
+    # only be configured on a package that already exists. So every tag builds these packages and
+    # publishes none of them until the repository variable `SEEDEEP_NPM_PUBLISH` is set to `true`,
+    # which is the moment the account, its 2FA and the trusted publisher are in place.
+    if: github.ref_type == 'tag' && vars.SEEDEEP_NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    # Named in the OIDC token, and the six trusted publishers on npmjs.com are configured to demand
+    # exactly this environment - so the two names are one setting written in two places, and a
+    # rename here rejects every publish until the registry side is changed to match. It carries no
+    # protection rule today: it is a claim to match, not an approval gate. Adding a required
+    # reviewer to the environment is what would turn it into one, and would put a human click in
+    # front of every publish to npm - free once the repository is public, a paid plan while private.
+    environment: npm-publish
+    permissions:
+      # Trusted publishing: the OIDC token IS the credential, so no npm token is stored in this
+      # repository at all. It also makes npm attach a provenance attestation by itself (npm docs:
+      # "This happens by default - you don't need to add the --provenance flag").
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      # The executables the `server` job compiled, not a second build of the same tag: what gets
+      # published has to be the file that was uploaded to the release, byte for byte.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: server-binaries
+          path: dist
+
+      - run: bun run build:npm
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later (npm's own docs); the runner's Node 22 ships
+      # npm 10, which would fall back to looking for a token that does not exist.
+      #
+      # An exact version, not the `11` range: this step runs in the one job holding `id-token: write`,
+      # so whatever it installs is already in position to publish. A range is resolved at run time and
+      # can therefore change under a tag that did not; a published version cannot. Same reason the
+      # actions above carry a SHA - this is the one dependency here that has no SHA to carry.
+      - run: npm install -g npm@11.19.0
+
+      # Platform packages FIRST, and the wrapper last: the wrapper names them at an exact version,
+      # and a wrapper on the registry ahead of its binaries is an install that ends in a command
+      # which cannot run.
+      - run: |
+          set -euo pipefail
+          for dir in dist/npm/seedeep-*; do npm publish "$dir"; done
+          npm publish dist/npm/seedeep
+
+  # Flips the draft to published, and is the only step in this repo that puts a binary in front of
+  # a stranger. It is a job of its own for two reasons: `needs` will not start it unless EVERY
+  # matrix build AND the server's own job succeeded - so a Windows failure, or a server that would
+  # not compile, leaves the release a draft rather than publishing half a download page - and it
+  # runs once, where the build job runs per platform.
+  #
+  # A draft is invisible to anyone without push access and is never `releases/latest` (GitHub's REST
+  # docs: "Only users with push access will receive listings for draft releases", and the latest
+  # release is "the most recent non-prerelease, non-draft release"). So on a public repo an
+  # unpublished release means the README's download link leads nowhere - which is what this closes.
+  publish:
+    needs: [tray, server]
+    # Only a tag has a release to publish. A manual run built the same artifacts and attached them
+    # to the workflow run, deliberately touching nothing in the repository.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      # Through the environment, never interpolated into the command: a ref name is repository
+      # input, and a shell that expands it is a shell that can be told to run something else.
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" --repo "$REPO" --draft=false

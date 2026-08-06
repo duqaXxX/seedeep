@@ -1,0 +1,213 @@
+/* The connection screen. Only the tokens this surface needs — the portal's own palette lands with
+   the urgency bands, which own the space above the footer. */
+
+:root {
+  --line: #1e2531;
+  --field: #131722;
+  --accent: #38bdf8;
+  --warn: #f59e0b;
+  --alert: #f87171;
+}
+
+.conn {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.conn-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Even, and the bottom is the half that was missing. Nothing follows this surface — `.conn-main`
+     is only ever the connection screens, which have no footer under them — so with the window
+     fitted exactly to its content the last control sat ON the window's edge, and the panel read as
+     cut off rather than as short. `.set-main` had the even padding all along; this did not. */
+  padding: 18px;
+  /* Set by the panel, not here: whether the prompt sits at the top or in the middle of the popover
+     is one rule, so both can be seen before one is chosen. */
+  flex: 1 1 auto;
+  justify-content: var(--conn-align, flex-start);
+  /* A long reason must not push the primary button out of a window that cannot be resized and has
+     no scrollbar of its own. `min-height: 0` because a flex child will not shrink below its content
+     without it, which would make the overflow unreachable rather than scrollable. */
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.conn-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.conn-title--alert {
+  color: var(--alert);
+}
+
+.conn-body {
+  color: var(--muted);
+  margin: 0;
+  /* 1.55, not the shell's 1.5: this is the only paragraph on the surface and it is read once,
+     carefully — a fingerprint comparison is not a glance. */
+  line-height: 1.55;
+}
+
+.conn-note {
+  color: var(--warn);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.conn-looking {
+  color: var(--muted);
+  margin: 0;
+}
+
+.fp {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--field);
+}
+
+.fp-label {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.fp-value {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  /* 32 colon-separated bytes cannot fit one line at 392 px. Broken between groups rather than
+     scrolled: a value nobody can see all of is a value nobody compares. */
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  /* Selectable, unlike the rest of the panel: comparing this to a terminal line is easier when it
+     can be copied. */
+  user-select: text;
+}
+
+.fp--old .fp-value {
+  color: var(--muted);
+}
+
+.fp--new .fp-value {
+  color: var(--alert);
+}
+
+.conn-form {
+  display: flex;
+  gap: 8px;
+}
+
+.conn-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  padding: 7px 9px;
+  user-select: text;
+}
+
+.conn-input::placeholder {
+  color: #475569;
+}
+
+.conn-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.conn-go {
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  color: #06121c;
+  cursor: pointer;
+  font: 600 13px / 1 inherit;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.conn-go--wide {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+/* A confirmation that ends a protection does not get the same button as one that starts it. */
+.conn-go--alert {
+  background: transparent;
+  border: 1px solid var(--alert);
+  color: var(--alert);
+}
+
+/* The exit, and it has to look like one without competing with the decision above it. */
+.conn-alt {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.conn-alt:hover {
+  color: var(--fg);
+}
+
+.conn-error {
+  color: var(--alert);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.conn-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 10px 18px;
+  margin-top: auto;
+}
+
+.conn-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pushed to the far end of the footer, away from what names the server: it is the one control on
+   this rule, and next to the host it would read as part of the address.
+
+   Sized by rendering four at the real 392px and looking at them. At 13px with no padding the
+   button WAS the glyph — a 16x13px target — and nothing about it said it was a button until the
+   pointer was already on it, which is why the hover fill came with the size. */
+.conn-gear {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  margin-left: auto;
+  padding: 6px 8px;
+}
+
+.conn-gear:hover {
+  background: #182030;
+  color: var(--fg);
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the popover window may call. Notifications are absent on purpose: they are sent from Rust, where the digest is read, so the webview never needs that permission.",
+  "windows": ["panel"],
+  "permissions": ["core:default"]
+}

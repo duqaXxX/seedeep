@@ -1,0 +1,260 @@
+/* The Subagents row split by model. Sits under the ledger and reuses .segbar/.seglegend,
+   so it reads exactly like the Context card's breakdown. */
+.submdl {
+  margin-top: 0.6rem;
+}
+.submdlh {
+  font-size: 0.62rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--lo2);
+  margin-bottom: 0.3rem;
+}
+
+/* Session card footer: the turn KPIs + the timeline entry point (replaces the Turns card) */
+.sessfoot {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.sessfoot .sfk {
+  font: 0.8rem var(--mono);
+  color: var(--lo);
+  white-space: nowrap;
+}
+.sessfoot .sfk b {
+  color: var(--hi);
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+.sessfoot .sfk.esc {
+  color: var(--crit);
+}
+.sessfoot .obtn {
+  margin-left: auto;
+}
+
+/* auto-fill + minmax(420px,1fr): tracks are allocated based on container width, so the
+   column count steps 4→3→2→1 as the window narrows. auto-FILL (not auto-fit) is
+   load-bearing: with few subagents it keeps the ghost columns, so a single card takes
+   one slot (≈33%) rather than stretching across the entire row. */
+.subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+/* Group-based rhythm: the card separates identity / content / metrics / footer
+   with intentional gaps rather than one uniform gap between every child. */
+.subcard {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.3rem 1.35rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.subcard:hover {
+  border-color: var(--agent);
+  background: #16203180;
+}
+.subcard .top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.subcard .top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.subcard .atype {
+  color: var(--agent);
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.subcard .top-row .badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Type + model ride together under the title: both answer "what was it", while the
+   title answers "what was it doing". */
+.subcard .chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+.subcard .chips > * {
+  margin-top: 0;
+}
+
+/* desc grows so the footer is pushed to the card's bottom edge → uniform-height rows align. */
+.subcard .foot {
+  display: flex;
+  gap: 0.7rem;
+  font-size: 0.72rem;
+  color: var(--lo);
+  font-family: var(--mono);
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+/* A workflow run reads as its own kind of row: a fleet, not one agent. Its card already
+   shows everything the run has (fleet, tokens, models) — there is no drawer behind it, so
+   it must not offer the pointer every other subcard uses to promise one. */
+.wfcard {
+  cursor: pointer;
+}
+.wfcard .wfkind {
+  font-size: 0.64rem;
+  color: var(--lo);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+.wfmodels {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.wfmodels .wfcalls {
+  color: var(--lo);
+}
+.wf-members {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.wf-mcard {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.wfmc-id {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wfmc-type {
+  font-size: 0.75rem;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wfmc-type b {
+  color: var(--fg2, var(--fg));
+}
+.wfmc-kpis {
+  display: flex;
+  gap: 0.5rem;
+}
+.wfmc-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  flex: 1;
+  min-width: 0;
+}
+.wfmc-kpi span:first-child {
+  font-size: 0.6rem;
+  color: var(--lo2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wfmc-kpi span:last-child {
+  font-size: 0.8rem;
+  color: var(--fg);
+  font-family: var(--mono);
+}
+.wfmc-meta {
+  font-size: 0.72rem;
+  color: var(--lo);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+}
+.wfmc-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-family: var(--mono);
+  margin-top: 0.1rem;
+}
+.wfmc-badge.ret {
+  color: var(--good);
+}
+.wfmc-badge.miss {
+  color: var(--warn);
+}
+.wfmc-badge.live {
+  color: var(--active);
+}
+.wfmc-prompt-btn {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+}
+.wfmc-prompt {
+  font-size: 0.68rem;
+  margin-top: 0.35rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--lo);
+}
+.footright {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin-left: auto;
+}
+
+.sbout {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--lo);
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.sbout:hover {
+  color: var(--hi);
+  border-color: var(--agent);
+}
+.sbout-share {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: var(--cache);
+}
+.sbout-share:hover {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: var(--cache);
+}

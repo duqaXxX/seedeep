@@ -1,0 +1,1331 @@
+/**
+ * Produce the README's demo assets from a SYNTHETIC Claude Code session.
+ *
+ * Two phases, deliberately separate:
+ *
+ *   record  drives a real `cli` session on a fictional project and saves its transcript bundle.
+ *           Costs tokens. Run it once.
+ *   shoot   replays that bundle into an isolated config dir AT ITS ORIGINAL PACE while seedeep
+ *           watches, so the live surfaces animate exactly as they did. Free, repeatable.
+ *
+ * The split is what makes the capture reviewable: the transcript sits on disk between the two
+ * phases, so it can be read before a single frame is drawn. It is also why re-cutting a GIF costs
+ * nothing — the expensive half already happened.
+ *
+ * A `cli` session and not `claude -p`: headless sessions are a different species (no `origin`, no
+ * `turn_duration`), so a demo built on `-p` would show surfaces the real product never renders.
+ */
+
+import { rmSync } from 'node:fs';
+import { appendFile, cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
+import { openProbeSession, type ProbeSession, slugFor } from '../probe/driver.ts';
+import { cliRoot } from '../src/server/roots.ts';
+import { VERSION } from '../src/server/version.ts';
+import { SCENES as DOC_SCENES, writeScene } from './doc-scenes.ts';
+import { type DocShot, readManifest } from './doc-shots-check.ts';
+
+/**
+ * Where the session runs. It is the project name on screen — Claude Code slugifies the cwd and
+ * seedeep shows the slug's LAST hyphen segment — so it is chosen, never incidental.
+ */
+const DEMO_CWD = '/tmp/orbit';
+const OUT = process.env['SEEDEEP_DEMO_OUT'] ?? '/tmp/seedeep-demo';
+
+/** Deterministic pseudo-random, so a re-record produces the same fictional log. */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 0x100000000;
+}
+
+/** ~450 KB of fictional access log — the cheap way to make a context bar actually fill. */
+function accessLog(): string {
+  const rnd = lcg(20260806);
+  const routes = ['/v1/orbits', '/v1/orbits/:id', '/v1/telemetry', '/v1/passes', '/v1/health', '/v1/keys'];
+  const verbs = ['GET', 'POST', 'PUT', 'DELETE'];
+  const codes = [200, 200, 200, 201, 204, 400, 401, 404, 429, 500, 503];
+  const out: string[] = [];
+  for (let i = 0; i < LOG_LINES; i++) {
+    const t = new Date(Date.UTC(2026, 6, 14, 0, 0, 0) + i * 17_000).toISOString();
+    const route = routes[Math.floor(rnd() * routes.length)]!;
+    const verb = verbs[Math.floor(rnd() * verbs.length)]!;
+    // /v1/passes is the planted culprit: it fails far more than anything else, so the session has
+    // a real finding to reach instead of a vague summary.
+    const code = route === '/v1/passes' && rnd() < 0.42 ? 503 : codes[Math.floor(rnd() * codes.length)]!;
+    const ms = Math.floor(rnd() * (code >= 500 ? 4000 : 180)) + 3;
+    const ip = `10.${Math.floor(rnd() * 200)}.${Math.floor(rnd() * 250)}.${Math.floor(rnd() * 250)}`;
+    out.push(`${t} ${ip} ${verb} ${route} ${code} ${ms}ms ua=orbit-client/2.${Math.floor(rnd() * 9)}`);
+  }
+  return `${out.join('\n')}\n`;
+}
+
+/** The fictional codebase the session works on. No real product, company or path appears in it. */
+function projectFiles(): Record<string, string> {
+  return {
+    'README.md': `# orbit
+
+A small HTTP gateway for satellite pass scheduling. Toy project — every number in it is invented.
+
+- \`src/server.ts\` — the listener
+- \`src/routes.ts\` — the route table
+- \`src/rate-limit.ts\` — per-key token bucket
+- \`logs/access.log\` — one day of traffic
+`,
+    'src/server.ts': `import { routes } from './routes.ts';
+import { allow } from './rate-limit.ts';
+
+const PORT = Number(process.env.PORT ?? 8080);
+
+Bun.serve({
+  port: PORT,
+  fetch(req) {
+    const url = new URL(req.url);
+    const key = req.headers.get('x-api-key') ?? 'anonymous';
+    if (!allow(key)) return new Response('rate limited', { status: 429 });
+    const handler = routes[url.pathname];
+    if (!handler) return new Response('not found', { status: 404 });
+    return handler(req);
+  },
+});
+
+console.log(\`orbit listening on \${PORT}\`);
+`,
+    'src/routes.ts': `type Handler = (req: Request) => Response | Promise<Response>;
+
+const passes = new Map<string, { window: string; elevation: number }>();
+
+export const routes: Record<string, Handler> = {
+  '/v1/health': () => new Response('ok'),
+  '/v1/orbits': () => Response.json({ orbits: [] }),
+  '/v1/passes': async (req) => {
+    const body = await req.json();
+    // No validation on body.id: a missing id writes an "undefined" key that never expires.
+    passes.set(body.id, { window: body.window, elevation: body.elevation });
+    return Response.json({ ok: true });
+  },
+  '/v1/telemetry': () => Response.json({ samples: [] }),
+};
+`,
+    'src/rate-limit.ts': `const CAPACITY = 60;
+const REFILL_PER_SEC = 1;
+
+const buckets = new Map<string, { tokens: number; last: number }>();
+
+export function allow(key: string): boolean {
+  const now = Date.now() / 1000;
+  const b = buckets.get(key) ?? { tokens: CAPACITY, last: now };
+  b.tokens = Math.min(CAPACITY, b.tokens + (now - b.last) * REFILL_PER_SEC);
+  b.last = now;
+  buckets.set(key, b);
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+`,
+    'logs/access.log': accessLog(),
+  };
+}
+
+/**
+ * The ordered scenes. Each one exists to put a specific surface on screen:
+ * a big read fills the context bar, a fan-out populates the subagent monitor, an edit gives the
+ * Trace a write to show.
+ */
+/**
+ * Log lines per Read call. MEASURED, not estimated: 420 lines came back as 37,913 characters
+ * ≈ 9.5K tokens, so a line is ~23 tokens and the tool's 25K ceiling sits around 1100 lines. The
+ * earlier value of 420 came from the model's own guess of "~37k tokens" for 700 lines, which was
+ * wrong by more than 2× — and left the bar at 28% when the point was to fill it.
+ */
+const CHUNK_LINES = 1000;
+const CHUNK_COUNT = 4;
+/** Enough lines to feed every chunk, with a margin so the last Read is not a short one. */
+const LOG_LINES = CHUNK_LINES * CHUNK_COUNT + 400;
+
+/**
+ * ONE turn, doing everything the hero has to show.
+ *
+ * It used to be six: an orientation, four chunked reads, a fan-out. That made a hero stitched out
+ * of separate turns, where the context climbed in one and the subagents appeared in another — and
+ * cutting it anywhere left the seam visible. A single turn that reads the log AND dispatches the
+ * agents is one continuous shot: the window fills while the work happens, and the fan-out lands
+ * inside the same turn rather than after it.
+ *
+ * Everything the earlier version learned still applies and is why this prompt looks the way it
+ * does: the offsets are spelled out (a generic "read the log" stops as soon as the model can
+ * answer, leaving the bar at 16%), the chunks are 1000 lines (the Read tool refuses a result over
+ * ~25K tokens, and a line is ~23), the models are named (three agents "in parallel" produced two on
+ * one run and none on the next), and shell is ruled out (one command Claude Code flags as risky
+ * opens an approval dialog an unattended recording can never answer).
+ */
+const SCENES: Array<{ name: string; prompt: string }> = [
+  {
+    name: 'one-turn',
+    prompt: [
+      'Work through this in one go, no shell commands — files and agents only.',
+      `First read logs/access.log in ${CHUNK_COUNT} passes with the Read tool:`,
+      Array.from({ length: CHUNK_COUNT }, (_, i) => `offset ${i * CHUNK_LINES + 1} limit ${CHUNK_LINES}`).join(', '),
+      '— actually read each slice rather than grepping it, and after each one tell me the dominant status code.',
+      'Then, in the same reply, split the follow-up across three agents running in parallel, all three at once:',
+      'sonnet checks src/routes.ts for missing input validation,',
+      'haiku hunts off-by-one and unbounded growth in src/rate-limit.ts,',
+      'opus turns the log finding into a one-paragraph incident note.',
+    ].join(' '),
+  },
+];
+
+/**
+ * Short sessions on other fictional projects.
+ *
+ * Home and Search are archive surfaces: with one session behind them the first capture read
+ * "1 turns across 1 sessions", a histogram with a single bar and six counters at zero, and a search
+ * that finds only itself. These exist to give those two surfaces something to be about. They are
+ * deliberately cheap — two turns, small files, no context filling.
+ */
+const EXTRAS: Array<{ cwd: string; files: Record<string, string>; scenes: string[] }> = [
+  {
+    cwd: '/tmp/ledger',
+    files: {
+      'README.md': '# ledger\n\nA tiny double-entry accounting CLI. Toy project.\n',
+      'src/summary.ts':
+        "export function summary(rows: Array<{ account: string; cents: number }>) {\n  const byAccount = new Map<string, number>();\n  for (const r of rows) byAccount.set(r.account, (byAccount.get(r.account) ?? 0) + r.cents);\n  return [...byAccount].map(([account, cents]) => `${account}: ${(cents / 100).toFixed(2)}`).join('\\n');\n}\n",
+    },
+    scenes: [
+      'Read src/summary.ts and tell me in two sentences what it does.',
+      "Add a --json flag to the summary output, and say what you changed. Edit the file only — don't run anything.",
+    ],
+  },
+  {
+    cwd: '/tmp/tiles',
+    files: {
+      'README.md': '# tiles\n\nAn LRU cache for map tiles. Toy project.\n',
+      'src/cache.ts':
+        'const MAX = 256;\nconst store = new Map<string, Uint8Array>();\n\nexport function put(key: string, tile: Uint8Array): void {\n  if (store.size >= MAX) store.delete(store.keys().next().value!);\n  store.set(key, tile);\n}\n\nexport function get(key: string): Uint8Array | undefined {\n  return store.get(key);\n}\n',
+    },
+    // Deliberately read-only: it explores and changes nothing, which is one of the patterns the
+    // Home retrospective flags. With every session ending in an edit, that card is a column of
+    // zeros and says nothing about what seedeep is for.
+    scenes: [
+      'Read src/cache.ts. Why would this cache have a worse hit rate than a real LRU?',
+      "Don't change anything yet — just tell me what a correct fix would have to do, in two sentences.",
+    ],
+  },
+  {
+    cwd: '/tmp/pager',
+    files: {
+      'README.md': '# pager\n\nOn-call rotation maths. Toy project.\n',
+      'src/rotation.ts':
+        'export function onCall(people: string[], weeksFromStart: number): string {\n  // Off by one when the rotation wraps: the last person is skipped every cycle.\n  return people[weeksFromStart % (people.length - 1)]!;\n}\n',
+    },
+    scenes: [
+      'Read src/rotation.ts and find the bug in the wrap-around.',
+      "Fix it and write a one-line test that would have caught it — write it, don't run it.",
+    ],
+  },
+];
+
+/**
+ * A config dir holding nothing but the credentials: no CLAUDE.md, no hooks, no plugins.
+ *
+ * The first recording ran against the real profile and was useless. That profile's CLAUDE.md says
+ * "never Read a file over ~200 lines" and "never delegate a glance-verifiable task to a subagent",
+ * so the session analysed the log with `awk` (peak 41K tokens, a bar that never fills) and spawned
+ * no agent at all. A demo has to look like a fresh install, because that is what its reader has.
+ */
+async function cleanProfile(): Promise<string> {
+  // Under tmpdir, never under OUT: the profile is ephemeral and carries a live credential for the
+  // length of one recording, while OUT is where the bundle is KEPT. Keeping the two apart also
+  // means a bundle directory can be synced or inspected without a token having ever been in it.
+  const dir = join(tmpdir(), 'seedeep-demo-profile');
+  // A `finally` only runs when the process is allowed to finish. Killing a recording mid-scene
+  // skipped it and left the credentials copy sitting in /tmp — measured, not hypothetical. These
+  // handlers make the copy's lifetime survive an interrupt, which is the only case that matters.
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.once(sig, () => {
+      try {
+        rmSync(join(dir, '.credentials.json'), { force: true });
+        rmSync(join(dir, '.claude.json'), { force: true });
+      } finally {
+        process.exit(130);
+      }
+    });
+  }
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  // From the KEYCHAIN, not from `~/.claude/.credentials.json`. That file is a residue: measured
+  // 2026-08-06, its access token had expired hours earlier while `claude` kept working perfectly,
+  // because the DEFAULT profile authenticates from the keychain and never rewrites the file. A
+  // profile under CLAUDE_CONFIG_DIR does the opposite — it reads only its own file and does not
+  // consult the keychain (an onboarded profile without one reports "Not logged in") — so copying
+  // the file produced sessions that died on "Login expired" with no other symptom.
+  //
+  // The value is piped straight into the profile and never rendered: it is deleted the moment the
+  // recording ends, including on a signal (see the handlers above).
+  const kc = Bun.spawn(['security', 'find-generic-password', '-w', '-s', 'Claude Code-credentials'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const secret = await new Response(kc.stdout).text();
+  if ((await kc.exited) !== 0 || secret.trim().length === 0)
+    throw new Error('no Claude Code credential in the keychain — a recording cannot authenticate');
+  await writeFile(join(dir, '.credentials.json'), secret, { mode: 0o600 });
+  // Credentials alone are not enough: they land on the "Select login method" screen, because
+  // Claude Code keeps the onboarding state in `.claude.json` — a SIBLING of `~/.claude`, which
+  // CLAUDE_CONFIG_DIR relocates INSIDE the profile dir. Measured 2026-08-06: with both files the
+  // session runs; with only the credentials it never gets past the login menu.
+  const real = JSON.parse(await readFile(join(homedir(), '.claude.json'), 'utf8')) as Record<string, unknown>;
+  // Only the onboarding state and whose account it is. Never `projects` (every path ever opened),
+  // `mcpServers`, or any cache: the demo profile has no business carrying them, and the smaller the
+  // copy, the smaller the thing that has to be deleted afterwards.
+  const minimal = {
+    hasCompletedOnboarding: true,
+    lastOnboardingVersion: real['lastOnboardingVersion'],
+    installMethod: real['installMethod'],
+    autoUpdates: false,
+    numStartups: 20,
+    firstStartTime: real['firstStartTime'],
+    hasAvailableSubscription: real['hasAvailableSubscription'],
+    oauthAccount: real['oauthAccount'],
+  };
+  await writeFile(join(dir, '.claude.json'), JSON.stringify(minimal, null, 2));
+  return dir;
+}
+
+/** The transcript's non-empty lines, or none if it does not exist yet. */
+async function transcriptLines(s: ProbeSession): Promise<string[]> {
+  const raw = await s.transcript();
+  return raw ? raw.split('\n').filter((l) => l.trim()) : [];
+}
+
+/**
+ * Block until the turn that started after line `from` has ENDED, keyed on the `system` line with
+ * `subtype: turn_duration` — Claude Code's own end-of-turn marker.
+ *
+ * Transcript quiescence is not a turn boundary and pretending otherwise cost a whole recording: a
+ * long turn goes silent for longer than any sane quiet window, so the next prompt was typed while
+ * the session was still working and the TUI ENQUEUED it. The run reported ten scenes "settled",
+ * the transcript held five prompts and ten `queue-operation` lines, and the fan-out — the reason
+ * the scene exists — never ran. Waiting for the real marker means a prompt is never typed into a
+ * busy session, so no queue forms at all.
+ */
+async function waitForTurnEnd(s: ProbeSession, from: number, scene: string, timeoutMs = 420_000): Promise<void> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    for (const l of (await transcriptLines(s)).slice(from)) {
+      try {
+        const o = JSON.parse(l) as { type?: string; subtype?: string };
+        if (o.type === 'system' && o.subtype === 'turn_duration') return;
+      } catch {
+        /* a half-written line: it will parse on the next poll */
+      }
+    }
+    // An approval dialog is a STOP, not slowness: nobody is going to answer it. Detected on the
+    // screen because it never reaches the transcript, and detected fast — waiting the full timeout
+    // for it cost 7 minutes per scene, twice, and reported "no turn_duration" as if the model had
+    // simply been slow.
+    if (/requiresapproval|Doyouwanttoproceed/i.test(s.screen().replace(/\s+/g, ''))) {
+      throw new Error(`scene ${scene}: blocked on a permission prompt. Screen tail:\n${s.screen().slice(-700)}`);
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error(`scene ${scene}: no turn_duration within ${timeoutMs}ms. Screen tail:\n${s.screen().slice(-1200)}`);
+}
+
+async function record(): Promise<void> {
+  const home = homedir();
+  const bundle = join(OUT, 'session');
+  await rm(bundle, { recursive: true, force: true });
+  await mkdir(bundle, { recursive: true });
+
+  const cfgRecord = await cleanProfile();
+  console.log(`[record] cwd=${DEMO_CWD} profile=${cfgRecord} out=${bundle}`);
+  // acceptEdits, because the clean profile grants nothing: the `edit` scene consumed its prompt and
+  // then sat for 420s on an approval dialog, which is a hang with no error and no turn_duration.
+  const s = await openProbeSession({
+    files: projectFiles(),
+    cwd: DEMO_CWD,
+    home,
+    configDir: cfgRecord,
+    permissionMode: 'acceptEdits',
+  });
+  const projectDir = join(cliRoot(home, { CLAUDE_CONFIG_DIR: cfgRecord }), slugFor(s.cwd));
+  console.log(`[record] project dir: ${projectDir}`);
+
+  let ok = false;
+  try {
+    // No trust-gate handling here on purpose: openProbeSession already clears it and waits for
+    // TUI_READY before returning. A second Enter would land in the session as an empty prompt.
+    for (const scene of SCENES) {
+      console.log(`[record] scene: ${scene.name}`);
+      const from = (await transcriptLines(s)).length;
+      await s.typeLine(scene.prompt);
+      await waitForTurnEnd(s, from, scene.name);
+      console.log('[record]   turn ended');
+      console.log(
+        '[record]   SCREEN>>>',
+        s
+          .screen()
+          .slice(-900)
+          .replace(/\n{2,}/g, '\n'),
+        '<<<',
+      );
+    }
+    const parent = await s.transcript();
+    const children = await s.childTranscripts();
+    console.log(`[record] transcript ${parent ? `${parent.length} bytes` : 'MISSING'}, ${children.length} subagents`);
+    // Copy the whole project dir, not just the parent jsonl: the subagent transcripts live in a
+    // `<uuid>/subagents/` subtree beside it, and without them the monitor has nothing to show.
+    await cp(projectDir, join(bundle, slugFor(s.cwd)), { recursive: true });
+    await writeFile(
+      join(bundle, 'meta.json'),
+      `${JSON.stringify({ cwd: s.cwd, slug: slugFor(s.cwd), subagents: children.length, scenes: SCENES.map((x) => x.name) }, null, 2)}\n`,
+    );
+    ok = true;
+  } finally {
+    // Copy BEFORE close(), which removes the project dir: on a failed run that transcript is the
+    // only thing that can say why, and the first attempt at keeping evidence kept an empty profile
+    // because close() had already deleted it. Best-effort — a run that died early has nothing.
+    await cp(projectDir, join(bundle, slugFor(s.cwd)), { recursive: true }).catch(() => {});
+    // close() deletes the session from the isolated profile — the copy above is the only
+    // thing that survives, which is the point: no demo run pollutes the real session list.
+    await s.close();
+    // The credentials copy exists for exactly one recording, and goes away even if a scene threw.
+    await rm(join(cfgRecord, '.credentials.json'), { force: true });
+    // The REST of the profile survives a failure on purpose: the first time a scene timed out, this
+    // line deleted the transcript that would have said why, and the only evidence left was a screen
+    // the TUI had already redrawn. On success there is nothing to keep.
+    if (ok) await rm(cfgRecord, { recursive: true, force: true });
+    else console.error(`[record] FAILED — profile kept for inspection (credentials removed): ${cfgRecord}`);
+  }
+  console.log(`[record] done → ${bundle}`);
+}
+
+const PORT = Number(process.env['SEEDEEP_DEMO_PORT'] ?? 45999);
+/**
+ * How much faster than real time the transcript is re-written. A hero GIF nobody watches to the end
+ * proves nothing, and a real session's dead air is the first thing to cut.
+ */
+const SPEED = Number(process.env['SEEDEEP_DEMO_SPEED'] ?? 20);
+
+interface TimedLine {
+  at: number;
+  rel: string;
+  obj: Record<string, unknown>;
+}
+
+/**
+ * Strip anything that identifies the machine the recording was made on.
+ *
+ * A synthetic project is not enough. The recorded session ran `ls -la`, and the listing carries the
+ * FILE OWNER — the real OS username, eight times, headed for the Trace on a published frame. The
+ * cwd was clean and the project fictional; the leak came in through a tool's output, which no
+ * choice of project name can control.
+ */
+function scrub(s: string): string {
+  const user = basename(homedir());
+  return s.split(homedir()).join('/home/dev').split(user).join('dev');
+}
+
+/** The identifier that survived scrubbing, or null. Presence is a hard stop, never a warning. */
+function leakIn(s: string): string | null {
+  for (const needle of [homedir(), basename(homedir())]) if (s.includes(needle)) return needle;
+  return null;
+}
+
+/** Every jsonl under `dir`, as paths relative to it. */
+async function jsonlFiles(dir: string, base = dir): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...(await jsonlFiles(full, base)));
+    else if (e.name.endsWith('.jsonl')) out.push(full.slice(base.length + 1));
+  }
+  return out;
+}
+
+/**
+ * Flatten the bundle into ONE timestamp-ordered stream — parent and subagent lines interleaved.
+ *
+ * Interleaved and not file-by-file: a subagent's lines are written while the parent is mid-turn, and
+ * replaying each file to completion in turn would show three agents that start only once the parent
+ * has finished, which is the opposite of what the monitor exists to show.
+ */
+async function timeline(slugDir: string): Promise<TimedLine[]> {
+  const lines: TimedLine[] = [];
+  for (const rel of await jsonlFiles(slugDir)) {
+    let last = 0;
+    for (const raw of (await readFile(join(slugDir, rel), 'utf8')).split('\n')) {
+      if (!raw.trim()) continue;
+      let obj: Record<string, unknown>;
+      try {
+        obj = JSON.parse(scrub(raw));
+      } catch {
+        continue;
+      }
+      const ts = typeof obj['timestamp'] === 'string' ? Date.parse(obj['timestamp']) : Number.NaN;
+      // A line with no timestamp of its own belongs to the moment of the line before it, never to
+      // the epoch: sorting it to the front would open the session with its own tail.
+      last = Number.isFinite(ts) ? ts : last;
+      lines.push({ at: last, rel, obj });
+    }
+  }
+  // The FIRST lines of a file can precede any timestamp at all, and `last` was still 0 for them.
+  // Left alone they sort to 1970 and the replay computes a span of 1.78 BILLION seconds — measured,
+  // not hypothetical. They belong to the first real moment the session has.
+  const firstReal = lines.reduce((m, l) => (l.at > 0 && l.at < m ? l.at : m), Number.POSITIVE_INFINITY);
+  if (Number.isFinite(firstReal)) for (const l of lines) if (l.at === 0) l.at = firstReal;
+  return lines.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * The URL the server prints once it is listening, rewritten to the loopback address.
+ *
+ * Three things the server does that a naive `fetch('http://127.0.0.1:PORT/')` gets wrong: it speaks
+ * HTTPS with a self-signed certificate, it refuses a request without the `token` it mints at
+ * startup, and it announces itself under the machine's HOSTNAME — which on this machine carries the
+ * real username. Reading the banner covers all three, and 127.0.0.1 keeps the hostname out of the
+ * address bar even though the recorded video only frames the viewport.
+ */
+/** Add `session=<id>` to a URL that may or may not already carry a token query. */
+function withSession(url: string, sessionId: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}session=${sessionId}`;
+}
+
+async function serverUrl(
+  proc: { stdout: ReadableStream<Uint8Array> },
+  port: number,
+  timeoutMs = 30_000,
+): Promise<string> {
+  const reader = proc.stdout.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const end = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < end) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      // Both postures, because both happen: a server on a NAMED host announces an https URL with a
+      // token, and one on plain loopback announces http with none — there is no network to
+      // authenticate against. Matching only the token form is what made the isolated
+      // `SEEDEEP_HOME` (a fresh config = default loopback) wait 30s for a URL that never comes.
+      const m = /(https?):\/\/\S+/.exec(buf);
+      if (m) {
+        const token = /\?token=([A-Za-z0-9_-]+)/.exec(m[0]);
+        return `${m[1]}://127.0.0.1:${port}/${token ? `?token=${token[1]}` : ''}`;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  throw new Error(`server never announced a URL. Output so far:\n${buf.slice(-500)}`);
+}
+
+/**
+ * Open a nav destination: the hamburger, then the item whose label contains `needle`.
+ *
+ * Both selectors were read off the live DOM (`button.nav-btn[aria-label="Menu"]`, `button.nav-item`)
+ * and not inferred from a screenshot. The previous version guessed, and its fallback — "click the
+ * first button on the page" — killed the browser mid-capture.
+ */
+async function openNamed(page: import('playwright-core').Page, needle: string): Promise<boolean> {
+  await page
+    .locator('button.nav-btn[aria-label="Menu"]')
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(700);
+  const item = page.locator('button.nav-item', { hasText: needle }).first();
+  if (!(await item.isVisible().catch(() => false))) {
+    console.log(`[shoot] nav item "${needle}" not reachable`);
+    return false;
+  }
+  await item.click();
+  return true;
+}
+
+/** The session the bundle belongs to, read from the first line that names one. */
+function sessionIdOf(stream: TimedLine[]): string | null {
+  for (const l of stream) {
+    const id = (l.obj as { sessionId?: unknown }).sessionId;
+    if (typeof id === 'string' && id) return id;
+  }
+  return null;
+}
+
+/** True when the line spawns a subagent — the moment the hero GIF is cut around. */
+function isAgentSpawn(obj: Record<string, unknown>): boolean {
+  const content = (obj['message'] as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (c) => (c as { type?: string; name?: string }).type === 'tool_use' && (c as { name?: string }).name === 'Agent',
+  );
+}
+
+/** Directories already created during this replay — `mkdir` per line made the replay I/O-bound. */
+const madeDirs = new Set<string>();
+
+/**
+ * Append one replayed line, with its timestamp rewritten to NOW so the session reads as live.
+ *
+ * The `mkdir` is cached because it used to run for EVERY line: a 154-second session paced at 20×
+ * should replay in 8 seconds and took 28, which threw off everything timed against the schedule.
+ */
+async function writeLine(cfg: string, slug: string, l: TimedLine): Promise<void> {
+  const obj = { ...l.obj, timestamp: new Date().toISOString() };
+  const dest = join(cfg, 'projects', slug, l.rel);
+  const dir = join(dest, '..');
+  if (!madeDirs.has(dir)) {
+    await mkdir(dir, { recursive: true });
+    madeDirs.add(dir);
+  }
+  await appendFile(dest, `${JSON.stringify(obj)}\n`);
+}
+
+/**
+ * Seconds of MOTIONLESS tail in a segment — measured on the context card, not the whole frame.
+ *
+ * The card is what the hero is about, and it stops moving well before the recording does: the feed
+ * keeps scrolling behind it, so a whole-frame detector sees motion and reports nothing. The tail is
+ * not free either, which is the reason to cut it — 1.6 motionless seconds cost 323 KB, 15.6% of the
+ * file, because `--lossy` leaves neighbouring frames slightly different rather than identical and
+ * the encoder cannot collapse them. (`du -h` rounded both to "2.0M" and hid it.)
+ *
+ * The crop is in VIDEO coordinates (1440x900), over the context card at the top left.
+ */
+async function staticTail(webm: string, startS: number, durS: number): Promise<number> {
+  const p = Bun.spawn(
+    [
+      'ffmpeg',
+      '-hide_banner',
+      '-ss',
+      String(startS),
+      '-t',
+      String(durS),
+      '-i',
+      webm,
+      '-vf',
+      'crop=450:180:30:135,freezedetect=n=-55dB:d=1.0',
+      '-map',
+      '0:v',
+      '-f',
+      'null',
+      '-',
+    ],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  const log = await new Response(p.stderr).text();
+  await p.exited;
+  const ev = [...log.matchAll(/freeze_(start|duration): ([0-9.]+)/g)].map((m) => [m[1]!, Number(m[2])] as const);
+  let tailStart: number | null = null;
+  for (let i = 0; i < ev.length; i++) {
+    if (ev[i]![0] !== 'start') continue;
+    const dur = ev[i + 1]?.[0] === 'duration' ? ev[i + 1]![1] : null;
+    tailStart = dur === null || ev[i]![1] + dur >= durS - 0.25 ? ev[i]![1] : null;
+  }
+  return tailStart === null ? 0 : Math.max(0, durS - tailStart);
+}
+
+/** One GIF from a segment of the recording, two-pass palette so a dark UI keeps its gradients. */
+async function toGif(webm: string, gif: string, startS: number, durS: number): Promise<void> {
+  // Every parameter here was measured against the alternatives on a real capture, because the
+  // obvious settings produce a 9 MB hero:
+  //   - `dither=none`, not bayer. Dithering scatters noise across flat UI panels and destroys the
+  //     inter-frame compression a GIF depends on. It is also IRREVERSIBLE: re-encoding an already
+  //     dithered GIF made it BIGGER (9.1 → 9.8 MB), and rescaling it bigger still (11 MB).
+  //   - `stats_mode=full`, not diff. `diff` weights the pixels that CHANGE — the text — so the
+  //     accent colours, which are small and still, get no palette entries: at 64 colours the
+  //     context donut rendered grey.
+  //   - 128 colours and 6 fps: the point where the same frame is indistinguishable from the 256
+  //     colour original.
+  const vf =
+    'fps=6,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none';
+  const p = Bun.spawn(
+    ['ffmpeg', '-y', '-ss', String(startS), '-t', String(durS), '-i', webm, '-vf', vf, '-loop', '0', gif],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  if ((await p.exited) !== 0) throw new Error(`ffmpeg failed: ${await new Response(p.stderr).text()}`);
+  // gifsicle halves it again, and it is the only tool that attacks what ffmpeg cannot: near-identical
+  // pixels ACROSS frames. `--lossy=30` is indistinguishable from the source here; at 100 the flat
+  // dark panels speckle. Skipped without complaint if it is not installed — it is an optimisation,
+  // not a dependency.
+  if (Bun.which('gifsicle')) {
+    const g = Bun.spawn(['gifsicle', '-O3', '--lossy=30', gif, '-o', `${gif}.opt`], { stdout: 'pipe', stderr: 'pipe' });
+    if ((await g.exited) === 0) await rename(`${gif}.opt`, gif);
+  }
+}
+
+/**
+ * Write the short archive sessions into the demo profile as HISTORY, spread over recent days.
+ *
+ * Spread, not stamped at once: Home buckets by time, and four sessions landing in the same second
+ * produce one bar and a "7 days" window that says nothing. Each bundle keeps its own internal
+ * spacing and is rebased onto a different day.
+ */
+async function seedExtras(cfg: string): Promise<number> {
+  const root = join(OUT, 'extras');
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return 0;
+  }
+  let seeded = 0;
+  for (const [i, name] of names.entries()) {
+    const dir = join(root, name);
+    let slugs: string[];
+    try {
+      slugs = (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch {
+      continue;
+    }
+    for (const slug of slugs) {
+      const lines = await timeline(join(dir, slug));
+      if (lines.length === 0) continue;
+      // The same hard stop the main replay gets: scrubbing is applied at parse, and this proves it.
+      const bad = lines.map((l) => leakIn(JSON.stringify(l.obj))).find(Boolean);
+      if (bad) throw new Error(`archive session ${name} still carries ${bad} after scrubbing`);
+      const base = lines[0]!.at;
+      // 1, 2, 3 … days back, plus a couple of hours so they do not all sit at the same clock time.
+      const anchor = Date.now() - (i + 1) * 24 * 3_600_000 - (i + 1) * 5 * 60_000;
+      for (const l of lines) {
+        const at = new Date(anchor + (l.at - base)).toISOString();
+        const dest = join(cfg, 'projects', slug, l.rel);
+        await mkdir(join(dest, '..'), { recursive: true });
+        await appendFile(dest, `${JSON.stringify({ ...l.obj, timestamp: at })}\n`);
+      }
+      seeded++;
+    }
+  }
+  return seeded;
+}
+
+/**
+ * Write an open-session record for the replayed session, so it reads as WORKING and not merely
+ * recent.
+ *
+ * seedeep takes liveness from the process (`isOpen ?? isActive`) and the busy state only from this
+ * file. Without it the replay is "active by mtime": the header says LIVE but the tab's dot never
+ * goes green, because nothing claims the session is doing anything. The record reconstructs what
+ * WAS true while the transcript was being written — it does not invent a state the session never
+ * had — and it names this process's own pid, because seedeep checks the pid is alive.
+ */
+async function writeOpenRecord(
+  cfg: string,
+  sessionId: string,
+  cwd: string,
+  status: string,
+  waitingFor?: string,
+): Promise<void> {
+  const dir = join(cfg, 'sessions');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, `${process.pid}.json`),
+    JSON.stringify({ pid: process.pid, sessionId, cwd, status, waitingFor, statusUpdatedAt: Date.now() }),
+  );
+}
+
+async function shoot(): Promise<void> {
+  const bundle = join(OUT, 'session');
+  const meta = JSON.parse(await readFile(join(bundle, 'meta.json'), 'utf8')) as { slug: string; cwd: string };
+  const slugDir = join(bundle, meta.slug);
+  const stream = await timeline(slugDir);
+  if (stream.length === 0) throw new Error(`no transcript lines in ${slugDir} — run \`record\` first`);
+  // BEFORE the browser opens, not after: a leak found once frames exist is a leak that was drawn.
+  const leaks = stream.map((l) => leakIn(JSON.stringify(l.obj))).filter(Boolean);
+  if (leaks.length > 0)
+    throw new Error(`${leaks.length} lines still carry ${leaks[0]} after scrubbing — refusing to capture`);
+  const spanS = (stream[stream.length - 1]!.at - stream[0]!.at) / 1000;
+  console.log(`[shoot] ${stream.length} lines over ${spanS.toFixed(0)}s real → ${(spanS / SPEED).toFixed(0)}s replay`);
+
+  const cfg = join(OUT, 'cfg');
+  await mkdir(join(OUT, 'assets'), { recursive: true });
+  await rm(cfg, { recursive: true, force: true });
+  await mkdir(join(cfg, 'projects', meta.slug), { recursive: true });
+
+  const sessionId = sessionIdOf(stream);
+  if (!sessionId) throw new Error('no sessionId in the bundle — cannot open the session view');
+
+  // Seed up to the first turn boundary so the page has a session to show, and ONLY that session:
+  // the archive sessions are seeded later, after the hero is in the can. Seeding them first opened
+  // four tabs, and a hero frame with four tabs is a screenshot of somebody else's workspace.
+  // Enough for the session to EXIST and be openable by id, and not one line more.
+  //
+  // This used to seed everything up to the first `turn_duration`, which was fine while the
+  // recording had six turns and fatal the moment it had one: in a single-turn session that
+  // boundary is the LAST line, so the whole thing was seeded, the replay had nothing left to play,
+  // and the hero came out a still image of the finished state.
+  const firstBoundary = stream.findIndex((l) => {
+    const o = l.obj as { type?: string; subtype?: string };
+    return o.type === 'system' && o.subtype === 'turn_duration';
+  });
+  const SEED_MAX = 6;
+  const seed = stream.slice(0, Math.min(firstBoundary > 0 ? firstBoundary + 1 : SEED_MAX, SEED_MAX));
+  for (const l of seed) await writeLine(cfg, meta.slug, l);
+  await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
+  await new Promise((r) => setTimeout(r, 4_000));
+
+  // The COMPILED binary, not `bun run main.ts`. `FROM_SOURCE` is `Bun.embeddedFiles.length === 0`,
+  // so a server started from the checkout brands the portal "seedeep DEV" — a badge that says
+  // "this is somebody's working copy" in the middle of the product's own screenshot. Built by
+  // `bun run build:server`, which also embeds the freshly built client bundle.
+  const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
+  const useBin = await Bun.file(bin).exists();
+  if (!useBin) console.log('[shoot] no compiled binary — falling back to source, the portal will show DEV');
+  const server = Bun.spawn(
+    useBin
+      ? [bin, 'serve', '--no-open', '--port', String(PORT)]
+      : ['bun', 'run', 'apps/server/src/server/main.ts', '--port', String(PORT)],
+    {
+      env: { ...process.env, CLAUDE_CONFIG_DIR: cfg },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  try {
+    const url = await serverUrl(server as { stdout: ReadableStream<Uint8Array> }, PORT);
+    console.log(`[shoot] server up on ${PORT} against ${cfg}`);
+
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({ channel: 'chrome' });
+    const videoDir = join(OUT, 'video');
+    await rm(videoDir, { recursive: true, force: true });
+    const ctx = await browser.newContext({
+      // The certificate is self-signed by design — this is a local server, not a public host.
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1440, height: 900 },
+      recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } },
+      colorScheme: 'dark',
+    });
+    const page = await ctx.newPage();
+    // The video's OWN zero. Recording starts when the page is created, several seconds before the
+    // replay's `t0` (page load, then the settle waits), so marks measured from `t0` cut the video
+    // that much too EARLY — which is why home.gif and trace.gif opened on the previous screen for
+    // a beat before the view they exist to show.
+    const vt0 = Date.now();
+    const mark = () => (Date.now() - vt0) / 1000;
+    // NOT `networkidle`: the GUI holds an SSE stream open for as long as it is watching, so the
+    // network is never idle and goto times out after 30s on a page that had already rendered.
+    await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4_000);
+
+    // The replay runs as its own task so the UI can be driven WHILE lines keep landing. Opening the
+    // Trace inside the write loop would stall the replay for the whole dwell and then burst every
+    // held line at once — which is exactly what made the first Trace clip a still image.
+    const t0 = Date.now();
+    // Where the hero begins. Everything before this is page load and settle waits, during which the
+    // session reads 0 / 0% / "no activity yet" — five seconds of an empty product at the top of the
+    // README. Trimming it afterwards is not equivalent: GIF frames are deltas, so cutting into the
+    // middle needs an unoptimise/re-optimise round that ends up LARGER (1.7 → 2.0 MB) than encoding
+    // the right range once.
+    const replayAt = mark();
+    let agentAt: number | null = null;
+    let written = 0;
+    const turnEnds: number[] = [];
+    const base = stream[seed.length]?.at ?? stream[0]!.at;
+    const replayTask = (async () => {
+      for (const l of stream.slice(seed.length)) {
+        const due = t0 + (l.at - base) / SPEED;
+        const wait = due - Date.now();
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        await writeLine(cfg, meta.slug, l);
+        written++;
+        const o = l.obj as { type?: string; subtype?: string };
+        if (o.type === 'system' && o.subtype === 'turn_duration') turnEnds.push((Date.now() - t0) / 1000);
+        if (agentAt === null && isAgentSpawn(l.obj)) {
+          agentAt = mark();
+          console.log(`[shoot] first subagent spawn at ${agentAt.toFixed(1)}s`);
+        }
+      }
+    })();
+
+    // Wait for the fan-out to be on screen, then let it breathe: the hero ends here, so it carries
+    // the context filling AND the subagents running — one clip, not two.
+    // Hold until the fan-out is on screen AND the replay is nearly over. The hero ends where the
+    // Trace opens, so opening it nine seconds after the spawn cut the hero at 15s of a 29s replay —
+    // the window was still filling when the clip stopped. Waiting for `spanS/SPEED - 8` instead
+    // gives the hero the whole fill plus the subagents, and still leaves lines landing behind the
+    // Trace so it is seen changing rather than posed.
+    // Keyed on the replay's own PROGRESS, not on a duration computed from the timestamps: the
+    // writes do not keep to that schedule, so a session whose lines span 154 seconds replayed in 28
+    // rather than 8 and every deadline derived from the span fired far too early.
+    while (agentAt === null && (Date.now() - t0) / 1000 < 300) await new Promise((r) => setTimeout(r, 250));
+    // AND twelve seconds past the fan-out. The line count alone opened the Trace 4s after the
+    // spawn, so the hero ended while three subagents had only just appeared — their cards had not
+    // had time to run, finish, or move a single context bar, which is the half of the story the
+    // fan-out exists to start.
+    const settleUntil = (agentAt ?? 0) + 12;
+    while ((written < stream.length * 0.95 || (Date.now() - t0) / 1000 < settleUntil) && (Date.now() - t0) / 1000 < 300)
+      await new Promise((r) => setTimeout(r, 250));
+
+    const trace = page.getByRole('button', { name: 'Trace', exact: true }).first();
+    let traceOpened = false;
+    let traceAt = 0;
+    if (await trace.isVisible().catch(() => false)) {
+      await trace.click();
+      // Marked AFTER the click and after the overlay has painted, never before it with a guessed
+      // margin: the clip has to open ON the Trace, not on the frame it replaced.
+      await page.waitForTimeout(900);
+      traceAt = mark();
+      traceOpened = true;
+      // Held open WHILE the replay keeps writing, which is the only way the Trace is seen changing
+      // rather than posed. A Trace opened after the last line is a static list.
+      await page.waitForTimeout(14_000);
+      console.log(`[shoot] trace held open from ${traceAt.toFixed(1)}s`);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1_200);
+    } else {
+      console.log('[shoot] NO Trace button found');
+    }
+
+    await replayTask;
+    const replayS = (Date.now() - t0) / 1000;
+    console.log(`[shoot] replay done in ${replayS.toFixed(1)}s`);
+    await writeOpenRecord(cfg, sessionId, meta.cwd, 'idle');
+    await page.waitForTimeout(2_000);
+    await page.screenshot({ path: join(OUT, 'assets', 'frame-session.png') });
+
+    // Only now the archive lands, so Home and Search have something to be about while the hero
+    // above was shot on a single tab.
+    const extras = await seedExtras(cfg);
+    console.log(`[shoot] seeded ${extras} archive sessions`);
+    await page.waitForTimeout(3_000);
+
+    await openNamed(page, 'Home');
+    // Marked AFTER the view has settled, so the cut opens on Home instead of on the two seconds of
+    // menu and previous screen that preceded it.
+    await page.waitForTimeout(3_500);
+    const homeAt = mark();
+    await page.waitForTimeout(8_000);
+    await page.screenshot({ path: join(OUT, 'assets', 'frame-home.png') });
+
+    let searchAt = 0;
+    if (await openNamed(page, 'Search')) {
+      await page.waitForTimeout(1_500);
+      searchAt = mark();
+      // By PLACEHOLDER, not by `input[type=text]`: that selector needs the attribute to be literally
+      // present, and this input has none — so the locator matched nothing and the query was never
+      // typed, leaving a clip of an empty state that looked like a broken feature.
+      const box = page.getByPlaceholder('words you remember', { exact: false }).first();
+      if (await box.isVisible().catch(() => false)) {
+        await box.click();
+        await box.type('rate limit', { delay: 120 });
+        await page.waitForTimeout(4_000);
+      }
+      await page.screenshot({ path: join(OUT, 'assets', 'frame-search.png') });
+    }
+    await page.waitForTimeout(1_500);
+
+    // The video is only flushed to disk when the context closes, so nothing may be captured after.
+    await ctx.close();
+    await browser.close();
+
+    const webm = join(videoDir, (await readdir(videoDir)).find((f) => f.endsWith('.webm'))!);
+    const assets = join(OUT, 'assets');
+    // +0.9s on the replay's start: the watcher and the SSE stream take about that long to put the
+    // first lines on screen, and cutting at `replayAt` opened on "0 / 200.0k · no activity yet".
+    // Not more, either — at +1.6 the window was already at 11%, so the climb from nothing, which is
+    // the thing being demonstrated, had happened off-camera.
+    const heroStart = replayAt + 0.9;
+    const heroRaw = Math.min(30, (traceOpened ? traceAt - 2.5 : mark()) - heroStart);
+    const heroDur = heroRaw - (await staticTail(webm, heroStart, heroRaw));
+
+    const cuts: Array<[string, number, number]> = [
+      // Ends BEFORE the Trace click, not 0.5s before the mark: `traceAt` is taken after the click
+      // AND after the overlay has painted, so half a second of margin still let four frames of the
+      // Trace into the hero's tail. Capped at 30s as well — the story (window filling, then the
+      // fan-out) is complete by then, and the last 9 seconds cost a third of the file for a
+      // subagent list that has stopped changing.
+      // +1.6s on the replay's start, not the start itself: the watcher polls and the page renders
+      // through an SSE stream, so the first written lines are not on screen for well over a second.
+      // Measured — a hero cut at `replayAt` still opened on "0 / 200.0k · no activity yet".
+      ['hero.gif', heroStart, heroDur],
+      ...(traceOpened ? ([['trace.gif', traceAt, 13]] as Array<[string, number, number]>) : []),
+      ['home.gif', homeAt, 8],
+      ...(searchAt ? ([['search.gif', searchAt, 12]] as Array<[string, number, number]>) : []),
+    ];
+    for (const [name, start, dur] of cuts) {
+      await toGif(webm, join(assets, name), start, dur);
+      const kb = Math.round(Bun.file(join(assets, name)).size / 1024);
+      console.log(`[shoot] wrote ${name} (${start.toFixed(1)}s +${dur.toFixed(1)}s, ${kb} KB)`);
+    }
+  } finally {
+    server.kill();
+    await server.exited;
+  }
+}
+
+/**
+ * Cuts the cropped stills `docs/features.md` uses, from the same bundle `shoot` replays — so a
+ * figure is a build output, not a screenshot somebody took. Free, like `shoot`: the transcript is
+ * already on disk and nothing calls the model.
+ *
+ * Every shot is DECLARED in `apps/server/data/doc-shots.json`, which is also what
+ * `doc-shots:check` reads to name the figures a code change has invalidated. Adding a figure to
+ * the docs means adding it there, never dropping a PNG into `docs/assets/`.
+ *
+ * Cropped to the widget, and never the whole window: a 1440-wide frame makes the card being
+ * explained a sixth of the picture, and the reader has to be told where to look. A selector that
+ * stops matching FAILS the run, which is the point — a figure that can no longer be cut is a figure
+ * that had stopped being true.
+ */
+/**
+ * The compiled server, against one config dir. Never `bun run main.ts`: that brands the portal DEV.
+ *
+ * `SEEDEEP_HOME` points into the bundle, so the capture never reads or writes the real
+ * `~/.seedeep/`: the port, the token and the certificate on screen are a throwaway set, which is
+ * both what makes a settings figure publishable and what keeps a doc build off the developer's own
+ * state.
+ */
+function spawnDocServer(cfg: string) {
+  const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
+  return Bun.spawn([bin, 'serve', '--no-open', '--port', String(PORT)], {
+    env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, SEEDEEP_HOME: join(OUT, 'seedeep-home') },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+}
+
+/** A page against a config dir, torn down with its server whatever happens. */
+async function withDocPage(
+  cfg: string,
+  body: (page: import('playwright-core').Page, url: string) => Promise<void>,
+): Promise<void> {
+  const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
+  if (!(await Bun.file(bin).exists()))
+    throw new Error(`missing ${bin} — run \`bun run build:server\` first, or the figures carry the DEV badge`);
+  const server = spawnDocServer(cfg);
+  try {
+    const url = await serverUrl(server as { stdout: ReadableStream<Uint8Array> }, PORT);
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({ channel: 'chrome' });
+    // No video: a still needs no recording, and the webm is what makes `shoot` slow.
+    const ctx = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      // Taller than the app's own 900: a crop can only contain what the viewport rendered, and at
+      // 900 the Verdict lens cut its most important row — the `crit` one — in half.
+      viewport: { width: 1440, height: 1150 },
+      colorScheme: 'dark',
+      deviceScaleFactor: 2, // a figure is read at 100%, so the crop is cut at 2× and shown at half
+    });
+    const page = await ctx.newPage();
+    await body(page, url);
+    // BOUNDED, because both of these hung: the page holds an SSE stream open for as long as it is
+    // watching, and a run that had already written every figure sat in teardown until it was killed
+    // by hand. The shots are on disk by now — a slow goodbye must not be indistinguishable from a
+    // crash.
+    await bounded(ctx.close(), 10_000, 'context close');
+    await bounded(browser.close(), 10_000, 'browser close');
+  } finally {
+    server.kill();
+    await bounded(server.exited, 5_000, 'server exit');
+  }
+}
+
+/**
+ * Await a promise, but never forever: on timeout it says so and carries on. Only for TEARDOWN, where
+ * the work is already done and the alternative is a run that looks hung.
+ */
+async function bounded<T>(p: Promise<T>, ms: number, label: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((r) => {
+    timer = setTimeout(() => r('timeout'), ms);
+  });
+  const outcome = await Promise.race([p.then(() => 'done' as const).catch(() => 'failed' as const), timeout]);
+  if (timer) clearTimeout(timer);
+  if (outcome !== 'done') console.log(`[doc-shots] ${label}: ${outcome} after ${ms / 1000}s — continuing`);
+}
+
+/**
+ * Take one declared shot: its clicks, its typing, then the crop into `<outDir>/<id>.png`.
+ *
+ * Every failure here is loud rather than skipped, with one exception: a control that is not on the
+ * page at all (a widget behind a feature that this scene does not exercise).
+ */
+function makeTake(
+  page: import('playwright-core').Page,
+  outDir: string,
+  cut: string[],
+): (shot: DocShot) => Promise<void> {
+  return async (shot: DocShot): Promise<void> => {
+    for (const step of shot.click ?? []) {
+      const target = page.locator(step).filter({ visible: true }).first();
+      if (!(await target.isVisible().catch(() => false))) {
+        console.log(`[doc-shots] SKIP ${shot.id} — its control (${step}) is not on the page`);
+        return;
+      }
+      await target.click();
+      await page.waitForTimeout(1_200);
+    }
+    if (shot.type) {
+      const box = page.locator(shot.type.selector).filter({ visible: true }).first();
+      if (!(await box.isVisible().catch(() => false))) {
+        console.log(`[doc-shots] SKIP ${shot.id} — nowhere to type (${shot.type.selector})`);
+        return;
+      }
+      await box.click();
+      await box.type(shot.type.text, { delay: 45 });
+      await page.waitForTimeout(2_500);
+    }
+    if (shot.waitFor) {
+      await page
+        .locator(shot.waitFor)
+        .filter({ visible: true })
+        .first()
+        .waitFor({ state: 'visible', timeout: 15_000 })
+        .catch(() => {});
+      await page.waitForTimeout(600);
+    }
+    // The VISIBLE match, never simply the first: the shell keeps a second copy of a session's
+    // widgets mounted and hidden, so `.first()` cropped the invisible twin and every shot failed
+    // on a page that was rendering correctly.
+    const el = page.locator(shot.selector).filter({ visible: true }).first();
+    if (!(await el.isVisible().catch(() => false))) {
+      const cards = await page.locator('.card').count();
+      const shown = await page.locator('.card:visible').count();
+      const here = await page.locator(shot.selector).count();
+      // A picture of the page it failed on, into the private bundle — never the repo. Counts alone
+      // cannot tell "the widget was renamed" from "the view never became visible", and those two
+      // need opposite fixes.
+      const dump = join(OUT, 'assets', `failed-${shot.id}.png`);
+      await page.screenshot({ path: dump, fullPage: true }).catch(() => {});
+      throw new Error(
+        `${shot.id}: ${shot.selector} matched ${here} element(s), none visible — renamed widget, or a view that never mounted\n` +
+          `  page: ${await page.title()} · ${cards} .card of which ${shown} visible\n  dump: ${dump}`,
+      );
+    }
+    // A crop this small is a widget that rendered its empty state, or a selector that caught a
+    // wrapper instead of the card: either way the figure would show nothing while the caption
+    // promises something. Loud, because a picture of nothing is the one failure a reader cannot
+    // detect. (Floor in CSS px, so it holds whatever the scale factor is.)
+    const box = await el.boundingBox();
+    const MIN = { w: 200, h: 60 };
+    if (!box || box.width < MIN.w || box.height < MIN.h)
+      throw new Error(
+        `${shot.id}: ${shot.selector} is ${box ? `${Math.round(box.width)}×${Math.round(box.height)}` : 'unmeasurable'}` +
+          ` — under ${MIN.w}×${MIN.h}, so the figure would be empty`,
+      );
+    // A pane can be the right size and say NOTHING: the settings drawer rendered its frame and its
+    // close button while its content was still being fetched, and 500x1100 of empty panel passed the
+    // size floor without trouble. Text is the only thing that separates a figure from a backdrop.
+    const text = ((await el.innerText().catch(() => '')) ?? '').trim();
+    if (text.length < 24)
+      throw new Error(
+        `${shot.id}: ${shot.selector} holds ${text.length} characters of text — a figure of nothing.` +
+          ` Give the shot a \`waitFor\` for something its content renders.`,
+      );
+    const path = join(outDir, `${shot.id}.png`);
+    await el.screenshot({ path });
+    const kb = Math.round(Bun.file(path).size / 1024);
+    console.log(`[doc-shots] ${shot.id}.png (${kb} KB) — ${shot.subject}`);
+    cut.push(shot.id);
+  };
+}
+
+/**
+ * Cut the shots of one SYNTHETIC scene: write the transcript Claude Code would have written, open
+ * the session, take the crops. No pacing — every state a scene exists for is a settled one, so the
+ * whole transcript lands at once and the page is photographed after it.
+ */
+async function shootScene(sceneId: string, shots: DocShot[], outDir: string, cut: string[]): Promise<void> {
+  const build = DOC_SCENES[sceneId];
+  if (!build) throw new Error(`unknown scene '${sceneId}' — add it to scripts/doc-scenes.ts`);
+  const scene = build();
+  // The same leak guard the recorded path runs. A generator cannot leak a real path by accident
+  // today, and this is what keeps that true tomorrow.
+  const leak = scene.lines.map(leakIn).find(Boolean);
+  if (leak) throw new Error(`scene ${sceneId} carries ${leak} — refusing to capture`);
+
+  const cfg = join(OUT, `cfg-${sceneId}`);
+  await rm(cfg, { recursive: true, force: true });
+  await mkdir(cfg, { recursive: true });
+  const { sessionId, cwd } = await writeScene(cfg, scene, { mkdir, writeFile }, join);
+  if (scene.status) await writeOpenRecord(cfg, sessionId, cwd, scene.status);
+  console.log(`[doc-shots] scene ${sceneId}: ${scene.lines.length} lines, ${shots.length} shot(s)`);
+
+  await withDocPage(cfg, async (page, url) => {
+    await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(5_000);
+    const take = makeTake(page, outDir, cut);
+    for (const [i, shot] of shots.entries()) {
+      // Every shot starts from a RELOADED page, not from whatever the previous one left behind.
+      // Escape was not enough: the timeline strip stays open, so the next shot's click on the same
+      // control TOGGLED it shut and its chips were "not on the page" — a skip that looked like a
+      // renamed widget. A shot must not depend on the order it happens to sit in.
+      if (i > 0) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(4_000);
+      }
+      await take(shot);
+    }
+  });
+}
+
+async function docShots(): Promise<void> {
+  const manifest = await readManifest();
+  const outDirAll = join(process.cwd(), manifest.outDir);
+  await mkdir(outDirAll, { recursive: true });
+  const cutAll: string[] = [];
+  const scenes = new Map<string, DocShot[]>();
+  for (const shot of manifest.shots) {
+    const key = shot.scene ?? 'recorded';
+    scenes.set(key, [...(scenes.get(key) ?? []), shot]);
+  }
+  if (scenes.has('recorded'))
+    await shootRecorded(
+      manifest.shots.filter((s) => !s.scene),
+      outDirAll,
+      cutAll,
+    );
+  for (const [id, shots] of scenes) if (id !== 'recorded') await shootScene(id, shots, outDirAll, cutAll);
+
+  const missing = manifest.shots.filter((s) => !cutAll.includes(s.id)).map((s) => s.id);
+  console.log(`[doc-shots] ${cutAll.length}/${manifest.shots.length} cut → ${manifest.outDir}`);
+  if (missing.length > 0) console.log(`[doc-shots] not cut: ${missing.join(', ')}`);
+}
+
+/** Cut the shots that come from the RECORDED session: replayed at its original pace. */
+async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): Promise<void> {
+  const bundle = join(OUT, 'session');
+  const meta = JSON.parse(await readFile(join(bundle, 'meta.json'), 'utf8')) as { slug: string; cwd: string };
+  const slugDir = join(bundle, meta.slug);
+  const stream = await timeline(slugDir);
+  if (stream.length === 0) throw new Error(`no transcript lines in ${slugDir} — run \`record\` first`);
+  // BEFORE the browser opens, exactly as in `shoot`: a leak found once a frame exists is a leak
+  // that was drawn, and these frames are committed to a public repo.
+  const leaks = stream.map((l) => leakIn(JSON.stringify(l.obj))).filter(Boolean);
+  if (leaks.length > 0)
+    throw new Error(`${leaks.length} lines still carry ${leaks[0]} after scrubbing — refusing to capture`);
+
+  const cfg = join(OUT, 'cfg');
+  await rm(cfg, { recursive: true, force: true });
+  await mkdir(join(cfg, 'projects', meta.slug), { recursive: true });
+
+  const sessionId = sessionIdOf(stream);
+  if (!sessionId) throw new Error('no sessionId in the bundle — cannot open the session view');
+
+  const SEED_MAX = 6;
+  const seed = stream.slice(0, SEED_MAX);
+  for (const l of seed) await writeLine(cfg, meta.slug, l);
+  // Left `busy` for the whole run, unlike `shoot`, which flips to idle before its Home and Search
+  // frames: every figure here is of a LIVE surface, and an ended session collapses the monitor to a
+  // one-line summary — the shot would show the thing the text is not describing.
+  await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
+  await new Promise((r) => setTimeout(r, 4_000));
+
+  await withDocPage(cfg, async (page, url) => {
+    await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4_000);
+    const take = makeTake(page, outDir, cut);
+    const byCue = (cue: string): DocShot[] => shots.filter((s) => s.cue === cue);
+
+    const t0 = Date.now();
+    let agentAt: number | null = null;
+    let written = 0;
+    const base = stream[seed.length]?.at ?? stream[0]!.at;
+    const replayTask = (async () => {
+      for (const l of stream.slice(seed.length)) {
+        const due = t0 + (l.at - base) / SPEED;
+        const wait = due - Date.now();
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        await writeLine(cfg, meta.slug, l);
+        written++;
+        if (agentAt === null && isAgentSpawn(l.obj)) agentAt = (Date.now() - t0) / 1000;
+      }
+    })();
+
+    // The fan-out shots can only be taken WHILE the subagents run, so they come first and the
+    // replay keeps writing behind them. Twelve seconds past the spawn, the same margin the hero
+    // needs: at four the three cards exist but no context bar has moved, which is the half of the
+    // picture the figure is for.
+    while (agentAt === null && (Date.now() - t0) / 1000 < 300) await new Promise((r) => setTimeout(r, 250));
+    if (agentAt !== null) {
+      const settleUntil = agentAt + 12;
+      while ((Date.now() - t0) / 1000 < settleUntil) await new Promise((r) => setTimeout(r, 250));
+      for (const shot of byCue('fanout')) await take(shot);
+    } else {
+      console.log('[doc-shots] no subagent spawn in this bundle — fan-out shots not cut');
+    }
+
+    await replayTask;
+    console.log(`[doc-shots] replay done: ${written} lines in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    await page.waitForTimeout(2_500);
+    // The replay is over by now, so a reload costs nothing but determinism — and it is the only way
+    // a shot cannot inherit the previous one's UI. Escape was not enough: the settings drawer stayed
+    // open and the Trace button underneath it became "not visible", which reads as a renamed widget.
+    for (const [i, shot] of byCue('end').entries()) {
+      if (i > 0) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3_500);
+      }
+      await take(shot);
+    }
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3_500);
+
+    for (const shot of byCue('trace')) {
+      await take(shot);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(800);
+    }
+
+    // The amber state does not live in the transcript at all: Claude Code writes it into the
+    // per-session PID file, which this replay is already the author of (it writes `busy` there from
+    // the first line). So writing `waiting` is the same scaffolding one value further, not a
+    // fabricated session — and it is the only way to photograph a state that leaves no log.
+    const waiting = byCue('waiting');
+    if (waiting.length > 0) {
+      await writeOpenRecord(cfg, sessionId, meta.cwd, 'waiting', 'permission prompt');
+      await page.waitForTimeout(5_000); // the roster is polled, not pushed
+      for (const shot of waiting) await take(shot);
+      await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
+    }
+
+    for (const shot of byCue('verdict')) await take(shot);
+  });
+}
+
+/** Record the short archive sessions, each into its own bundle under `<OUT>/extras/<name>`. */
+async function recordExtras(): Promise<void> {
+  const home = homedir();
+  for (const extra of EXTRAS) {
+    const name = extra.cwd.split('/').pop()!;
+    const bundle = join(OUT, 'extras', name);
+    await rm(bundle, { recursive: true, force: true });
+    await mkdir(bundle, { recursive: true });
+    const cfgRecord = await cleanProfile();
+    console.log(`[extras] ${name}: recording`);
+    const s = await openProbeSession({
+      files: extra.files,
+      cwd: extra.cwd,
+      home,
+      configDir: cfgRecord,
+      permissionMode: 'acceptEdits',
+    });
+    const projectDir = join(cliRoot(home, { CLAUDE_CONFIG_DIR: cfgRecord }), slugFor(s.cwd));
+    try {
+      for (const [i, prompt] of extra.scenes.entries()) {
+        const from = (await transcriptLines(s)).length;
+        await s.typeLine(prompt);
+        await waitForTurnEnd(s, from, `${name}-${i + 1}`);
+      }
+      const parent = await s.transcript();
+      console.log(`[extras] ${name}: ${parent ? `${parent.length} bytes` : 'MISSING'}`);
+    } finally {
+      await cp(projectDir, join(bundle, slugFor(s.cwd)), { recursive: true }).catch(() => {});
+      await s.close();
+      await rm(cfgRecord, { recursive: true, force: true });
+    }
+  }
+  console.log(`[extras] done → ${join(OUT, 'extras')}`);
+}
+
+const cmd = process.argv[2];
+if (cmd === 'record') await record();
+else if (cmd === 'record-extras') await recordExtras();
+else if (cmd === 'shoot') await shoot();
+else if (cmd === 'doc-shots') await docShots();
+else {
+  console.error('usage: capture-demo.ts record | record-extras | shoot | doc-shots');
+  process.exit(1);
+}
