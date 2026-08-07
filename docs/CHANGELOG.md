@@ -4,6 +4,25 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A security policy, so a finding arrives privately rather than as a public issue (2026-08-08)
+
+The repository had no disclosure channel: no `SECURITY.md`, and nothing telling a reporter that an
+issue is the wrong place. On a private repository that costs nothing — nobody can report anything —
+but the moment it is public the absence decides between a private advisory and a public issue
+carrying a live vulnerability.
+
+`SECURITY.md` now names the private advisory form as the only channel, states what a reporter can
+expect (one maintainer, no SLA, no bounty, latest release only), and — the part a template would
+have missed — says what the interesting surface actually is: the server beyond loopback, the
+certificate and the tray's leaf pinning, the tag-to-npm release pipeline, and session content
+leaving the machine. It also says what is *not* one, so a crash on an unexpected session line or the
+unsigned first-launch warning goes to the issue tracker instead. The README's Docs table points at
+it in one line.
+
+The other half of the channel — GitHub's private vulnerability reporting toggle, which puts the
+"Report a vulnerability" button on the Security tab — exists only on a public repository and is
+turned on at the flip.
+
 ### A figure for every surface, and synthetic transcripts for the states that cannot be provoked (2026-08-07)
 
 Nine figures covered the surfaces the recorded session happens to exercise. The rest of

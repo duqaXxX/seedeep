@@ -221,6 +221,7 @@ send a change.
 | [`commits.md`](docs/commits.md) · [`cards.md`](docs/cards.md) · [`changed-files.md`](docs/changed-files.md) | what a session shipped, worked on, and touched |
 | [`claude-code-upgrades.md`](docs/claude-code-upgrades.md) | how seedeep survives a Claude Code release |
 | [`CHANGELOG.md`](docs/CHANGELOG.md) | what changed, newest first |
+| [`SECURITY.md`](SECURITY.md) | found a vulnerability? report it privately, never as an issue |
 
 ## License
 
