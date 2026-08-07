@@ -28,3 +28,30 @@ updates:
       actions:
         patterns:
           - '*'
+
+  # `bun`, not `npm`: the repository carries bun.lock and no package-lock.json, and the two are
+  # separate ecosystems in Dependabot's table rather than one reading the other's lockfile.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    assignees:
+      - duqaXxX
+    groups:
+      bun:
+        patterns:
+          - '*'
+
+  # The tray's manifest, not the repository root - cargo has no workspace above apps/tray. Its
+  # graph is where the network-facing dependencies live (reqwest, rustls), so a fix landing here
+  # matters more than anywhere else in the tree.
+  - package-ecosystem: cargo
+    directory: /apps/tray/src-tauri
+    schedule:
+      interval: weekly
+    assignees:
+      - duqaXxX
+    groups:
+      cargo:
+        patterns:
+          - '*'
