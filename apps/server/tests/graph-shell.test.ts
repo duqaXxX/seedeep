@@ -4963,7 +4963,7 @@ test("Changed files: the count is git's, and the caption says which set it came 
   );
   const aside = findByClass(card, 'fchgscr').map((r: any) => textOf(r));
   assert.equal(aside.length, 1, `only the scratchpad row, got: ${aside.join(' | ')}`);
-  assert.ok(aside[0]?.includes('scratchpad'), aside[0]);
+  assert.ok(aside[0]?.includes('scratchpad'), aside[0] ?? 'no scratchpad row at all');
   assert.equal(textOf(findByClass(card, 'wdesc')[0]), 'Files in 1 commit.');
 
   // One number on the card: the caption names the set, and never carries a second count that a
