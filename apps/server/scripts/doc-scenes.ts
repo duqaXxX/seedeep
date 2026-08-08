@@ -464,6 +464,13 @@ function brokenSession(): Scene {
  * Search are about a CORPUS: on a single session the distribution is one bar, the weighted ranking
  * has nothing to rank, and a density ordering cannot be told from a recency one.
  */
+/**
+ * Files read in the exploring turn of each corpus session. It is `EXPLORE_READS` (8) in
+ * `core/verdict.ts` — the threshold above which a turn that read and changed nothing is flagged —
+ * and the figure needs the flag to fire, so the number is that rule's, not a taste.
+ */
+const EXPLORE_TURN_READS = 9;
+
 function corpus(): Scene {
   // Each session says the shared phrase ITS OWN way. They were identical once, and five rows of
   // one sentence read as generated rather than recorded — the figure's job is to show a ranking,
@@ -529,6 +536,18 @@ function corpus(): Scene {
     const w = new Writer(sessionId, cwd, clock(`2026-08-0${i + 1}T08:00:00.000Z`));
     w.typed(s.prompt);
     for (let t = 0; t < s.turns; t++) {
+      // Every session reads files, and one of them explores without changing anything. Home is a
+      // retrospective: a corpus with no tool call and nothing ever flagged renders every one of
+      // its cards as a row of zeros — the figure would then show the SHAPE of the surface while
+      // demonstrating none of what its caption promises.
+      const reads = t === 0 ? EXPLORE_TURN_READS : 2;
+      const tools = Array.from({ length: reads }, (_, r) => ({
+        id: `${sessionId.slice(0, 4)}t${t}r${r}`,
+        name: 'Read',
+        input: {
+          file_path: `${cwd}/src/${['routes', 'store', 'limiter', 'keys', 'index', 'auth', 'passes', 'meter', 'cache'][r % 9]}.ts`,
+        },
+      }));
       w.call({
         // The phrase every session shares, at different densities: what makes a density ranking
         // visibly different from a recency one.
@@ -537,9 +556,43 @@ function corpus(): Scene {
         cacheRead: s.read + t * 4_000,
         cacheWrite: t === 0 ? 9_000 : 0,
         out: s.out,
+        tools,
       });
-      w.turnEnd(18_000 + t * 3_000, 2);
+      for (const tool of tools) w.result(tool.id, `export const ${tool.name} = { …${120 + reads} lines… }`);
+      w.call({ text: `Pass ${t + 1} read.`, model: s.model, cacheRead: s.read + t * 4_000 + 2_000, out: 160 });
+      w.turnEnd(18_000 + t * 3_000, 2 + reads);
       if (t < s.turns - 1) w.typed(`Keep going — pass ${t + 2}.`);
+    }
+    // The one session that DELEGATED, and got a report too big to have been worth it: the `big
+    // subagent` row of the waste card, and the only crit in the corpus.
+    if (s.name === 'lantern') {
+      w.typed('Do the audit properly and hand me everything it finds.');
+      w.call({
+        text: 'Delegating so the detail does not land in this context.',
+        model: s.model,
+        cacheRead: s.read + 12_000,
+        out: 1_800,
+        tools: [
+          {
+            id: 'toolu_lantern_audit',
+            name: 'Agent',
+            input: {
+              description: 'Audit the keys endpoint',
+              subagent_type: 'general-purpose',
+              model: 'sonnet',
+              prompt: 'Audit every handler under src/ for missing input validation and report in full.',
+            },
+          },
+        ],
+      });
+      w.result('toolu_lantern_audit', longReport());
+      w.call({
+        text: 'Six handlers take input without a presence check.',
+        model: s.model,
+        cacheRead: s.read + 26_000,
+        out: 520,
+      });
+      w.turnEnd(52_000, 6);
     }
     return { cwd, sessionId, lines: w.lines };
   });

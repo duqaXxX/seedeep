@@ -11,7 +11,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/live-monitor.css"
-      ]
+      ],
+      "waitFor": ".subrow.act .scbar"
     },
     {
       "id": "context-dial",
@@ -21,7 +22,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/context-dial.css"
-      ]
+      ],
+      "waitFor": ".dial"
     },
     {
       "id": "activity-feed",
@@ -32,7 +34,8 @@
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/feed.css",
         "apps/server/public/css/layout.css"
-      ]
+      ],
+      "waitFor": ".fev"
     },
     {
       "id": "session-tokens",
@@ -43,7 +46,8 @@
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/layout.css",
         "apps/server/public/css/context-dial.css"
-      ]
+      ],
+      "waitFor": ".card:has(.wtitle:has-text(\"Session\")) .num"
     },
     {
       "id": "main-tools",
@@ -53,7 +57,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/timeline.css"
-      ]
+      ],
+      "waitFor": ".hogrow"
     },
     {
       "id": "subagents-grid",
@@ -63,7 +68,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/session-cards.css"
-      ]
+      ],
+      "waitFor": ".subcard"
     },
     {
       "id": "background-commands",
@@ -74,7 +80,7 @@
       "click": [
         ".xbtn:has-text(\"Background commands\")"
       ],
-      "waitFor": ".subrow .badge",
+      "waitFor": ".subrow .badge.b-failed",
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/src/core/selectors.ts",
@@ -94,7 +100,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/drawer.css"
-      ]
+      ],
+      "waitFor": ".drawer.on .blabel:has-text(\"returned to main\")"
     },
     {
       "id": "trace-chapters",
@@ -109,7 +116,8 @@
         "apps/server/src/core/trace-group.ts",
         "apps/server/src/core/span-store.ts",
         "apps/server/public/css/trace.css"
-      ]
+      ],
+      "waitFor": ".trace-canvas .lane-strip"
     },
     {
       "id": "waiting-on-you",
@@ -120,7 +128,8 @@
         "apps/server/src/client/graph.ts",
         "apps/server/src/server/open-sessions.ts",
         "apps/server/public/css/now-panel.css"
-      ]
+      ],
+      "waitFor": ".nowpanel:has-text(\"Waiting for your\")"
     },
     {
       "id": "timeline-strip",
@@ -135,7 +144,8 @@
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/timeline.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".tstrip .sbars .sb"
     },
     {
       "id": "verdict-lens",
@@ -152,7 +162,9 @@
         "apps/server/src/core/verdict.ts",
         "apps/server/public/css/timeline.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".wlist .wrow.crit",
+      "scrollTo": ".wlist .wrow.crit"
     },
     {
       "id": "skills-commands",
@@ -164,7 +176,8 @@
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/layout.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".card:has(.wtitle:has-text(\"Skills used\")) .chip, .card:has(.wtitle:has-text(\"Skills used\")) .schip"
     },
     {
       "id": "failed-tool",
@@ -194,7 +207,8 @@
         "apps/server/src/server/parser.ts",
         "apps/server/public/css/feed.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".fev.err"
     },
     {
       "id": "home-retrospective",
@@ -210,7 +224,8 @@
         "apps/server/src/client/home-view.ts",
         "apps/server/public/css/home.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".rt-brow:not(:has(.rt-bv:text-is(\"0\")))"
     },
     {
       "id": "compare-leaderboard",
@@ -226,7 +241,8 @@
         "apps/server/src/client/compare-view.ts",
         "apps/server/public/css/compare.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".cmp-row"
     },
     {
       "id": "search-results",
@@ -247,7 +263,8 @@
         "apps/server/src/server/search-index.ts",
         "apps/server/public/css/search.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "waitFor": ".sr-row mark"
     }
   ]
 }

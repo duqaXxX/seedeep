@@ -30,6 +30,13 @@ export interface DocShot {
    */
   waitFor?: string;
   /**
+   * An element to scroll into view before the crop. A list the PRODUCT scrolls (the verdict list
+   * is capped at 190px) otherwise gets photographed at its top, cutting the very row the caption
+   * names in half. Scrolling is what a reader would do; widening the crop would show a panel the
+   * product does not have.
+   */
+  scrollTo?: string;
+  /**
    * The synthetic scene this shot is photographed on (`scripts/doc-scenes.ts`). Absent means the
    * RECORDED session — a real one, replayed. A scene exists only for states no recording can
    * honestly produce: a failed call, a compaction, a corpus of sessions.

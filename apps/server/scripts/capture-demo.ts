@@ -1067,6 +1067,15 @@ function makeTake(
       await box.type(shot.type.text, { delay: 45 });
       await page.waitForTimeout(2_500);
     }
+    if (shot.scrollTo) {
+      const target = page.locator(shot.scrollTo).filter({ visible: true }).first();
+      if (!(await target.isVisible().catch(() => false))) {
+        console.log(`[doc-shots] SKIP ${shot.id} — nothing to scroll to (${shot.scrollTo})`);
+        return;
+      }
+      await target.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(600);
+    }
     if (shot.waitFor) {
       await page
         .locator(shot.waitFor)

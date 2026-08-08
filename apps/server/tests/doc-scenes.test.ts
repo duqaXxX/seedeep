@@ -195,3 +195,27 @@ describe('the commands scene', () => {
     }
   });
 });
+
+// The Home figure's caption promises "where the waste came from" and a tool-call breakdown. A
+// corpus with nothing flagged renders every one of those rows as a zero — the picture would then
+// show the SHAPE of the surface while demonstrating none of what it claims. So the corpus is
+// asserted to CARRY the waste, here, where a change to the scene fails in `bun test` rather than
+// silently on a page.
+describe('the corpus scene', () => {
+  const scene = SCENES.corpus!();
+  const sessions = [{ sessionId: scene.sessionId, lines: scene.lines }, ...(scene.archive ?? [])];
+
+  test('every session reads files, so the tool-call breakdown is not a row of zeros', () => {
+    const reads = sessions.reduce((n, s) => n + snapshotOf(s.lines, s.sessionId).mainTools.length, 0);
+    expect(reads).toBeGreaterThan(40);
+  });
+
+  test('the corpus carries both a warn and a crit, or the waste card demonstrates nothing', () => {
+    const severities = sessions.flatMap((s) => {
+      const snap = snapshotOf(s.lines, s.sessionId);
+      return snap.turnList.map((t) => computeVerdict(t, snap).severity);
+    });
+    expect(severities).toContain('warn');
+    expect(severities).toContain('crit');
+  });
+});
