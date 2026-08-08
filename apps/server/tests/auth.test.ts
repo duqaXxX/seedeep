@@ -111,3 +111,43 @@ test('a network failure leaves the verdict where it was', () =>
 
     assert.equal(currentAuthState(), 'ok', 'seedeep being unreachable says nothing about the token');
   }));
+
+// A 401 about a token we no longer use says nothing about the one we do. Without the guard, a
+// request still in flight when the user opens the startup URL comes back and overwrites the `ok`
+// its successor had just established — the banner returns seconds after the fix, with nothing on
+// screen to explain it.
+test('a 401 that arrives after the token was replaced is stale, and must not undo the fix', () =>
+  withFakes(async () => {
+    g.localStorage = fakeStorage();
+    setToken('the-old-one');
+    // The slow 401 is dispatched first and resolves last, exactly as a request in flight would.
+    let release: (r: unknown) => void = () => {};
+    g.fetch = () => new Promise((r) => (release = r));
+    const slow = authFetch('/api/live');
+
+    setToken('the-one-from-the-startup-url');
+    fakeFetch(200);
+    await authFetch('/api/live');
+    assert.equal(currentAuthState(), 'ok', 'the new token works');
+
+    release({ status: 401, ok: false });
+    await slow;
+
+    assert.equal(currentAuthState(), 'ok', 'the old request cannot speak for the new token');
+  }));
+
+// `POST /api/config` (saving settings) IS auth-checked, unlike the GET. Matching the path alone
+// threw away the one success that proves the token is good at the moment it is fixed.
+test('a successful POST to /api/config does prove the token, even though the GET does not', () =>
+  withFakes(async () => {
+    g.localStorage = fakeStorage();
+    setToken('good-now');
+    fakeFetch(401);
+    await authFetch('/api/live');
+    assert.equal(currentAuthState(), 'refused');
+
+    fakeFetch(200);
+    await authFetch('/api/config', { method: 'POST' });
+
+    assert.equal(currentAuthState(), 'ok');
+  }));

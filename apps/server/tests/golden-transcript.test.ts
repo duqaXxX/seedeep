@@ -1485,6 +1485,43 @@ test('golden transcript: a background launch without a description is named by i
   assert.equal(row.command, 'bun run build:client');
 });
 
+// What ENDS a background command is a `<status>`, not a `<summary>`. Claude Code writes the same
+// line type for PROGRESS — `event` + `summary`, no status — and reading one as the end would mark a
+// command done minutes early, drop it from everything that asks what is still running, and measure
+// its duration to the wrong instant.
+//
+// This shape is DEFENSIVE, not observed: measured 2026-08-08 over the local corpus, all 54 progress
+// notifications carry a `<task-id>` and none carries a `<tool-use-id>`, so none can reach a
+// background launch today. The guard is what keeps a schema change from making it possible in
+// silence — the failure it prevents is invisible, since a command wrongly called `done` looks
+// exactly like one that finished.
+test('golden transcript: a notification with no status is progress, and ends nothing', () => {
+  const progress = JSON.stringify({
+    type: 'queue-operation',
+    operation: 'enqueue',
+    sessionId: 's1',
+    timestamp: '2026-07-14T10:20:00.000Z',
+    content:
+      '<task-notification>\n<task-id>b0cm7fbxc</task-id>\n<tool-use-id>toolu_b1</tool-use-id>\n<event>output</event>\n<summary>Still building — 41 of 248 files</summary>\n</task-notification>',
+  });
+  const snap = runLines([
+    typed('u1', 'start the server'),
+    bashLaunch('a1', 'toolu_b1', 'Start seedeep server'),
+    backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc'),
+    progress,
+  ]);
+
+  const row = backgroundCommands(snap.mainTools, { ended: false })[0]!;
+  assert.equal(row.state, 'running', 'a progress line is not an ending');
+  assert.equal(row.sentence, null, 'and its text must not be shown as the outcome');
+  assert.equal(row.ranMs, null, 'nor its instant taken for the end of the command');
+  assert.deepEqual(
+    runningBackground(snap.mainTools).map((c) => c.toolUseId),
+    ['toolu_b1'],
+    'so everything that asks what is still running still says this one is',
+  );
+});
+
 // The routing must key on the RECEIPT, not on the notification's id shape. A `Monitor` call gets
 // a `b`-prefixed notification too but never a `backgroundTaskId`, and a resumed subagent's
 // notification names the SendMessage tool call — marking either row failed would be a lie about

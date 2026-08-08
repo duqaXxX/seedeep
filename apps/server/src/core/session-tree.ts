@@ -1234,7 +1234,14 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           outputFile: e.outputFile ?? null,
         });
       }
-      if (bg?.backgroundTaskId) {
+      // A notification ENDS a command only when it carries a `<status>`. The same line type is
+      // also written for PROGRESS (`event` + `summary`, no status), and treating one as the end
+      // would mark a command `done` minutes early, drop it out of everything that asks what is
+      // still running, and compute its duration to the wrong instant. Measured 2026-08-08 over the
+      // local corpus: 54 progress notifications, and NONE of them carries a `<tool-use-id>`, so
+      // none can reach a background launch today — this is the guard that keeps a schema change
+      // from making it possible without anyone noticing.
+      if (bg?.backgroundTaskId && e.status !== null) {
         // Verbatim, per the product decision: seedeep reports what Claude Code reported. When CC
         // calls a deliberate `pkill` a failure (exit 144 — 28 of 29 real failures), the two
         // surfaces agree rather than seedeep inventing a semantics the logs do not carry.

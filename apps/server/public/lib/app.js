@@ -583,7 +583,7 @@ function createSessionTree(opts) {
           outputFile: e.outputFile ?? null
         });
       }
-      if (bg?.backgroundTaskId) {
+      if (bg?.backgroundTaskId && e.status !== null) {
         bg.outcome = e.summary;
         bg.outcomeStatus = e.status;
         bg.outcomeTs = e.timestamp || null;
@@ -1095,7 +1095,9 @@ function setAuthState(next) {
   for (const cb of authListeners)
     cb(next);
 }
-var AUTH_EXEMPT = "/api/config";
+function provesTheToken(url, method) {
+  return !(method.toUpperCase() === "GET" && url.split("?")[0].endsWith("/api/config"));
+}
 function store() {
   try {
     return typeof localStorage !== "undefined" ? localStorage : null;
@@ -1126,8 +1128,9 @@ function setToken(token) {
 }
 function authFetch(url, init) {
   const token = getToken();
+  const method = init?.method ?? "GET";
   if (!token)
-    return observe(fetch(url, init), url, "");
+    return observe(fetch(url, init), url, method, "");
   const merged = {
     ...init,
     headers: {
@@ -1135,13 +1138,13 @@ function authFetch(url, init) {
       ...init?.headers ?? {}
     }
   };
-  return observe(fetch(url, merged), url, token);
+  return observe(fetch(url, merged), url, method, token);
 }
-function observe(res, url, token) {
+function observe(res, url, method, token) {
   return res.then((r) => {
-    if (r.status === 401)
+    if (r.status === 401 && token === getToken())
       setAuthState(token ? "refused" : "missing");
-    else if (r.ok && !url.includes(AUTH_EXEMPT))
+    else if (r.ok && provesTheToken(url, method))
       setAuthState("ok");
     return r;
   });

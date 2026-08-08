@@ -47,8 +47,12 @@ function setAuthState(next: AuthState): void {
 
 // `GET /api/config` is the ONE endpoint served without a token — it is what a client reads to
 // discover whether this server wants one. A 200 from it therefore proves nothing about our
-// credentials, and clearing the verdict on it would wipe the 401 the very next poll.
-const AUTH_EXEMPT = '/api/config';
+// credentials, and clearing the verdict on it would wipe the 401 the very next poll. The METHOD is
+// part of the rule: `POST /api/config` (saving settings) IS checked, so its success does prove the
+// token is good — matching the path alone threw that proof away.
+function provesTheToken(url: string, method: string): boolean {
+  return !(method.toUpperCase() === 'GET' && url.split('?')[0]!.endsWith('/api/config'));
+}
 
 function store(): Storage | null {
   try {
@@ -100,7 +104,8 @@ export function setToken(token: string): void {
  */
 export function authFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken();
-  if (!token) return observe(fetch(url, init), url, '');
+  const method = init?.method ?? 'GET';
+  if (!token) return observe(fetch(url, init), url, method, '');
   const merged: RequestInit = {
     ...init,
     headers: {
@@ -108,7 +113,7 @@ export function authFetch(url: string, init?: RequestInit): Promise<Response> {
       ...((init?.headers as Record<string, string> | undefined) ?? {}),
     },
   };
-  return observe(fetch(url, merged), url, token);
+  return observe(fetch(url, merged), url, method, token);
 }
 
 /**
@@ -119,10 +124,14 @@ export function authFetch(url: string, init?: RequestInit): Promise<Response> {
  * A network failure is left alone on purpose: an unreachable server says nothing about whether our
  * token is good, and reporting one as the other is the mistake this whole change exists to undo.
  */
-function observe(res: Promise<Response>, url: string, token: string): Promise<Response> {
+function observe(res: Promise<Response>, url: string, method: string, token: string): Promise<Response> {
   return res.then((r) => {
-    if (r.status === 401) setAuthState(token ? 'refused' : 'missing');
-    else if (r.ok && !url.includes(AUTH_EXEMPT)) setAuthState('ok');
+    // A 401 about a token we no longer use says nothing about the one we do. Without this, a
+    // request still in flight when the user opens the startup URL comes back and overwrites the
+    // `ok` that the first request with the NEW token had just established — the banner returns
+    // seconds after the fix, with nothing on screen to explain it.
+    if (r.status === 401 && token === getToken()) setAuthState(token ? 'refused' : 'missing');
+    else if (r.ok && provesTheToken(url, method)) setAuthState('ok');
     return r;
   });
 }
