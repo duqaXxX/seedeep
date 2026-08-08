@@ -230,6 +230,17 @@ header {
   background: var(--warn);
   animation: pkpulse 1.4s infinite;
 }
+/* Red, and NOT pulsing: a refused token is settled, not in progress. The amber pill next door
+   means "wait, it is coming back"; this one means "it will not, until you do something". */
+#conn.feed-auth {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: var(--crit);
+  cursor: help;
+}
+#conn.feed-auth::before {
+  background: var(--crit);
+}
 #conn.feed-resync {
   background: rgba(125, 211, 252, 0.1);
   border: 1px solid rgba(125, 211, 252, 0.35);

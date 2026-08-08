@@ -209,6 +209,21 @@ The settings panel (the sliders icon in the header) edits all of it — port, ho
 token, the full access URL, and the certificate fingerprint, each with a Copy
 button — so nothing has to be edited by hand.
 
+**The token is stored per ADDRESS, and the port is part of the address.** The
+browser keeps it in local storage, which is partitioned by origin — scheme, host
+*and* port — so a second `seedeep` on the same machine at another port is an address
+that has never been given the token, even though the certificate and the host are
+identical. Opening it bare then shows a red **`No token for this address`** in the
+header (hover it for the rest); the fix is to open the URL `seedeep` printed at
+startup once — the page stores the token and strips it from the address bar — or to
+paste the token in the settings panel. **`Token refused`** is the other half of the
+same sentence: something IS stored and the server does not accept it, because it was
+regenerated or belongs to another `seedeep`.
+
+Neither is ever reported as a lost connection. A 401 is not a dropped stream and
+reconnecting cannot fix it, so the banner says which of the two it is instead of
+promising a recovery that will not come.
+
 **`seedeep` ships no tunnel.** Reaching it from outside the local network is
 deliberately not its job: use an SSH port-forward
 (`ssh -L 44842:127.0.0.1:44842 user@host`, which leaves the server on loopback and

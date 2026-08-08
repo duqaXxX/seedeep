@@ -12,6 +12,44 @@ import type { EventSourceLike } from './stream.ts';
 
 const STORAGE_KEY = 'seedeep-token';
 
+/**
+ * What the server thinks of this browser's credentials.
+ *
+ * `missing` — nothing is stored for this ORIGIN, and the server wants one. The port is part of an
+ * origin, so a second seedeep on the same host is a different one: the token stored for `:44842`
+ * is not visible to `:44843`, which is exactly how a working setup looks broken.
+ * `refused` — a token IS stored and the server rejected it (regenerated since, or the wrong one).
+ */
+export type AuthState = 'ok' | 'missing' | 'refused';
+
+// Only a fetch can learn this. An EventSource's `error` carries no status at all, so the stream
+// itself can never tell a 401 from a dropped connection — which is why a missing token used to be
+// announced as "Live feed lost — reconnecting…", a reconnection that could not possibly help.
+let authState: AuthState = 'ok';
+const authListeners = new Set<(s: AuthState) => void>();
+
+/** The last verdict the server gave on this browser's token. */
+export function currentAuthState(): AuthState {
+  return authState;
+}
+
+/** Subscribe to changes of {@link currentAuthState}. Returns an unsubscribe. */
+export function onAuthState(cb: (s: AuthState) => void): () => void {
+  authListeners.add(cb);
+  return () => authListeners.delete(cb);
+}
+
+function setAuthState(next: AuthState): void {
+  if (next === authState) return;
+  authState = next;
+  for (const cb of authListeners) cb(next);
+}
+
+// `GET /api/config` is the ONE endpoint served without a token — it is what a client reads to
+// discover whether this server wants one. A 200 from it therefore proves nothing about our
+// credentials, and clearing the verdict on it would wipe the 401 the very next poll.
+const AUTH_EXEMPT = '/api/config';
+
 function store(): Storage | null {
   try {
     return typeof localStorage !== 'undefined' ? localStorage : null;
@@ -62,7 +100,7 @@ export function setToken(token: string): void {
  */
 export function authFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken();
-  if (!token) return fetch(url, init);
+  if (!token) return observe(fetch(url, init), url, '');
   const merged: RequestInit = {
     ...init,
     headers: {
@@ -70,7 +108,23 @@ export function authFetch(url: string, init?: RequestInit): Promise<Response> {
       ...((init?.headers as Record<string, string> | undefined) ?? {}),
     },
   };
-  return fetch(url, merged);
+  return observe(fetch(url, merged), url, token);
+}
+
+/**
+ * Read the server's verdict off a response without changing it: a 401 sets the state, and any
+ * successful answer from an endpoint that DOES check the token clears it — so fixing the token in
+ * the settings panel heals the banner on the next poll, with nothing to reset by hand.
+ *
+ * A network failure is left alone on purpose: an unreachable server says nothing about whether our
+ * token is good, and reporting one as the other is the mistake this whole change exists to undo.
+ */
+function observe(res: Promise<Response>, url: string, token: string): Promise<Response> {
+  return res.then((r) => {
+    if (r.status === 401) setAuthState(token ? 'refused' : 'missing');
+    else if (r.ok && !url.includes(AUTH_EXEMPT)) setAuthState('ok');
+    return r;
+  });
 }
 
 /**

@@ -4,6 +4,27 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A refused token stops being reported as a lost connection (2026-08-08)
+
+Opening a `seedeep` on a second port over the LAN showed `Live feed lost — reconnecting…`, for ever.
+Nothing was lost and nothing would reconnect: the browser had no token for that ADDRESS — local
+storage is partitioned by origin and the port is part of it — so every `/api/*` answered 401 while
+the page kept promising a recovery that could not come.
+
+The verdict now lives where it can actually be learned. An `EventSource` error carries no status, so
+the stream itself can never tell a 401 from a dropped connection; `authFetch`, which every API call
+passes through, can. It records `missing` (nothing stored for this address) or `refused` (stored and
+not accepted) and clears itself on the next successful call, so fixing the token in the settings
+panel heals the banner with nothing to reset by hand. A 200 from `GET /api/config` clears nothing —
+it is the one endpoint served without a token, so it proves nothing about ours — and a network
+failure clears nothing either: an unreachable server says nothing about the token, and reporting one
+as the other is the confusion being undone.
+
+The pill is red and does not pulse, unlike the amber one beside it: a refused token is settled, not
+in progress. It names the cause in the header and carries the instructions in its tooltip, which is
+where there is room for them.
+
+
 ### Background commands get the catalogue subagents always had — and a failure stops vanishing (2026-08-08)
 
 A session launches shell commands into the background as readily as it launches subagents, and they

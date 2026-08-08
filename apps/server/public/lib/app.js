@@ -1079,6 +1079,23 @@ function summarizeTools(tools) {
 
 // apps/server/src/client/auth.ts
 var STORAGE_KEY = "seedeep-token";
+var authState = "ok";
+var authListeners = new Set;
+function currentAuthState() {
+  return authState;
+}
+function onAuthState(cb) {
+  authListeners.add(cb);
+  return () => authListeners.delete(cb);
+}
+function setAuthState(next) {
+  if (next === authState)
+    return;
+  authState = next;
+  for (const cb of authListeners)
+    cb(next);
+}
+var AUTH_EXEMPT = "/api/config";
 function store() {
   try {
     return typeof localStorage !== "undefined" ? localStorage : null;
@@ -1110,7 +1127,7 @@ function setToken(token) {
 function authFetch(url, init) {
   const token = getToken();
   if (!token)
-    return fetch(url, init);
+    return observe(fetch(url, init), url, "");
   const merged = {
     ...init,
     headers: {
@@ -1118,7 +1135,16 @@ function authFetch(url, init) {
       ...init?.headers ?? {}
     }
   };
-  return fetch(url, merged);
+  return observe(fetch(url, merged), url, token);
+}
+function observe(res, url, token) {
+  return res.then((r) => {
+    if (r.status === 401)
+      setAuthState(token ? "refused" : "missing");
+    else if (r.ok && !url.includes(AUTH_EXEMPT))
+      setAuthState("ok");
+    return r;
+  });
 }
 
 class AuthEventSource {
@@ -9471,17 +9497,36 @@ function openFromDropdown(id) {
     openTab(r);
 }
 var connHideTimer = null;
+var AUTH_PILL = {
+  missing: {
+    text: "No token for this address",
+    title: "This server asks for a token and this browser has none for this address. A token is stored per address, and the PORT is part of it — the one you use on another port is not visible here. Open the URL seedeep printed at startup (it carries the token), or paste it in Settings."
+  },
+  refused: {
+    text: "Token refused",
+    title: "The token stored for this address is not the one the server accepts — it was regenerated, or it belongs to another seedeep. Open the URL seedeep printed at startup, or paste the current token in Settings."
+  }
+};
 function showConnection(state) {
   if (connHideTimer !== null) {
     clearTimeout(connHideTimer);
     connHideTimer = null;
   }
+  const auth = currentAuthState();
+  if (auth !== "ok") {
+    connEl.className = "feed-auth";
+    connEl.textContent = AUTH_PILL[auth].text;
+    connEl.title = AUTH_PILL[auth].title;
+    return;
+  }
+  connEl.title = "";
   connEl.className = state === "ok" ? "" : "feed-" + state;
   connEl.textContent = state === "lost" ? "Live feed lost — reconnecting…" : state === "resync" ? "Reconnected — re-reading" : "";
   if (state === "resync")
     connHideTimer = setTimeout(() => showConnection("ok"), 4000);
 }
 var feedWasLost = false;
+onAuthState(() => showConnection(feedWasLost ? "lost" : "ok"));
 stream.onStatus((s) => {
   if (s === "lost") {
     feedWasLost = true;

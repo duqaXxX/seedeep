@@ -5,7 +5,7 @@ import { createSessionTree } from '../core/session-tree.ts';
 import type { SessionCards } from '../core/tracker-cards.ts';
 import { tabLabel } from '../core/tree-format.ts';
 import type { Comparison, Retrospective, SearchResponse, SessionRecord } from '../core/types.ts';
-import { AuthEventSource, authFetch, initAuth } from './auth.ts';
+import { AuthEventSource, type AuthState, authFetch, currentAuthState, initAuth, onAuthState } from './auth.ts';
 import { markDevBuild } from './build-mark.ts';
 import { createCompareView } from './compare-view.ts';
 import { createDropdown } from './dropdown.ts';
@@ -377,6 +377,25 @@ function openFromDropdown(id: string) {
 // pulsing all through a dead stream. Silent while healthy — a permanent "connected" chip
 // is noise that trains you to ignore the one state that matters.
 let connHideTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * What to say when the server has refused this browser's token. It OUTRANKS every stream state,
+ * because a reconnection cannot fix a 401: the old banner promised one anyway, forever, and sent
+ * the reader looking for a network problem that was not there.
+ *
+ * `title` carries the rest — the pill has room for the fact, not for the instructions.
+ */
+const AUTH_PILL: Record<Exclude<AuthState, 'ok'>, { text: string; title: string }> = {
+  missing: {
+    text: 'No token for this address',
+    title:
+      'This server asks for a token and this browser has none for this address. A token is stored per address, and the PORT is part of it — the one you use on another port is not visible here. Open the URL seedeep printed at startup (it carries the token), or paste it in Settings.',
+  },
+  refused: {
+    text: 'Token refused',
+    title:
+      'The token stored for this address is not the one the server accepts — it was regenerated, or it belongs to another seedeep. Open the URL seedeep printed at startup, or paste the current token in Settings.',
+  },
+};
 function showConnection(state: 'ok' | 'lost' | 'resync') {
   if (connHideTimer !== null) {
     clearTimeout(connHideTimer);
@@ -384,6 +403,14 @@ function showConnection(state: 'ok' | 'lost' | 'resync') {
   }
   // Namespaced: a bare `conn` class is the Trace's connector element, and the header's rule
   // would reach every one of them (see chrome.css). Empty text is what hides the pill.
+  const auth = currentAuthState();
+  if (auth !== 'ok') {
+    connEl.className = 'feed-auth';
+    connEl.textContent = AUTH_PILL[auth].text;
+    connEl.title = AUTH_PILL[auth].title;
+    return;
+  }
+  connEl.title = '';
   connEl.className = state === 'ok' ? '' : 'feed-' + state;
   connEl.textContent =
     state === 'lost' ? 'Live feed lost — reconnecting…' : state === 'resync' ? 'Reconnected — re-reading' : '';
@@ -394,6 +421,9 @@ function showConnection(state: 'ok' | 'lost' | 'resync') {
 // Was the feed ever lost? Only then is a reconnect a resync — the first `open` of the page
 // is just the stream starting, and must not rebuild tabs that have only just read the file.
 let feedWasLost = false;
+// The verdict can arrive at any poll, with no stream event to ride on — and it must repaint in
+// both directions: the moment the token is fixed in Settings, the pill has to go on its own.
+onAuthState(() => showConnection(feedWasLost ? 'lost' : 'ok'));
 stream.onStatus((s) => {
   if (s === 'lost') {
     feedWasLost = true;
