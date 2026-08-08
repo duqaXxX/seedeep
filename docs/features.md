@@ -170,6 +170,36 @@ know. A **workflow run** takes one aggregate row — fleet size, how many of its
 subagents are still working, tokens, and the model breakdown — instead of flooding
 the grid with the ~100 it spawns.
 
+#### Background commands share that card
+
+A session launches shell commands into the background as readily as it launches
+subagents, and they used to have no catalogue at all — only a live list of the ones
+still running. So a command that **failed** disappeared from every count the moment
+it failed, which is the one thing you needed to be told.
+
+The card holds both lists behind two tabs, and it grows them **only when both have
+something in them**: with commands and no subagents (or the reverse) it is simply
+the one list, with no switch to press. The tab you land on is always Subagents — a
+default that moved on its own would leave you unsure what you were reading — and
+the closed tab carries **its count and its failures on its own label**, so nothing
+that needs attention is hidden behind an unmarked door.
+
+Each command is one line: what it was launched to do (Claude Code's own
+`description`, the name it quotes back when the command ends), its state, the turn
+that started it, its exit code, and **how long the command itself ran** — launch
+instant to the notification that ended it, which for a killed build can be hours.
+The row's duration is never the launch call's, which closes in milliseconds and
+measures nothing.
+
+Its drawer adds the full command, the sentence Claude Code wrote when it ended (the
+only place the exit code exists) and the **output file** — the path where the
+command's output was written, which the transcript names only in that notification.
+
+The cockpit above keeps its half of the job: the commands still running, and the
+last few that failed, so a failure is stated where you are already looking instead
+of only in the catalogue below. A failed row is drawn in the neutral ended shape,
+never the green live one — it is not working any more.
+
 Every entity — subagent, tool call, tool type, API call, skill — opens a **detail
 drawer**; drill-down clicks (e.g. a tool inside a subagent's drawer) show a
 **breadcrumb** so you can navigate back without losing context.

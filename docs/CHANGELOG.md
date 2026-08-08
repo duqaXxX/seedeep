@@ -4,6 +4,37 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### Background commands get the catalogue subagents always had — and a failure stops vanishing (2026-08-08)
+
+A session launches shell commands into the background as readily as it launches subagents, and they
+had no catalogue: only a list of the ones still RUNNING. Acquiring an outcome removed a command
+from the one list there was, so a command that **failed** disappeared from every count the moment
+it failed — measured on a real session, 7 failures, all seven invisible on the cockpit, the header
+chip, the digest and the tray. Only the Trace was right, because its span store never evicts.
+
+The bottom card now holds two catalogues behind two tabs: the subagents grid, and every background
+command in launch order with its fate. The tab bar exists **only when both lists have something in
+them** — a switch with an empty side is a control that does nothing, and that is ~87% of sessions —
+and the default tab never moves off Subagents. What makes hiding one list safe is the label: the
+closed tab carries its count AND its failures, so the design cannot hide the thing it was built to
+reveal. One card rather than two stacked, because at real scale the second is unreachable: the
+sessions carrying both have a p90 of 27 spawns (max 67), which puts a second card 1716px — 1.6
+screens — below the fold.
+
+A command's row states what Claude Code called it, its state, its turn, its exit code and **how
+long the command itself ran** (launch → the notification that ended it, which for a killed build
+can be hours) — never the launch call's milliseconds. Its drawer adds the full command, Claude
+Code's own sentence, and the **output file**: the transcript names it in the notification, and
+seedeep simply was not reading that field. The cockpit keeps the running commands and now also the
+last few failures, drawn in the neutral ended shape — a dead command in the running colour is the
+same lie as removing its row.
+
+Three facts the reducer never carried are behind all of it: the notification's raw `<status>` (so
+nothing has to classify a fate by parsing English), its timestamp (the command's real duration) and
+its `<output-file>`. The launch's own `description` is read too — for a background command it is
+the only human-readable name it ever gets, and it is what Claude Code quotes back when it ends.
+
+
 ### A security policy, so a finding arrives privately rather than as a public issue (2026-08-08)
 
 The repository had no disclosure channel: no `SECURITY.md`, and nothing telling a reporter that an

@@ -451,6 +451,9 @@ function createSessionTree(opts) {
         error: false,
         backgroundTaskId: null,
         outcome: null,
+        outcomeStatus: null,
+        outcomeTs: null,
+        outputFile: null,
         launchPrompt: e.launchPrompt ?? null,
         spawnModel: e.spawnModel ?? null,
         returned: null,
@@ -515,6 +518,9 @@ function createSessionTree(opts) {
           t.backgroundTaskId = e.background.taskId;
           if (parked) {
             t.outcome = parked.summary;
+            t.outcomeStatus = parked.status;
+            t.outcomeTs = parked.ts;
+            t.outputFile = parked.outputFile;
             t.error = parked.status !== null && parked.status !== "completed" && parked.status !== "stopped";
           }
         }
@@ -570,10 +576,19 @@ function createSessionTree(opts) {
         endedAgentIds.set(e.taskId, e.status);
       const bg = !sp && e.toolUseId ? tools.get(e.toolUseId) : undefined;
       if (!sp && e.toolUseId && !bg?.backgroundTaskId) {
-        pendingBgOutcome.set(e.toolUseId, { summary: e.summary, status: e.status });
+        pendingBgOutcome.set(e.toolUseId, {
+          summary: e.summary,
+          status: e.status,
+          ts: e.timestamp || null,
+          outputFile: e.outputFile ?? null
+        });
       }
       if (bg?.backgroundTaskId) {
         bg.outcome = e.summary;
+        bg.outcomeStatus = e.status;
+        bg.outcomeTs = e.timestamp || null;
+        if (e.outputFile)
+          bg.outputFile = e.outputFile;
         bg.error = e.status !== null && e.status !== "completed" && e.status !== "stopped";
       }
       if (sp) {
@@ -654,6 +669,14 @@ function createSessionTree(opts) {
       node.background = true;
       if (t.startTs)
         node.startedTs = t.startTs;
+      if (t.outcomeStatus !== null)
+        node.outcomeStatus = t.outcomeStatus;
+      if (t.outcomeTs)
+        node.outcomeTs = t.outcomeTs;
+      if (t.outputFile)
+        node.outputFile = t.outputFile;
+      if (t.description)
+        node.description = t.description;
     }
     return node;
   }
@@ -3828,12 +3851,29 @@ function modelLabel3(m) {
 
 // apps/server/src/core/selectors.ts
 function runningBackground(tools) {
-  return tools.filter((t) => t.background && !t.outcome && t.startedTs).map((t) => ({
-    toolUseId: t.id,
-    command: t.arg ?? t.name,
-    since: t.startedTs,
-    turnIndex: t.turnIndex
-  })).sort((a, b) => a.since.localeCompare(b.since));
+  return backgroundCommands(tools, { ended: false }).filter((c) => c.state === "running").map((c) => ({ toolUseId: c.toolUseId, command: c.command, since: c.since, turnIndex: c.turnIndex }));
+}
+function backgroundCommands(tools, opts) {
+  return tools.filter((t) => t.background && t.startedTs).map((t) => {
+    const clean = t.outcomeStatus == null || t.outcomeStatus === "completed" || t.outcomeStatus === "stopped";
+    const state = !t.outcome ? opts.ended ? "unknown" : "running" : clean ? "done" : "failed";
+    const since = t.startedTs;
+    const endedAt = t.outcomeTs ?? null;
+    const a = Date.parse(since);
+    const b = endedAt === null ? Number.NaN : Date.parse(endedAt);
+    return {
+      toolUseId: t.id,
+      label: t.description || t.arg || t.name,
+      command: t.arg ?? t.name,
+      state,
+      since,
+      endedAt,
+      ranMs: Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : null,
+      sentence: t.outcome ?? null,
+      outputFile: t.outputFile ?? null,
+      turnIndex: t.turnIndex
+    };
+  }).sort((a, b) => a.since.localeCompare(b.since));
 }
 function tokenUsage(m) {
   const input = m.inputTotal, cacheWrite = m.cacheTotals.created, cacheRead = m.cacheTotals.read, output = m.outputTotal;
@@ -6526,10 +6566,14 @@ function createGraph(container, state, opts = {}) {
   cardsCard.append(cardsHead, cardsHost);
   outRow.append(toolsCard, commitsCard, cardsCard);
   const subsCard = E("div", "card");
-  subsCard.append(E("div", "wtitle", "Subagents · in launch order"), E("div", "wdesc", "Each subagent that ran, in the order it was launched. Click for its full launch prompt."));
+  const subsHead = E("div", "whead");
+  const subsTitleWrap = E("div");
+  const subsTabs = E("div", "cardtabs");
+  subsHead.append(subsTitleWrap, subsTabs);
   const subsHost = E("div", "subgrid");
   subsHost.style.marginTop = ".3rem";
-  subsCard.append(subsHost);
+  const bgHost = E("div", "sublist bgcatalogue");
+  subsCard.append(subsHead, subsHost, bgHost);
   const turnExplorerDiv = E("div");
   const scopeBanner = E("div", "scope-banner");
   scopeBanner.onclick = () => {
@@ -6607,6 +6651,7 @@ function createGraph(container, state, opts = {}) {
   let trace = null;
   let traceRafPending = false;
   let selectedTurn = null, stripOpen = false, activeFilter = "all";
+  let bottomTab = "subs";
   let lastSnap = null;
   let verdicts = new Map;
   const announced = new Set;
@@ -7507,15 +7552,19 @@ function createGraph(container, state, opts = {}) {
         }, Math.min(...deadlines) + 1000);
       }
     }
-    const commands = ended2 ? [] : runningBackground(full.mainTools);
+    const bgAll = ended2 ? [] : backgroundCommands(full.mainTools, { ended: false });
+    const commands = bgAll.filter((c) => c.state === "running");
+    const failedRecent = bgAll.filter((c) => c.state === "failed").slice(-3).reverse();
     const slHead = E("div", "slhead");
     const slTitleWrap = E("div");
     const counted = [
       active.length + (active.length === 1 ? " subagent" : " subagents"),
-      commands.length ? commands.length + (commands.length === 1 ? " command" : " commands") : "",
+      commands.length ? commands.length + (commands.length === 1 ? " command running" : " commands running") : "",
+      failedRecent.length ? bgAll.filter((c) => c.state === "failed").length + " failed" : "",
       finished ? finished + " finished below" : ""
     ].filter(Boolean);
-    slTitleWrap.append(E("div", "wtitle", commands.length ? "Running · live" : "Subagents · live"), E("div", "wdesc slcount", commands.length ? counted.join(" · ") : active.length + " running" + (finished ? " · " + finished + " finished below" : "")));
+    const liveTitleWord = commands.length || active.length ? "Running · live" : failedRecent.length ? "Background commands · live" : "Subagents · live";
+    slTitleWrap.append(E("div", "wtitle", liveTitleWord), E("div", "wdesc slcount", commands.length || failedRecent.length ? counted.join(" · ") : active.length + " running" + (finished ? " · " + finished + " finished below" : "")));
     slHead.append(slTitleWrap);
     const subLiveHost = E("div", "sublist");
     if (typeof subLiveHost.addEventListener === "function") {
@@ -7526,7 +7575,9 @@ function createGraph(container, state, opts = {}) {
     subLiveCard.append(slHead, subLiveHost);
     for (const c of commands)
       subLiveHost.append(bgActiveRow(c));
-    if (commands.length) {
+    for (const c of failedRecent)
+      subLiveHost.append(bgEndedRow(c));
+    if (commands.length || failedRecent.length) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0)
         subLiveHost.scrollTop = liveScrollTop;
@@ -7539,7 +7590,7 @@ function createGraph(container, state, opts = {}) {
         subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    if (commands.length)
+    if (commands.length || failedRecent.length)
       return;
     const empty = E("div", "slempty");
     empty.append(E("div", "slempty-t", "No subagents running"), E("div", "slempty-s", finished ? finished + " finished this session — see the full list below" : "Spawned subagents will appear here live"));
@@ -7549,7 +7600,7 @@ function createGraph(container, state, opts = {}) {
     const r = E("div", "subrow act");
     r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
     const l1 = E("div", "sl1");
-    l1.append(E("span", "sdot"), E("b", null, c.command));
+    l1.append(E("span", "sdot"), E("b", null, c.label));
     l1.append(E("span", "schip", "background"));
     const since = Date.parse(c.since);
     const age = E("span", "sel");
@@ -7561,6 +7612,23 @@ function createGraph(container, state, opts = {}) {
     l1.append(age);
     r.append(l1);
     r.append(E("div", "stype", (c.turnIndex !== null ? "launched in turn " + c.turnIndex + " · " : "") + "still running"));
+    return r;
+  }
+  function bgEndedRow(c) {
+    const r = E("div", "subrow done");
+    r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
+    r.append(E("span", "sdot"));
+    const mid = E("div", "smid");
+    mid.append(E("b", null, c.label));
+    mid.append(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state));
+    if (c.turnIndex !== null)
+      mid.append(E("span", "schip", "turn " + c.turnIndex));
+    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
+    if (exit)
+      mid.append(E("span", "schip", "exit " + exit[1]));
+    r.append(mid);
+    r.append(E("span", "sdur", c.ranMs !== null ? formatDuration(c.ranMs) : "—"));
+    r.title = c.sentence ?? c.command;
     return r;
   }
   function renderTools(s) {
@@ -7945,8 +8013,47 @@ function createGraph(container, state, opts = {}) {
     }
     return c;
   }
+  function renderBottomHead(subs, cmds, showTabs) {
+    subsTitleWrap.replaceChildren();
+    subsTabs.replaceChildren();
+    const failed = cmds.filter((c) => c.state === "failed").length;
+    const onBg = bottomTab === "bg";
+    subsTitleWrap.append(E("div", "wtitle", onBg ? "Background commands · in launch order" : "Subagents · in launch order"), E("div", "wdesc", onBg ? [
+      cmds.length + " launched",
+      cmds.filter((c) => c.state === "running").length + " still running",
+      failed + " failed",
+      cmds.filter((c) => c.state === "unknown").length + " never reported"
+    ].join(" · ") + ". Click one for its command, its output file and what Claude Code said." : "Each subagent that ran, in the order it was launched. Click for its full launch prompt."));
+    if (!showTabs)
+      return;
+    const tab = (id, label, badge) => {
+      const b = E("button", bottomTab === id ? "xbtn on" : "xbtn");
+      b.append(document.createTextNode(label));
+      if (badge)
+        b.append(E("span", "badge b-failed tabbadge", badge));
+      b.onclick = () => {
+        bottomTab = id;
+        render();
+      };
+      return b;
+    };
+    subsTabs.append(tab("subs", "Subagents " + subs, null), tab("bg", "Background commands " + cmds.length, failed ? failed + " failed" : null));
+  }
   function renderSubs(s) {
     subsHost.replaceChildren();
+    bgHost.replaceChildren();
+    const cmds = backgroundCommands(s.mainTools, { ended: ended2 });
+    const showTabs = s.subagents.length > 0 && cmds.length > 0;
+    if (!s.subagents.length && cmds.length)
+      bottomTab = "bg";
+    else if (!showTabs)
+      bottomTab = "subs";
+    renderBottomHead(s.subagents.length, cmds, showTabs);
+    if (bottomTab === "bg") {
+      for (const c of cmds)
+        bgHost.append(bgEndedRow(c));
+      return;
+    }
     if (!s.subagents.length) {
       subsHost.append(E("div", "wdesc", selectedTurn !== null ? "no subagents in this entry" : ended2 ? "no subagents ran in this session" : "no subagents yet"));
       return;
@@ -8219,9 +8326,11 @@ function createGraph(container, state, opts = {}) {
     if (t.background)
       th.querySelector(".deyebrow")?.append(E("span", "dchip bg", "background"));
     dbody.append(th);
-    dbody.append(kpis(kpi2(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended2)), kpi2("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));
+    const bgRan = t.background && t.startedTs && t.outcomeTs ? Date.parse(t.outcomeTs) - Date.parse(t.startedTs) : null;
+    dbody.append(kpis(kpi2(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended2)), t.background ? kpi2("Ran for", bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : "—") : kpi2("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));
     if (t.background) {
       dbody.append(blockD("Outcome", t.outcome ? null : "Claude Code reports a background command only when it ends.", E("pre", null, t.outcome ? outcomeLine(t.outcome) : "still running")));
+      dbody.append(blockD("Output file", t.outputFile ? null : "named only by the notification that ends the command.", E("pre", null, t.outputFile || "not reported yet")));
     }
     dbody.append(block("Operated on", E("pre", null, t.arg || "—")));
     if (t.ctx !== null && t.ctx > 0 && loadToolOutput)

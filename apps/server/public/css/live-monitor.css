@@ -55,6 +55,14 @@
    flex:1 1 0 (basis 0), NOT flex:1: with basis auto the list's own content sets its size and
    inflates the left column past the right when many subagents ran; basis 0 makes the list
    take only the space the row already has (driven by the right column) and scroll. */
+/* The bottom card's command catalogue: the same rows as the live list, but a CATALOGUE — it is
+   not competing for the cockpit's height, so it grows with its content instead of scrolling a
+   three-row window (28 commands is the real maximum, measured over the local corpus). */
+.bgcatalogue {
+  height: auto;
+  overflow: visible;
+  margin-top: 0.5rem;
+}
 .sublivecard.fulllist {
   overflow: hidden;
 }

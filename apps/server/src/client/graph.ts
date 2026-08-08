@@ -28,10 +28,11 @@ import {
   workOrdinal,
 } from '../core/graph-derive.ts';
 import {
+  type BackgroundCommand,
+  backgroundCommands,
   contextFraction,
   contextHogs,
   maxReturnedLen,
-  type RunningCommand,
   runningBackground,
   scopeToTurn,
   skillShare,
@@ -450,15 +451,23 @@ export function createGraph(
   // the answer is "none" — the same thing Subagents and Skills have always done.
   outRow.append(toolsCard, commitsCard, cardsCard);
 
-  // subagents grid — the full per-subagent detail cards, at the bottom.
+  // The bottom catalogue: every subagent the session launched, and every background command.
+  // ONE card with two tabs rather than two stacked cards, because at real scale the second would
+  // be unreachable: measured over the corpus, the sessions carrying both have a p90 of 27 spawns
+  // (max 67), which puts a commands card 1716px — 1.6 screens — below the fold.
+  // The tab bar appears ONLY when both lists have something in them; with one of the two the card
+  // is what it has always been, and a tab strip with an empty side would be noise in ~87% of
+  // sessions. The default tab never moves: it is Subagents, and the closed tab's own label
+  // carries the count AND the failures, so nothing that needs attention is behind an unmarked door.
   const subsCard = E('div', 'card');
-  subsCard.append(
-    E('div', 'wtitle', 'Subagents · in launch order'),
-    E('div', 'wdesc', 'Each subagent that ran, in the order it was launched. Click for its full launch prompt.'),
-  );
+  const subsHead = E('div', 'whead');
+  const subsTitleWrap = E('div');
+  const subsTabs = E('div', 'cardtabs');
+  subsHead.append(subsTitleWrap, subsTabs);
   const subsHost = E('div', 'subgrid');
   subsHost.style.marginTop = '.3rem';
-  subsCard.append(subsHost);
+  const bgHost = E('div', 'sublist bgcatalogue');
+  subsCard.append(subsHead, subsHost, bgHost);
 
   const turnExplorerDiv = E('div'); // full-width, below toprow, hidden until stripOpen
   const scopeBanner = E('div', 'scope-banner');
@@ -559,6 +568,10 @@ export function createGraph(
   let selectedTurn: number | null = null,
     stripOpen = false,
     activeFilter = 'all';
+  // Which catalogue the bottom card is showing. Always opens on the subagents: a default that
+  // moves on its own — say, to the commands because one failed — leaves the reader unable to
+  // predict what they are looking at, which costs more than the click it saves.
+  let bottomTab: 'subs' | 'bg' = 'subs';
   // Last snapshot rendered — the feed (driven by events, not by snapshots) needs the
   // selected turn's state to decide whether it is still live.
   let lastSnap: TreeSnapshot | null = null;
@@ -1847,22 +1860,39 @@ export function createGraph(
     // Background commands are session-wide, like the subagent list on an ended session: one
     // launched in turn 9 is still running while you read turn 12, so scoping them to the turn in
     // view would hide exactly the case this card exists to show.
-    const commands = ended ? [] : runningBackground(full.mainTools);
+    const bgAll = ended ? [] : backgroundCommands(full.mainTools, { ended: false });
+    const commands = bgAll.filter((c) => c.state === 'running');
+    // The failures the card used to swallow: acquiring an outcome removed a command from the only
+    // list there was, so a `failed` row simply disappeared — the count went down and nothing said
+    // why. The three most recent, because this card is the cockpit and the catalogue below is the
+    // catalogue; they are drawn in the neutral ENDED shape, never the green live one.
+    const failedRecent = bgAll
+      .filter((c) => c.state === 'failed')
+      .slice(-3)
+      .reverse();
     const slHead = E('div', 'slhead');
     const slTitleWrap = E('div');
     // The card holds whatever is RUNNING, so it is named for that the moment it holds more than
-    // subagents — a card called "Subagents" listing a shell command is a word that lies.
+    // subagents — a card called "Subagents" listing a shell command is a word that lies. And when
+    // nothing runs but a command has failed, it is named for what it is actually showing.
     const counted = [
       active.length + (active.length === 1 ? ' subagent' : ' subagents'),
-      commands.length ? commands.length + (commands.length === 1 ? ' command' : ' commands') : '',
+      commands.length ? commands.length + (commands.length === 1 ? ' command running' : ' commands running') : '',
+      failedRecent.length ? bgAll.filter((c) => c.state === 'failed').length + ' failed' : '',
       finished ? finished + ' finished below' : '',
     ].filter(Boolean);
+    const liveTitleWord =
+      commands.length || active.length
+        ? 'Running · live'
+        : failedRecent.length
+          ? 'Background commands · live'
+          : 'Subagents · live';
     slTitleWrap.append(
-      E('div', 'wtitle', commands.length ? 'Running · live' : 'Subagents · live'),
+      E('div', 'wtitle', liveTitleWord),
       E(
         'div',
         'wdesc slcount',
-        commands.length
+        commands.length || failedRecent.length
           ? counted.join(' · ')
           : active.length + ' running' + (finished ? ' · ' + finished + ' finished below' : ''),
       ),
@@ -1879,7 +1909,8 @@ export function createGraph(
     // reports nothing at all until it ends, so it is the one the reader can learn least about
     // anywhere else.
     for (const c of commands) subLiveHost.append(bgActiveRow(c));
-    if (commands.length) {
+    for (const c of failedRecent) subLiveHost.append(bgEndedRow(c));
+    if (commands.length || failedRecent.length) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
     }
@@ -1900,9 +1931,9 @@ export function createGraph(
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    // With a command running the card is not empty, so the placeholder would be a card
-    // contradicting its own contents.
-    if (commands.length) return;
+    // With a command running — or a failure listed — the card is not empty, so the placeholder
+    // would be a card contradicting its own contents.
+    if (commands.length || failedRecent.length) return;
     const empty = E('div', 'slempty');
     empty.append(
       E('div', 'slempty-t', 'No subagents running'),
@@ -1925,11 +1956,14 @@ export function createGraph(
    * at all between its launch and its notification. The age is the one thing that moves, and it is
    * computed from the launch instant on the shared ticker rather than stored.
    */
-  function bgActiveRow(c: RunningCommand): HTMLElement {
+  function bgActiveRow(c: BackgroundCommand): HTMLElement {
     const r = E('div', 'subrow act');
     r.onclick = () => openBlock({ kind: 'tool', toolUseId: c.toolUseId });
     const l1 = E('div', 'sl1');
-    l1.append(E('span', 'sdot'), E('b', null, c.command));
+    // The launch's own `description`, which is also the name Claude Code quotes back when it ends
+    // — so the row and the sentence that closes it call the command the same thing. A launch
+    // without one keeps the shell text, which is all it has (4 of 178 locally).
+    l1.append(E('span', 'sdot'), E('b', null, c.label));
     l1.append(E('span', 'schip', 'background'));
     const since = Date.parse(c.since);
     const age = E('span', 'sel');
@@ -1943,6 +1977,33 @@ export function createGraph(
     r.append(
       E('div', 'stype', (c.turnIndex !== null ? 'launched in turn ' + c.turnIndex + ' · ' : '') + 'still running'),
     );
+    return r;
+  }
+
+  /**
+   * A background command that is no longer running, as one line: dot · name · state · turn · what
+   * ended it · how long it really ran.
+   *
+   * The neutral `.subrow` shape, never the green `.act` one, and that is the point: a command that
+   * failed is not active, and painting it in the running colour would be the same lie the card
+   * told when it simply removed the row. The duration is the COMMAND's (launch → notification),
+   * not the launch receipt's, which closes in milliseconds.
+   */
+  function bgEndedRow(c: BackgroundCommand): HTMLElement {
+    const r = E('div', 'subrow done');
+    r.onclick = () => openBlock({ kind: 'tool', toolUseId: c.toolUseId });
+    r.append(E('span', 'sdot'));
+    const mid = E('div', 'smid');
+    mid.append(E('b', null, c.label));
+    mid.append(E('span', `badge b-${c.state === 'done' ? 'done' : c.state}`, c.state));
+    if (c.turnIndex !== null) mid.append(E('span', 'schip', 'turn ' + c.turnIndex));
+    // The exit code lives in Claude Code's sentence and nowhere else, so the chip quotes it from
+    // there rather than inventing a parse of the command's own semantics.
+    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
+    if (exit) mid.append(E('span', 'schip', 'exit ' + exit[1]));
+    r.append(mid);
+    r.append(E('span', 'sdur', c.ranMs !== null ? formatDuration(c.ranMs) : '—'));
+    r.title = c.sentence ?? c.command;
     return r;
   }
 
@@ -2527,8 +2588,67 @@ export function createGraph(
     return c;
   }
 
+  /**
+   * The bottom card's header: what it is showing, and — only when there is something on the other
+   * side — the two tabs. Rebuilt per render, like every other header here.
+   */
+  function renderBottomHead(subs: number, cmds: BackgroundCommand[], showTabs: boolean): void {
+    subsTitleWrap.replaceChildren();
+    subsTabs.replaceChildren();
+    const failed = cmds.filter((c) => c.state === 'failed').length;
+    const onBg = bottomTab === 'bg';
+    subsTitleWrap.append(
+      E('div', 'wtitle', onBg ? 'Background commands · in launch order' : 'Subagents · in launch order'),
+      E(
+        'div',
+        'wdesc',
+        onBg
+          ? [
+              cmds.length + ' launched',
+              cmds.filter((c) => c.state === 'running').length + ' still running',
+              failed + ' failed',
+              cmds.filter((c) => c.state === 'unknown').length + ' never reported',
+            ].join(' · ') + '. Click one for its command, its output file and what Claude Code said.'
+          : 'Each subagent that ran, in the order it was launched. Click for its full launch prompt.',
+      ),
+    );
+    if (!showTabs) return;
+    const tab = (id: 'subs' | 'bg', label: string, badge: string | null) => {
+      const b = E('button', bottomTab === id ? 'xbtn on' : 'xbtn');
+      b.append(document.createTextNode(label));
+      // The whole reason tabs are safe here: the side you are NOT looking at states its failures
+      // on its own label. Without it this design would hide exactly what it was built to reveal.
+      if (badge) b.append(E('span', 'badge b-failed tabbadge', badge));
+      b.onclick = () => {
+        bottomTab = id;
+        render();
+      };
+      return b;
+    };
+    subsTabs.append(
+      tab('subs', 'Subagents ' + subs, null),
+      tab('bg', 'Background commands ' + cmds.length, failed ? failed + ' failed' : null),
+    );
+  }
+
   function renderSubs(s: TreeSnapshot): void {
     subsHost.replaceChildren();
+    bgHost.replaceChildren();
+    // Scoped exactly like the subagent grid it shares a card with: `s` is the turn's snapshot when
+    // a turn is selected, the session's otherwise. The LIVE card is the one that deliberately
+    // reads the whole session instead — a command launched in turn 9 is still running while you
+    // read turn 12, and that is the case the cockpit exists to show.
+    const cmds = backgroundCommands(s.mainTools, { ended });
+    const showTabs = s.subagents.length > 0 && cmds.length > 0;
+    // With only commands the card IS the commands: a tab bar with an empty Subagents side would
+    // be a control that does nothing.
+    if (!s.subagents.length && cmds.length) bottomTab = 'bg';
+    else if (!showTabs) bottomTab = 'subs';
+    renderBottomHead(s.subagents.length, cmds, showTabs);
+    if (bottomTab === 'bg') {
+      for (const c of cmds) bgHost.append(bgEndedRow(c));
+      return;
+    }
     // Empty scope: say so (the other widgets do — "no skills yet"), never a bare title.
     // Tense follows the session: an ended one can't grow a subagent anymore.
     if (!s.subagents.length) {
@@ -2888,6 +3008,9 @@ export function createGraph(
       error?: true;
       background?: true;
       outcome?: string;
+      outcomeTs?: string;
+      outputFile?: string;
+      startedTs?: string;
     },
     owner: string | null,
     back?: BackEntry,
@@ -2913,12 +3036,18 @@ export function createGraph(
     // A tool opened from the live feed can still be RUNNING: toolDuration's null case says
     // "running…", the same wording the feed row and the cards use — never a bare '—', which
     // reads as "unknown" when the truth is "not finished".
+    // For a background command the second tile is its REAL duration — launch instant to the
+    // notification that ended it. `Output size` would be the receipt's, and a background launch's
+    // receipt carries an empty stdout by construction, so that tile could only ever read '—'.
+    const bgRan = t.background && t.startedTs && t.outcomeTs ? Date.parse(t.outcomeTs) - Date.parse(t.startedTs) : null;
     dbody.append(
       kpis(
         // A background launch's ms is the receipt, not the command's life: naming the tile
         // `Duration` printed 99ms for a command that ran eight seconds and exited 7.
         kpi(t.background ? 'Launch' : 'Duration', toolDuration(t.ms, ended)),
-        kpi('Output size', t.ctx ? kc(t.ctx) : '—', t.ctx ? 'chars' : null),
+        t.background
+          ? kpi('Ran for', bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : '—')
+          : kpi('Output size', t.ctx ? kc(t.ctx) : '—', t.ctx ? 'chars' : null),
       ),
     );
     // The drawer said FAILED and then showed the launch receipt — «Command running in background…
@@ -2931,6 +3060,16 @@ export function createGraph(
           'Outcome',
           t.outcome ? null : 'Claude Code reports a background command only when it ends.',
           E('pre', null, t.outcome ? outcomeLine(t.outcome) : 'still running'),
+        ),
+      );
+      // Where the command's output went. Only the notification names it — the launch receipt's
+      // stdout is empty — so one still running has none to show, and saying so is information
+      // rather than an empty block.
+      dbody.append(
+        blockD(
+          'Output file',
+          t.outputFile ? null : 'named only by the notification that ends the command.',
+          E('pre', null, t.outputFile || 'not reported yet'),
         ),
       );
     }

@@ -33,14 +33,78 @@ export interface RunningCommand {
  * nothing said so.
  */
 export function runningBackground(tools: readonly ToolNode[]): RunningCommand[] {
+  return backgroundCommands(tools, { ended: false })
+    .filter((c) => c.state === 'running')
+    .map((c) => ({ toolUseId: c.toolUseId, command: c.command, since: c.since, turnIndex: c.turnIndex }));
+}
+
+/**
+ * What became of a background command. `running` and `unknown` are the SAME on-disk state — no
+ * notification ever came — told apart only by whether the session can still produce one: while it
+ * lives, silence means the command is working; once it is over, silence is all seedeep will ever
+ * have, and claiming "running" then would be a number that counts up forever.
+ */
+export type BackgroundState = 'running' | 'done' | 'failed' | 'unknown';
+
+/** One background command, with everything the session learned about it. */
+export interface BackgroundCommand {
+  toolUseId: string;
+  /** The launch's own `description` — the name Claude Code quotes back in the notification —
+   * falling back to the command text, which is all a launch without one ever gets. */
+  label: string;
+  /** The shell command as it was launched. */
+  command: string;
+  state: BackgroundState;
+  /** The launch instant. The age of a running command is computed by the surface, never sent. */
+  since: string;
+  /** When the notification landed; null while nothing has said anything. */
+  endedAt: string | null;
+  /** The command's OWN duration: launch → notification. Null while it runs, and null forever for
+   * one that was never reported — an unfinished measurement is not a duration. */
+  ranMs: number | null;
+  /** Claude Code's sentence, verbatim: the only place the exit code is ever written. */
+  sentence: string | null;
+  outputFile: string | null;
+  turnIndex: number | null;
+}
+
+/**
+ * Every background command the session launched, in launch order, each with its fate.
+ *
+ * The catalogue the Subagents grid has always had and commands never did: `runningBackground` is
+ * this list with the ended ones dropped, which is why a command that FAILED used to vanish from
+ * every surface but the Trace — acquiring an outcome removed it from the only list that existed.
+ *
+ * `ended` is the session's state, not the command's: it decides whether silence reads as `running`
+ * or as `unknown`, the same rule a subagent whose end was never written already follows.
+ */
+export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: boolean }): BackgroundCommand[] {
   return tools
-    .filter((t) => t.background && !t.outcome && t.startedTs)
-    .map((t) => ({
-      toolUseId: t.id,
-      command: t.arg ?? t.name,
-      since: t.startedTs!,
-      turnIndex: t.turnIndex,
-    }))
+    .filter((t) => t.background && t.startedTs)
+    .map((t) => {
+      // `== null` covers BOTH absences, and the difference is not academic: a notification can
+      // carry a summary and no `<status>` at all, and the node then has no field rather than a
+      // null one. Testing against `null` alone read that as "not completed" and painted a clean
+      // command failed — the same rule the reducer's `error` has always used, stated once here.
+      const clean = t.outcomeStatus == null || t.outcomeStatus === 'completed' || t.outcomeStatus === 'stopped';
+      const state: BackgroundState = !t.outcome ? (opts.ended ? 'unknown' : 'running') : clean ? 'done' : 'failed';
+      const since = t.startedTs!;
+      const endedAt = t.outcomeTs ?? null;
+      const a = Date.parse(since);
+      const b = endedAt === null ? Number.NaN : Date.parse(endedAt);
+      return {
+        toolUseId: t.id,
+        label: t.description || t.arg || t.name,
+        command: t.arg ?? t.name,
+        state,
+        since,
+        endedAt,
+        ranMs: Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : null,
+        sentence: t.outcome ?? null,
+        outputFile: t.outputFile ?? null,
+        turnIndex: t.turnIndex,
+      };
+    })
     .sort((a, b) => a.since.localeCompare(b.since));
 }
 

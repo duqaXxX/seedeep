@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { nowLine } from '../src/core/activity-line.ts';
 import { windowFor } from '../src/core/context-windows.ts';
 import { delegatedWork } from '../src/core/graph-derive.ts';
-import { changedFiles, runningBackground, scopeToTurn, tokenUsage } from '../src/core/selectors.ts';
+import { backgroundCommands, changedFiles, runningBackground, scopeToTurn, tokenUsage } from '../src/core/selectors.ts';
 import { createSessionTree } from '../src/core/session-tree.ts';
 import { createSpanStore } from '../src/core/span-store.ts';
 import { groupTurnSpans } from '../src/core/trace-group.ts';
@@ -1395,6 +1395,94 @@ test('golden transcript: a killed background command reports being stopped', () 
   const row = snap.mainTools.find((t) => t.id === 'toolu_b1')!;
   assert.equal(row.error, true, 'stopped is not a clean end');
   assert.equal(row.outcome, summary);
+});
+
+// The catalogue the card is built on. Asserted from raw lines and not from hand-built nodes,
+// because the bug it exists to prevent lives in the PARSER and the reducer: a failed command used
+// to be dropped from every list by the very act of acquiring an outcome, and the two facts a row
+// needs — the notification's status and the file it names — were not read at all.
+test('golden transcript: the catalogue holds every background command, with its fate', () => {
+  const done = 'Background command "Build the macOS bundle" completed (exit code 0)';
+  const snap = runLines([
+    typed('u1', 'do the three things'),
+    bashLaunch('a1', 'toolu_b1', 'Start seedeep server'),
+    backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc'),
+    bashLaunch('a2', 'toolu_b2', 'Build the macOS bundle'),
+    backgroundLaunchReceipt('u3', 'toolu_b2', 'bdfgju7ns'),
+    bashLaunch('a3', 'toolu_b3', 'Tail the transcript'),
+    backgroundLaunchReceipt('u4', 'toolu_b3', 'b68j7igzh'),
+    backgroundNotification('toolu_b1', 'b0cm7fbxc', 'failed', FAILED_SUMMARY),
+    backgroundNotification('toolu_b2', 'bdfgju7ns', 'completed', done),
+  ]);
+
+  const live = backgroundCommands(snap.mainTools, { ended: false });
+  assert.deepEqual(
+    live.map((c) => [c.label, c.state]),
+    [
+      ['Start seedeep server', 'failed'],
+      ['Build the macOS bundle', 'done'],
+      ['Tail the transcript', 'running'],
+    ],
+    'all three, in launch order, each with what became of it — the failed one INCLUDED',
+  );
+  // The one the old list could still show is the only one it did show.
+  assert.deepEqual(
+    runningBackground(snap.mainTools).map((c) => c.toolUseId),
+    ['toolu_b3'],
+    'the running-only derivation is unchanged — it is this list, filtered',
+  );
+
+  const failedRow = live[0]!;
+  assert.equal(failedRow.sentence, FAILED_SUMMARY, "Claude Code's words, verbatim");
+  // Masked on the way through, like every other displayed path: the real one sits under the
+  // scratchpad root, whose name carries the uid and the slug-encoded home.
+  assert.equal(failedRow.outputFile, '~/tasks/b0cm7fbxc.output', 'the notification names the output file');
+  // The launch receipt closes in ~70ms; the command ran for 40 minutes. A row reporting the
+  // receipt's duration would say a ten-minute timeout took a tenth of a second.
+  assert.equal(failedRow.ranMs, 40 * 60_000 + 45_845, 'the duration is launch → notification, not the receipt');
+  assert.equal(live[2]!.ranMs, null, 'nothing has ended it, so it has no duration to report');
+  assert.equal(live[2]!.outputFile, null, 'and no output file — only a notification names one');
+});
+
+// `running` and `unknown` are the same silence. What tells them apart is whether the session can
+// still break it — the rule a subagent whose end never came already follows.
+test('golden transcript: on an ended session an unreported command is unknown, not running', () => {
+  const lines = [
+    typed('u1', 'tail it'),
+    bashLaunch('a1', 'toolu_b1', 'Tail the transcript'),
+    backgroundLaunchReceipt('u2', 'toolu_b1', 'b68j7igzh'),
+  ];
+  const snap = runLines(lines);
+  assert.equal(backgroundCommands(snap.mainTools, { ended: false })[0]!.state, 'running');
+  assert.equal(backgroundCommands(snap.mainTools, { ended: true })[0]!.state, 'unknown');
+});
+
+// Claude Code can write the end BEFORE the launch (its lines are appended when a block closes).
+// The parked outcome must carry everything the notification stated, not just its sentence.
+test('golden transcript: an outcome written before its launch still brings status and output file', () => {
+  const snap = runLines([
+    typed('u1', 'start it'),
+    backgroundNotification('toolu_b1', 'b0cm7fbxc', 'failed', FAILED_SUMMARY),
+    bashLaunch('a1', 'toolu_b1', 'Start seedeep server'),
+    backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc'),
+  ]);
+  const row = backgroundCommands(snap.mainTools, { ended: false })[0]!;
+  assert.equal(row.state, 'failed', 'the parked status classifies it, not the English sentence');
+  assert.equal(row.outputFile, '~/tasks/b0cm7fbxc.output');
+  assert.equal(row.sentence, FAILED_SUMMARY);
+});
+
+// A launch with no `description` is not a row with no name: the command itself is the fallback,
+// which is exactly what Claude Code does in its own sentence.
+test('golden transcript: a background launch without a description is named by its command', () => {
+  const snap = runLines([
+    typed('u1', 'run it'),
+    toolUse('a1', 'toolu_b1', 'Bash', { command: 'bun run build:client', run_in_background: true }),
+    backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc'),
+  ]);
+  const row = backgroundCommands(snap.mainTools, { ended: false })[0]!;
+  assert.equal(row.label, 'bun run build:client');
+  assert.equal(row.command, 'bun run build:client');
 });
 
 // The routing must key on the RECEIPT, not on the notification's id shape. A `Monitor` call gets

@@ -1133,7 +1133,7 @@ test('a running background command is stated on the banner and in the live card'
   // breadth it does not have.
   const card = findByClass(container, 'sublivecard')[0];
   assert.equal(textOf(findByClass(card, 'wtitle')[0]), 'Running · live');
-  assert.match(textOf(findByClass(container, 'slcount')[0]), /0 subagents · 1 command/);
+  assert.match(textOf(findByClass(container, 'slcount')[0]), /0 subagents · 1 command running/);
   const row = findByClass(container, 'subrow')[0];
   assert.match(textOf(row), /bun run dev --watch/);
   assert.match(textOf(row), /still running/);
@@ -1228,6 +1228,126 @@ test('a background command that reported its fate is no longer running', () => {
   assert.equal(findByClass(container, 'sbbg').length, 0);
   const card = findByClass(container, 'sublivecard')[0];
   assert.equal(textOf(findByClass(card, 'wtitle')[0]), 'Subagents · live', 'the card takes its own name back');
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+// --- the bottom catalogue: one card, two tabs -------------------------------------------------
+// The rules Davide approved, pinned here because each of them is a product decision and not a
+// detail: the tab bar exists only when both lists have something in them, the default never moves,
+// and the closed tab states its failures. Drop the last one and this design hides exactly what it
+// was built to reveal.
+
+/** A background command node as the reducer projects one, with its fate already known. */
+const bgTool = (id: string, label: string, status: string | null, sentence: string | null) => ({
+  id,
+  name: 'Bash',
+  ms: 70,
+  arg: 'bun run something',
+  ctx: 0,
+  turnIndex: 1,
+  background: true as const,
+  startedTs: '2026-07-14T10:00:00.000Z',
+  description: label,
+  ...(sentence ? { outcome: sentence, outcomeTs: '2026-07-14T10:10:00.000Z' } : {}),
+  ...(status ? { outcomeStatus: status } : {}),
+  ...(status && status !== 'completed' && status !== 'stopped' ? { error: true as const } : {}),
+});
+
+const bottomCard = (container: any) => findByClass(container, 'card').at(-1);
+
+test('bottom card: with subagents AND commands it grows two tabs, opening on the subagents', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTools();
+  snap.mainTools = [
+    ...snap.mainTools,
+    bgTool('toolu_b1', 'Run the capture', 'failed', 'Background command "Run the capture" failed with exit code 144'),
+    bgTool(
+      'toolu_b2',
+      'Build the bundle',
+      'completed',
+      'Background command "Build the bundle" completed (exit code 0)',
+    ),
+  ];
+  const view = createGraph(container, drivableState(snap));
+
+  const card = bottomCard(container);
+  const tabs = findByClass(card, 'xbtn');
+  assert.equal(tabs.length, 2, 'both lists have something, so the switch exists');
+  assert.match(textOf(tabs[0]), /^Subagents 1/);
+  assert.match(textOf(tabs[1]), /^Background commands 2/);
+  // The whole safety of the design: the side you are not looking at says what is wrong on it.
+  assert.match(textOf(tabs[1]), /1 failed/, 'the closed tab carries its failures');
+  assert.equal(textOf(findByClass(card, 'wtitle')[0]), 'Subagents · in launch order', 'the default never moves');
+  assert.equal(findByClass(card, 'subcard').length, 1, 'and it is the subagents that are drawn');
+  assert.equal(findByClass(card, 'subrow').length, 0, 'no command row is built while its tab is closed');
+
+  tabs[1].onclick();
+  const after = bottomCard(container);
+  assert.equal(textOf(findByClass(after, 'wtitle')[0]), 'Background commands · in launch order');
+  assert.equal(findByClass(after, 'subrow').length, 2, 'both commands, the failed one included');
+  assert.equal(findByClass(after, 'subcard').length, 0, 'and the subagents leave the card');
+  assert.equal(findByClass(after, 'b-failed').length, 2, 'the row badge, and the badge on the tab');
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+test('bottom card: with only one of the two there is no tab bar', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+
+  // Subagents only — the card is exactly what it has always been.
+  const onlySubs = snapWithTools();
+  const v1 = createGraph(container, drivableState(onlySubs));
+  assert.equal(
+    findByClass(bottomCard(container), 'xbtn').length,
+    0,
+    'a switch with an empty side is a control that does nothing',
+  );
+  assert.equal(textOf(findByClass(bottomCard(container), 'wtitle')[0]), 'Subagents · in launch order');
+  v1.destroy();
+
+  // Commands only — the card IS the commands, with no tab to press.
+  const container2 = g.document.createElement();
+  const onlyCmds = snapWithTools();
+  onlyCmds.subagents = [];
+  onlyCmds.mainTools = [bgTool('toolu_b1', 'Tail the transcript', null, null)];
+  const v2 = createGraph(container2, drivableState(onlyCmds));
+  const card = bottomCard(container2);
+  assert.equal(findByClass(card, 'xbtn').length, 0);
+  assert.equal(textOf(findByClass(card, 'wtitle')[0]), 'Background commands · in launch order');
+  assert.equal(findByClass(card, 'subrow').length, 1);
+  v2.destroy();
+
+  g.document = prevDoc;
+});
+
+test('live card: a failed command stays on the cockpit instead of vanishing with its count', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTools();
+  snap.subagents = [];
+  snap.mainTools = [
+    bgTool('toolu_b1', 'Run the capture', 'failed', 'Background command "Run the capture" failed with exit code 144'),
+  ];
+  const view = createGraph(container, drivableState(snap));
+
+  const card = findByClass(container, 'sublivecard')[0];
+  // It is NOT running, so it must not wear the running colour — and it must still be there.
+  const rows = findByClass(card, 'subrow');
+  assert.equal(rows.length, 1, 'the failure is on the cockpit');
+  assert.equal(rows[0].className.includes('act'), false, 'in the neutral ended shape, never the live green one');
+  assert.match(textOf(findByClass(card, 'slcount')[0]), /1 failed/, 'and the count says why');
+  assert.equal(findByClass(card, 'slempty').length, 0, 'a card showing a row is not an empty card');
 
   view.destroy();
   g.document = prevDoc;
@@ -1500,7 +1620,10 @@ test('tool drawer: a background command states its fate, and its ms is called a 
   assert.equal(drawerOf(container).kpi('Launch'), '99ms');
   // The fate comes FIRST, above the command: it is the news, and the receipt below it is not.
   const labels = findByClass(container, 'blabel').map((n: any) => n.textContent);
-  assert.deepEqual(labels, ['Outcome', 'Operated on']); // no output block: this view has no loader
+  // `Output file` follows the fate: it is where the command's output went, and this node carries
+  // none — the block says so rather than being absent, since "not reported yet" IS the state of a
+  // command whose notification named no file.
+  assert.deepEqual(labels, ['Outcome', 'Output file', 'Operated on']); // no output block: this view has no loader
   // Claude Code's words, in the order every other surface uses — fate first.
   assert.match(textOf(findByClass(container, 'block')[0]), /failed with exit code 7 · Background command/);
 

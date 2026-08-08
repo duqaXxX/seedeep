@@ -312,6 +312,15 @@ export function parseLine(
             if (typeof md === 'string' && md.length > 0) ev.spawnModel = md;
             if (typeof ds === 'string' && ds.length > 0) ev.description = anon(ds, 200);
           }
+          // A Bash carries one too, and for a BACKGROUND launch it is the only human-readable name
+          // the command ever gets: Claude Code quotes it back in the notification that ends it
+          // (`Background command "<description>" failed …`), so a list keyed on the shell one-liner
+          // would name the same thing two different ways. Measured over the local corpus: 174 of
+          // 178 background launches carry it.
+          if (block.name === 'Bash' && block.input && typeof block.input === 'object') {
+            const ds = block.input.description;
+            if (typeof ds === 'string' && ds.length > 0) ev.description = anon(ds, 200);
+          }
           const arg = argOf(block.input, block.name);
           if (arg !== undefined) ev.arg = arg;
           const ref = taskRefOf(block.input, block.name);
@@ -504,6 +513,11 @@ export function parseLine(
       // eleven days before the end-routing rework, and on a corpus half of which Claude Code has
       // since deleted (it drops transcripts at 30 days) — so it cannot be compared to this one.
       const summary = tag(d.content, 'summary');
+      // The file the command's output was written to — present on every terminal notification and
+      // nowhere else (the launch receipt carries an EMPTY stdout, which is why a background
+      // command has no output to show today). Anonymized like every other displayed path: it
+      // lives under the scratchpad root, whose name carries the uid and the slug-encoded home.
+      const outputFile = tag(d.content, 'output-file');
       out.push({
         type: 'agent-end',
         ...base,
@@ -513,6 +527,7 @@ export function parseLine(
         // Anonymized: a summary names the command's `description`, and when the launch had none
         // Claude Code falls back to quoting the command itself, paths included.
         summary: summary === null ? null : anon(summary, 300),
+        outputFile: outputFile === null ? null : anon(outputFile, 300),
       });
     }
   }

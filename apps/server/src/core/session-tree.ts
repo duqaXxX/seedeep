@@ -25,6 +25,19 @@ export interface ToolNode {
   // its notification has arrived — the tool_result was just a launch receipt, so until then this
   // row has no outcome to state. `error` is set alongside for anything but a clean exit.
   outcome?: string;
+  /** The notification's raw `<status>` (`completed` | `failed` | `killed` | `stopped`). Carried
+   * beside the sentence so a surface can classify the fate without parsing English — the sentence
+   * is for the reader, this is for the code. */
+  outcomeStatus?: string | null;
+  /** When the notification arrived. The command's REAL duration is `outcomeTs - startedTs`: `ms`
+   * measures the launch receipt, which closes in milliseconds and says nothing about the command. */
+  outcomeTs?: string;
+  /** Where Claude Code wrote the command's output. Only its notification names it, so a command
+   * still running has none — and neither has one whose notification never came. */
+  outputFile?: string;
+  /** The launch's own `description` — the name Claude Code quotes back in the notification, and
+   * the only human-readable label a background command has. Absent when the launch carried none. */
+  description?: string;
   /** This call LAUNCHED a background command. Present on the launch, whatever became of it —
    * `outcome` is what says it ended, so `background && !outcome` is one still running. */
   background?: true;
@@ -403,12 +416,15 @@ interface ToolAcc {
   error: boolean; // the tool_result came back a real failure (refusals excluded)
   backgroundTaskId: string | null; // set by the launch receipt of a background command (Bash only)
   outcome: string | null; // a background command's fate, in Claude Code's own words
+  outcomeStatus: string | null; // the same fate as a status code, so nothing has to parse English
+  outcomeTs: string | null; // when the notification landed — with startTs, the command's real duration
+  outputFile: string | null; // where the command's output went; only the notification names it
   launchPrompt: string | null; // Agent spawn only
   spawnModel: string | null; // Agent spawn only — model fallback (see snapshot)
   returned: SubagentReturned | null; // Agent result only
   taskRef: TaskRef | null; // Task-family tools only — resolved into a label (see toolLabel)
   subagentType: string | null; // Agent spawn only — the type it was launched as
-  description: string | null; // Agent spawn only — the human intent of the launch
+  description: string | null; // an Agent spawn's intent, or a Bash's own name for what it runs
   turnIndex: number | null; // which turn this tool belongs to (null for subagent tools)
 }
 
@@ -588,7 +604,10 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
   const cacheTotals: CacheTotals = { read: 0, created: 0 };
   // Outcomes of background commands whose launching call is not on the ledger yet — Claude Code can
   // write the end before the launch (see `agent-end`). Keyed by tool-use id; drained by the receipt.
-  const pendingBgOutcome = new Map<string, { summary: string | null; status: string | null }>();
+  const pendingBgOutcome = new Map<
+    string,
+    { summary: string | null; status: string | null; ts: string | null; outputFile: string | null }
+  >();
   const regions = new Set<string>();
   const skillTurns = new Map<string, number>(); // skill name → assistant lines it drove
   const skillInvokes = new Map<string, number>(); // skill name → explicit Skill tool calls
@@ -1044,6 +1063,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         error: false,
         backgroundTaskId: null,
         outcome: null,
+        outcomeStatus: null,
+        outcomeTs: null,
+        outputFile: null,
         launchPrompt: e.launchPrompt ?? null,
         spawnModel: e.spawnModel ?? null,
         returned: null,
@@ -1120,6 +1142,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           t.backgroundTaskId = e.background.taskId;
           if (parked) {
             t.outcome = parked.summary;
+            t.outcomeStatus = parked.status;
+            t.outcomeTs = parked.ts;
+            t.outputFile = parked.outputFile;
             t.error = parked.status !== null && parked.status !== 'completed' && parked.status !== 'stopped';
           }
         }
@@ -1202,13 +1227,21 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       // launch at 1857). Read in file order the outcome had nothing to attach to, and the command
       // showed as running for the rest of the session. Parked, it is applied by the receipt.
       if (!sp && e.toolUseId && !bg?.backgroundTaskId) {
-        pendingBgOutcome.set(e.toolUseId, { summary: e.summary, status: e.status });
+        pendingBgOutcome.set(e.toolUseId, {
+          summary: e.summary,
+          status: e.status,
+          ts: e.timestamp || null,
+          outputFile: e.outputFile ?? null,
+        });
       }
       if (bg?.backgroundTaskId) {
         // Verbatim, per the product decision: seedeep reports what Claude Code reported. When CC
         // calls a deliberate `pkill` a failure (exit 144 — 28 of 29 real failures), the two
         // surfaces agree rather than seedeep inventing a semantics the logs do not carry.
         bg.outcome = e.summary;
+        bg.outcomeStatus = e.status;
+        bg.outcomeTs = e.timestamp || null;
+        if (e.outputFile) bg.outputFile = e.outputFile;
         // Last-wins, never a latch: `remove` repeats `enqueue`'s payload, and a status can only
         // be superseded by a later one about the same command.
         bg.error = e.status !== null && e.status !== 'completed' && e.status !== 'stopped';
@@ -1344,6 +1377,12 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     if (t.backgroundTaskId) {
       node.background = true;
       if (t.startTs) node.startedTs = t.startTs;
+      // Only a background launch carries the rest: they exist to answer "what became of it, how
+      // long did it really take, and where is what it printed" — questions no other tool has.
+      if (t.outcomeStatus !== null) node.outcomeStatus = t.outcomeStatus;
+      if (t.outcomeTs) node.outcomeTs = t.outcomeTs;
+      if (t.outputFile) node.outputFile = t.outputFile;
+      if (t.description) node.description = t.description;
     }
     return node;
   }

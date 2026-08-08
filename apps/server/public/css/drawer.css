@@ -17,6 +17,23 @@
   white-space: nowrap;
   transition: 0.15s;
 }
+/* The two catalogues share one card, so their switch lives in its header. The ON tab is lit the
+   same way a focused control is, and never by colour alone — it also carries the card's title. */
+.cardtabs {
+  display: flex;
+  gap: 0.4rem;
+  flex: none;
+}
+.xbtn.on {
+  color: var(--hi);
+  border-color: var(--agent);
+  background: var(--panel);
+}
+/* The failure count on the tab you are NOT looking at: the whole reason hiding one list behind a
+   tab is safe. It must stay legible on the unlit tab, so it is the badge, not the label. */
+.tabbadge {
+  margin-left: 0.4rem;
+}
 .xbtn:hover {
   color: var(--hi);
   border-color: var(--agent);

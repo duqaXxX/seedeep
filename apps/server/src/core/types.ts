@@ -564,6 +564,11 @@ export interface AgentEndEvent extends EventBase {
   // the only human-readable statement of what happened: the exit code lives nowhere else in
   // the transcript. Anonymized, since a summary sometimes quotes the command verbatim.
   summary: string | null;
+  // <output-file> — where the command's output was written. Only the notification carries it: a
+  // background launch's receipt has an empty stdout, so this is the ONLY pointer to what the
+  // command actually printed. Anonymized (it sits under the scratchpad root, which encodes the
+  // uid and the home). Null on a notification that carries none — a subagent's, for one.
+  outputFile?: string | null;
 }
 
 export interface SubagentOutputEvent extends EventBase {
