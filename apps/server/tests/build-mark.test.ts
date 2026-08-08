@@ -4,9 +4,9 @@ import {
   DEV_TITLE,
   MARK_CLASS,
   type MarkHost,
-  VERSION_CLASS,
   markDevBuild,
   markVersion,
+  VERSION_CLASS,
 } from '../src/client/build-mark.ts';
 import { fakeDoc, findByClass, textOf } from './fake-dom.ts';
 
