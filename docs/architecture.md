@@ -1011,15 +1011,23 @@ cannot flicker. Another `<synthetic>` line does not clear it (an auto-continue w
 matters: 8 of those 47 were a child's, 7 of them rate limits a fan-out hit while the main thread
 still looked healthy.
 
-**`background` — what the session is still waiting on that is not the turn.** Every command it
-launched in the background and has not been told the fate of: the launch call's id, the command, and
-the instant it started (the age is the client's to compute, like `now.ageFrom`). One derivation
-(`runningBackground`, `core/selectors.ts`) feeds both this field and the browser's own cockpit, so
-the two surfaces cannot disagree about what is still running. **Open means launched and without an
-`outcome`** — the launch receipt closes in milliseconds, so nothing about the call itself can answer
-it. What ends one is its notification; 9 of 107 real launches (8.4%) never sent one, so an entry can
-outlive its command for as long as the session lives, which is deliberate: a timeout would be a
-number seedeep invented to declare something finished that nothing declared finished.
+**`background` — what the session is still waiting on that is not the turn, and what went wrong.**
+Every command it launched in the background and has not been told the fate of, PLUS the last three
+that **failed**: the launch call's id, the name the launch gave it, the instant it started (the age
+is the client's to compute, like `now.ageFrom`), its `state` — only ever `running` or `failed` — and
+`ranMs`, how long the command itself ran, null while it still is. One derivation
+(`backgroundCommands`, `core/selectors.ts`) feeds this field and the browser's cockpit, with the
+same three-failure rule, so the two surfaces cannot disagree about what is running nor about what
+broke. **Open means launched and without an `outcome`** — the launch receipt closes in milliseconds,
+so nothing about the call itself can answer it. What ends one is its notification; 9 of 107 real
+launches (8.4%) never sent one, so an entry can outlive its command for as long as the session
+lives, which is deliberate: a timeout would be a number seedeep invented to declare something
+finished that nothing declared finished.
+
+A command that finished CLEANLY is never here: it is not news, and a field carrying it would be a
+log rather than a signal — the whole session's commands are the browser's catalogue, not the poll's.
+Until 2026-08-08 the failures were not here either, and that was the bug: a command that failed
+LEFT this array the instant it failed, so the tray's list simply got shorter and nothing said why.
 
 The subagent list used to be gated behind `?sessionId=`, to keep the polled array bounded.
 It is not any more: the **tray draws the agents themselves and polls only the array form**,

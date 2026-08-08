@@ -34,6 +34,14 @@ nothing has to classify a fate by parsing English), its timestamp (the command's
 its `<output-file>`. The launch's own `description` is read too — for a background command it is
 the only human-readable name it ever gets, and it is what Claude Code quotes back when it ends.
 
+**The tray was losing the same failures**, and for the same reason: the digest's `background` array
+held only the running commands, so one that failed left it the instant it failed and the list just
+got shorter. It now carries the running ones plus the last three failures, each with its `state` and
+how long it ran — the same rule as the browser's cockpit, from the same derivation. On the row a
+failed command goes red and dimmed, and the age on its right is how long it RAN, never a stopwatch
+still counting on something that is dead. A command that finished cleanly is still never sent: it is
+not news, and the poll is a signal, not a log.
+
 
 ### A security policy, so a finding arrives privately rather than as a public issue (2026-08-08)
 

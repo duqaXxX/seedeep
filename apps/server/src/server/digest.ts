@@ -1,7 +1,7 @@
 import { type NowKind, nowLine } from '../core/activity-line.ts';
 import { windowFor } from '../core/context-windows.ts';
 import { delegatedWork, returnedWork, turnIsWorking } from '../core/graph-derive.ts';
-import { runningBackground } from '../core/selectors.ts';
+import { type BackgroundCommand, backgroundCommands } from '../core/selectors.ts';
 import { type AgentNode, hasStarted, type TreeSnapshot, type TurnNode } from '../core/session-tree.ts';
 import { stripMarkdown } from '../core/tree-format.ts';
 import { isLive, isModelBusy, pendingInput, type SessionRecord } from '../core/types.ts';
@@ -73,10 +73,18 @@ export interface DigestTurn {
 export interface DigestCommand {
   /** The launch call — a client that can open a drawer opens THAT one. */
   toolUseId: string;
+  /** What the launch called it (its `description`), which is also the name Claude Code quotes back
+   * when it ends — so the tray, the browser and the terminal all say the same thing. */
   command: string;
   /** Epoch ms of the launch. The age is the client's to compute; an age sent over a poll would
    * expire in flight, exactly like `now.ageFrom`. */
   since: number;
+  /** `running`, or `failed` for one of the last three failures. Never `done`: a command that
+   * finished cleanly is not news, and a list that carried it would be a log, not a signal. */
+  state: 'running' | 'failed';
+  /** How long the COMMAND ran (launch → its notification). Null while it is still running — the
+   * client ticks the age from `since` instead, which is the number that is still moving. */
+  ranMs: number | null;
 }
 
 /** One live session, whole, in one entry — a client never joins two payloads to draw a row. */
@@ -160,9 +168,10 @@ export interface DigestEntry {
    */
   subagents: { running: number; launched: number; list: DigestSubagent[] };
   /**
-   * The background commands the session launched and has not been told the fate of — what makes a
-   * session that has stopped talking still be waiting on something. Same derivation the browser
-   * reads (`runningBackground`), so the two surfaces cannot disagree about what is still running.
+   * The background commands worth telling a client about: every one still RUNNING — what makes a
+   * session that has stopped talking still be waiting on something — plus the last three that
+   * FAILED. Same derivation and the same three-failure rule as the browser's cockpit, so the two
+   * surfaces cannot disagree about what is running, nor about what went wrong.
    */
   background: DigestCommand[];
 }
@@ -331,11 +340,26 @@ export function digestEntry(
           },
     error: snap.error && { ...snap.error },
     subagents: { running: agents.length, launched: launchedCount(snap.subagents), list: agents },
-    background: runningBackground(snap.mainTools).map((c) => ({
-      toolUseId: c.toolUseId,
-      command: c.command,
-      since: Date.parse(c.since),
-    })),
+    // The running ones, and the last three that FAILED. Same rule as the browser's cockpit, from
+    // the same derivation: a command that failed used to leave this array the instant it failed,
+    // so the tray's list simply got shorter and nothing anywhere said why. `state` is what lets a
+    // client draw the difference instead of inferring it from a length.
+    background: (() => {
+      const all = backgroundCommands(snap.mainTools, { ended: !isLive(rec) });
+      const worthSending = [
+        ...all.filter((c) => c.state === 'running'),
+        ...all.filter((c) => c.state === 'failed').slice(-3),
+      ] as (BackgroundCommand & { state: 'running' | 'failed' })[];
+      return worthSending.map((c) => ({
+        toolUseId: c.toolUseId,
+        // The launch's own name for it, exactly as the browser row and Claude Code's own
+        // sentence call it — one command must not have two names on two surfaces.
+        command: c.label,
+        since: Date.parse(c.since),
+        state: c.state,
+        ranMs: c.ranMs,
+      }));
+    })(),
   };
 }
 

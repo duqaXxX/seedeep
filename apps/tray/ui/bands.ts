@@ -53,7 +53,15 @@ export interface DigestEntry {
   };
   /** Background commands the session launched and has not been told the fate of — the reason a
    * session that has stopped talking can still be waiting on something. See {@link commands}. */
-  background: { toolUseId: string; command: string; since: number }[];
+  background: {
+    toolUseId: string;
+    command: string;
+    since: number;
+    /** `running`, or `failed` for one of the last three failures the server sends. */
+    state: 'running' | 'failed';
+    /** How long the command ran; null while it still is. */
+    ranMs: number | null;
+  }[];
 }
 
 /**
@@ -366,7 +374,7 @@ function now(entry: DigestEntry, at: number): HTMLElement | null {
 }
 
 /**
- * The background commands still running, one line each: what runs, and for how long.
+ * The background commands the session is waiting on, and the ones that failed, one line each.
  *
  * Below NOW and above the context block, where the agents at work already live — the row's band for
  * things that are running but are not the turn. A command has no model and no context of its own,
@@ -388,10 +396,16 @@ function commands(entry: DigestEntry, at: number): HTMLElement | null {
   if (!list.length) return null;
   const wrap = el('div', 'row-bgs');
   for (const c of list) {
-    const line = el('div', 'row-bg');
+    const failed = c.state === 'failed';
+    // A failed command is not waiting on anything, so it loses the amber dot AND the ticking age:
+    // what it gets is how long it actually ran before it died. Ticking a dead command's age was
+    // exactly the claim the browser used to make by leaving its row in the running list.
+    const line = el('div', failed ? 'row-bg failed' : 'row-bg');
     line.append(el('span', 'bgdot'));
     line.append(el('span', 'bg-cmd', c.command));
-    line.append(el('span', 'bg-age', stopwatch(Math.max(0, at - c.since))));
+    line.append(
+      el('span', 'bg-age', failed ? stopwatch(Math.max(0, c.ranMs ?? 0)) : stopwatch(Math.max(0, at - c.since))),
+    );
     wrap.append(line);
   }
   return wrap;

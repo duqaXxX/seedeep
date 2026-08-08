@@ -294,6 +294,17 @@
   width: 6px;
 }
 
+/* A command that FAILED: the dot goes red and the text dims. It is on the row for the same reason
+   the browser keeps it — a list that simply got shorter told you nothing — but it is news, not
+   work, and it must not read as something the session is still waiting on. */
+.row-bg.failed {
+  color: #94a3b8;
+}
+
+.row-bg.failed .bgdot {
+  background: var(--alert);
+}
+
 /* One line, cut: a command can be 200 characters and the row's height must not follow it. */
 .row-bg .bg-cmd {
   flex: 1 1 auto;

@@ -461,11 +461,18 @@ to say. Three findings decided the contents, each measured rather than assumed:
   describe transcripts written before that release. An empty list means *the transcript does not
   say*, which is never rendered as a dash.
 
-**A background command gets a line of its own, in every band.** `● bun run dev --watch   4m 12s` —
+**A background command gets a line of its own, in every band.** `● Start the dev server   4m 12s` —
 monospace because it is a command, amber dot because this is the session waiting on something rather
 than the agent working, and the age on the right because between its launch and its notification
 that is the only thing about it that changes. It has no model and no context of its own, so it
-carries none of what an agent's line does.
+carries none of what an agent's line does. It is named by what the launch called it (Claude Code's
+own `description`), which is also the name Claude Code quotes back when the command ends — one
+command must not have two names on two surfaces.
+
+**A command that FAILED keeps its line, as news rather than work.** The last three failures ride
+along with the running ones: red dot instead of amber, dimmed text, and the age on the right is how
+long the command RAN, not a stopwatch still counting on something that is dead. Before 2026-08-08 a
+failure simply removed the line — the list got shorter, and nothing anywhere said why.
 
 It is drawn in the *Idle* band, which is the case it exists for — a row that has stopped talking and
 is still waiting on something it started — and on the ***Needs you*** row too, the only line that
