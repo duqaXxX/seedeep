@@ -1329,7 +1329,7 @@ test('bottom card: with only one of the two there is no tab bar', () => {
   g.document = prevDoc;
 });
 
-test('live card: a failed command stays on the cockpit instead of vanishing with its count', () => {
+test('live card: a failed command is counted, never drawn — a LIVE card lists only live things', () => {
   const g = globalThis as any;
   const prevDoc = g.document;
   g.document = fakeDoc();
@@ -1342,12 +1342,14 @@ test('live card: a failed command stays on the cockpit instead of vanishing with
   const view = createGraph(container, drivableState(snap));
 
   const card = findByClass(container, 'sublivecard')[0];
-  // It is NOT running, so it must not wear the running colour — and it must still be there.
-  const rows = findByClass(card, 'subrow');
-  assert.equal(rows.length, 1, 'the failure is on the cockpit');
-  assert.equal(rows[0].className.includes('act'), false, 'in the neutral ended shape, never the live green one');
-  assert.match(textOf(findByClass(card, 'slcount')[0]), /1 failed/, 'and the count says why');
-  assert.equal(findByClass(card, 'slempty').length, 0, 'a card showing a row is not an empty card');
+  // Rows were tried here and refused: on a session whose commands had all ended, the card read
+  // "Background commands · live" over two corpses. Dead things do not belong under a LIVE heading.
+  assert.equal(findByClass(card, 'subrow').length, 0, 'nothing is running, so nothing is drawn');
+  assert.equal(textOf(findByClass(card, 'wtitle')[0]), 'Subagents · live', 'and the card is not renamed for them');
+  // But it must not vanish in silence either — that was the original bug. The count points at the
+  // catalogue, exactly as this card already does for a finished subagent.
+  assert.match(textOf(findByClass(card, 'slcount')[0]), /1 command failed below/);
+  assert.equal(findByClass(card, 'slempty').length, 1, 'the empty state is honest: nothing IS running');
 
   view.destroy();
   g.document = prevDoc;

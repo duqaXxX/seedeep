@@ -7580,17 +7580,17 @@ function createGraph(container, state, opts = {}) {
     }
     const bgAll = ended2 ? [] : backgroundCommands(full.mainTools, { ended: false });
     const commands = bgAll.filter((c) => c.state === "running");
-    const failedRecent = bgAll.filter((c) => c.state === "failed").slice(-3).reverse();
+    const failedCount = bgAll.filter((c) => c.state === "failed").length;
+    const failedBelow = failedCount ? `${failedCount} command${failedCount === 1 ? "" : "s"} failed below` : "";
     const slHead = E("div", "slhead");
     const slTitleWrap = E("div");
     const counted = [
       active.length + (active.length === 1 ? " subagent" : " subagents"),
       commands.length ? commands.length + (commands.length === 1 ? " command running" : " commands running") : "",
-      failedRecent.length ? bgAll.filter((c) => c.state === "failed").length + " failed" : "",
+      failedBelow,
       finished ? finished + " finished below" : ""
     ].filter(Boolean);
-    const liveTitleWord = commands.length || active.length ? "Running · live" : failedRecent.length ? "Background commands · live" : "Subagents · live";
-    slTitleWrap.append(E("div", "wtitle", liveTitleWord), E("div", "wdesc slcount", commands.length || failedRecent.length ? counted.join(" · ") : active.length + " running" + (finished ? " · " + finished + " finished below" : "")));
+    slTitleWrap.append(E("div", "wtitle", commands.length ? "Running · live" : "Subagents · live"), E("div", "wdesc slcount", commands.length ? counted.join(" · ") : [active.length + " running", failedBelow, finished ? finished + " finished below" : ""].filter(Boolean).join(" · ")));
     slHead.append(slTitleWrap);
     const subLiveHost = E("div", "sublist");
     if (typeof subLiveHost.addEventListener === "function") {
@@ -7601,9 +7601,7 @@ function createGraph(container, state, opts = {}) {
     subLiveCard.append(slHead, subLiveHost);
     for (const c of commands)
       subLiveHost.append(bgActiveRow(c));
-    for (const c of failedRecent)
-      subLiveHost.append(bgEndedRow(c));
-    if (commands.length || failedRecent.length) {
+    if (commands.length) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0)
         subLiveHost.scrollTop = liveScrollTop;
@@ -7616,7 +7614,7 @@ function createGraph(container, state, opts = {}) {
         subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    if (commands.length || failedRecent.length)
+    if (commands.length)
       return;
     const empty = E("div", "slempty");
     empty.append(E("div", "slempty-t", "No subagents running"), E("div", "slempty-s", finished ? finished + " finished this session — see the full list below" : "Spawned subagents will appear here live"));

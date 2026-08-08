@@ -195,10 +195,14 @@ Its drawer adds the full command, the sentence Claude Code wrote when it ended (
 only place the exit code exists) and the **output file** — the path where the
 command's output was written, which the transcript names only in that notification.
 
-The cockpit above keeps its half of the job: the commands still running, and the
-last few that failed, so a failure is stated where you are already looking instead
-of only in the catalogue below. A failed row is drawn in the neutral ended shape,
-never the green live one — it is not working any more.
+The cockpit above keeps its half of the job, and only that half: it draws **what is
+still running**, and nothing else. A failed command is *counted* there and never
+drawn — its line reads `2 commands failed below`, the same way that card already
+points at a subagent that has finished. Rows for the dead were tried and refused:
+on a session whose commands had all ended, a card headed LIVE listed two corpses,
+which is the same kind of lie as the disappearance this feature exists to fix. The
+count is what keeps the failure from vanishing in silence; the catalogue below is
+where it is actually stated.
 
 Every entity — subagent, tool call, tool type, API call, skill — opens a **detail
 drawer**; drill-down clicks (e.g. a tool inside a subagent's drawer) show a

@@ -4,6 +4,22 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### The live card lists only what is live (2026-08-08)
+
+The background-command catalogue shipped with the last three failures riding along on the cockpit,
+so a failure would be stated where you are already looking. Seen on a real session it was plainly
+wrong: with every command ended, the card read **`BACKGROUND COMMANDS · LIVE`** over two corpses —
+the same kind of lie as the disappearance the feature exists to fix.
+
+A failed command is now **counted there and never drawn**: the card's line reads `2 commands failed
+below`, exactly as it already points at a subagent that has finished, and the title never leaves
+`Running · live` / `Subagents · live`. The failure still cannot vanish in silence — that was the
+whole point — but it is stated in the catalogue, which is where the truth about ended things lives.
+
+The tray is deliberately not the same: its band is the whole surface, with no catalogue to point at,
+so the last three failed commands stay as rows there. The cap is on the rows a poll carries, never
+on the count a browser shows.
+
 ### A refused token stops being reported as a lost connection (2026-08-08)
 
 Opening a `seedeep` on a second port over the LAN showed `Live feed lost — reconnecting…`, for ever.

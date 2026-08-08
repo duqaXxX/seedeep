@@ -1862,39 +1862,34 @@ export function createGraph(
     // view would hide exactly the case this card exists to show.
     const bgAll = ended ? [] : backgroundCommands(full.mainTools, { ended: false });
     const commands = bgAll.filter((c) => c.state === 'running');
-    // The failures the card used to swallow: acquiring an outcome removed a command from the only
-    // list there was, so a `failed` row simply disappeared — the count went down and nothing said
-    // why. The three most recent, because this card is the cockpit and the catalogue below is the
-    // catalogue; they are drawn in the neutral ENDED shape, never the green live one.
-    const failedRecent = bgAll
-      .filter((c) => c.state === 'failed')
-      .slice(-3)
-      .reverse();
+    // A failed command is COUNTED here and never drawn. It is not live, and a card headed LIVE
+    // listing dead rows is the same kind of lie as the bug that started this: rows were tried, and
+    // on a session whose commands had all ended the card read "Background commands · live" over
+    // two corpses. The count points at the catalogue instead — exactly what this card already does
+    // for a finished subagent ("N finished below") — so the failure still cannot vanish in
+    // silence, which was the whole point of surfacing it.
+    const failedCount = bgAll.filter((c) => c.state === 'failed').length;
+    const failedBelow = failedCount ? `${failedCount} command${failedCount === 1 ? '' : 's'} failed below` : '';
     const slHead = E('div', 'slhead');
     const slTitleWrap = E('div');
     // The card holds whatever is RUNNING, so it is named for that the moment it holds more than
-    // subagents — a card called "Subagents" listing a shell command is a word that lies. And when
-    // nothing runs but a command has failed, it is named for what it is actually showing.
+    // subagents — a card called "Subagents" listing a shell command is a word that lies.
     const counted = [
       active.length + (active.length === 1 ? ' subagent' : ' subagents'),
       commands.length ? commands.length + (commands.length === 1 ? ' command running' : ' commands running') : '',
-      failedRecent.length ? bgAll.filter((c) => c.state === 'failed').length + ' failed' : '',
+      failedBelow,
       finished ? finished + ' finished below' : '',
     ].filter(Boolean);
-    const liveTitleWord =
-      commands.length || active.length
-        ? 'Running · live'
-        : failedRecent.length
-          ? 'Background commands · live'
-          : 'Subagents · live';
     slTitleWrap.append(
-      E('div', 'wtitle', liveTitleWord),
+      E('div', 'wtitle', commands.length ? 'Running · live' : 'Subagents · live'),
       E(
         'div',
         'wdesc slcount',
-        commands.length || failedRecent.length
+        commands.length
           ? counted.join(' · ')
-          : active.length + ' running' + (finished ? ' · ' + finished + ' finished below' : ''),
+          : [active.length + ' running', failedBelow, finished ? finished + ' finished below' : '']
+              .filter(Boolean)
+              .join(' · '),
       ),
     );
     slHead.append(slTitleWrap);
@@ -1909,8 +1904,7 @@ export function createGraph(
     // reports nothing at all until it ends, so it is the one the reader can learn least about
     // anywhere else.
     for (const c of commands) subLiveHost.append(bgActiveRow(c));
-    for (const c of failedRecent) subLiveHost.append(bgEndedRow(c));
-    if (commands.length || failedRecent.length) {
+    if (commands.length) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
     }
@@ -1931,9 +1925,9 @@ export function createGraph(
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    // With a command running — or a failure listed — the card is not empty, so the placeholder
-    // would be a card contradicting its own contents.
-    if (commands.length || failedRecent.length) return;
+    // With a command running the card is not empty, so the placeholder would be a card
+    // contradicting its own contents.
+    if (commands.length) return;
     const empty = E('div', 'slempty');
     empty.append(
       E('div', 'slempty-t', 'No subagents running'),

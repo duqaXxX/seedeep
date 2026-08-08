@@ -1016,9 +1016,14 @@ Every command it launched in the background and has not been told the fate of, P
 that **failed**: the launch call's id, the name the launch gave it, the instant it started (the age
 is the client's to compute, like `now.ageFrom`), its `state` — only ever `running` or `failed` — and
 `ranMs`, how long the command itself ran, null while it still is. One derivation
-(`backgroundCommands`, `core/selectors.ts`) feeds this field and the browser's cockpit, with the
-same three-failure rule, so the two surfaces cannot disagree about what is running nor about what
-broke. **Open means launched and without an `outcome`** — the launch receipt closes in milliseconds,
+(`backgroundCommands`, `core/selectors.ts`) feeds this field and every browser surface, so nothing
+can disagree about what is still running.
+
+**The failures are where the two clients differ, deliberately.** The browser's live card draws none
+of them — it lists only what is live — and counts them all in one line that points at its catalogue.
+The tray has no catalogue to point at: its band is the whole surface, so the last three failed
+commands ride along as rows, red and not amber, with the time they RAN rather than a ticking age.
+The cap is on the ROWS a poll carries, never on the count a browser shows. **Open means launched and without an `outcome`** — the launch receipt closes in milliseconds,
 so nothing about the call itself can answer it. What ends one is its notification; 9 of 107 real
 launches (8.4%) never sent one, so an entry can outlive its command for as long as the session
 lives, which is deliberate: a timeout would be a number seedeep invented to declare something

@@ -461,7 +461,7 @@ to say. Three findings decided the contents, each measured rather than assumed:
   describe transcripts written before that release. An empty list means *the transcript does not
   say*, which is never rendered as a dash.
 
-**A background command gets a line of its own, in every band.** `● Start the dev server   4m 12s` —
+**A background command gets a line of its own, in three of the four bands.** `● Start the dev server   4m 12s` —
 monospace because it is a command, amber dot because this is the session waiting on something rather
 than the agent working, and the age on the right because between its launch and its notification
 that is the only thing about it that changes. It has no model and no context of its own, so it
@@ -474,9 +474,11 @@ along with the running ones: red dot instead of amber, dimmed text, and the age 
 long the command RAN, not a stopwatch still counting on something that is dead. Before 2026-08-08 a
 failure simply removed the line — the list got shorter, and nothing anywhere said why.
 
-It is drawn in the *Idle* band, which is the case it exists for — a row that has stopped talking and
-is still waiting on something it started — and on the ***Needs you*** row too, the only line that
-band's deliberately spare layout has gained. Davide chose that from the two rendered at 392 px: it
+It is drawn in the *Working* and *Idle* bands — the second is the case it exists for, a row that has
+stopped talking and is still waiting on something it started — and on the ***Needs you*** row too,
+the only line that band's deliberately spare layout has gained. **Not** on the *Broken* row, which
+is about the model call that ended the session: a shell command is not what that row is answering,
+and the failure it reports is a different one. Davide chose that from the two rendered at 392 px: it
 costs 24 px on a row that only exists while you are blocked, against the browser's chip having no
 such exception, so the two surfaces would contradict each other at the exact moment the user is
 deciding something. It can also change the answer — someone about to refuse a command *because the
