@@ -255,10 +255,14 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   you add its assertions, or the figure can go empty with nothing to catch it. Each
   figure is declared in `apps/server/data/doc-shots.json` alongside the source files
   that invalidate it —
-  so `bun run doc-shots:check` (also run by the pre-push hook) can say which figure
-  a change just made false. Nothing else can: no test looks at a PNG. If you change
-  a widget that a figure shows, say so in the PR — re-cutting needs the recorded
-  bundle, which is not in the repo, so a maintainer does it.
+  so `bun run doc-shots:check` can say which figure a change may have made false.
+  Nothing else can: no test looks at a PNG. The map is coarse (every figure depends
+  on `client/graph.ts`), so `--verify` — what the pre-push hook runs — **re-cuts the
+  suspects into a temp directory and compares the pixels**, reporting only the ones
+  that really changed, that could not be re-cut, or that carry something which moves
+  on its own (a relative age). If you change a widget that a figure shows, say so in
+  the PR — re-cutting needs the recorded bundle, which is not in the repo, so a
+  maintainer does it.
 
 ## Sending a change
 

@@ -19,8 +19,12 @@ The README is the short version. The design behind these surfaces is in
 > reducer by a test that asserts the state its figure claims.
 >
 > Each figure is declared in `apps/server/data/doc-shots.json` with the source files
-> that invalidate it, so `bun run doc-shots:check` (and the pre-push hook) can name
-> the ones a change just made false. Nothing else can: no test looks at a PNG.
+> that invalidate it, so `bun run doc-shots:check` can name the ones a change may
+> have made false. Nothing else can: no test looks at a PNG. That map is coarse on
+> purpose — every figure depends on `client/graph.ts`, so touching it names all
+> fourteen — which is why `--verify` (what the pre-push hook runs) then **re-cuts the
+> suspects and compares the pixels**, and reports only the figures that actually
+> changed, could not be re-cut, or carry something that moves on its own.
 
 ## The live session view
 

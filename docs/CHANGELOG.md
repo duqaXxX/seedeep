@@ -4,6 +4,35 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### The figure gate compares pictures, and the bundle it needs leaves `/tmp` (2026-08-09)
+
+Two problems with the same root: the mechanism that keeps the documentation's figures honest was
+warning when nothing was wrong, and could not do anything about it when something was.
+
+**The warning was noise.** Every figure declares `client/graph.ts` among its sources, so ANY edit
+to that file named all fourteen — measured on a change that could only have altered one of them. A
+warning that fires when nothing is wrong is one you learn to scroll past, which is the same as not
+having it. `doc-shots:check --verify` — what the pre-push hook runs now — **re-cuts the suspects
+into a temp directory and compares the pixels**, and reports only three things: the picture
+CHANGED, it could not be re-cut, or it carries something that moves on its own. On the change that
+prompted this: 14 named, 5 re-cut byte-identical, 0 actually different.
+
+The comparison is exact, with no tolerance. A figure that cannot be compared exactly is marked
+`volatile` in the manifest — only `broken-session.png` is, because the NOW panel prints an age
+against the clock and two cuts of the same code differ (`4444m ago` became `4775m ago`). A
+threshold wide enough to absorb a ticking number is wide enough to hide a changed label.
+
+**The bundle the recorded figures need lived in `/tmp`, and the OS deleted it.** That is how eight
+of those fourteen became unverifiable and un-re-cuttable: the documented "free, no model calls"
+re-cut needs a bundle whose only copy was somewhere the system is entitled to empty. It now lives
+in `~/.seedeep/demo` — the real home, never `SEEDEEP_HOME`, which a dev run points inside the
+repository, and a directory of recorded transcripts does not belong in a git tree even when it is
+ignored.
+
+Two bugs found by running it rather than reading it: an absolute temp path joined onto the cwd
+wrote a directory of PNGs INTO the repository, and one missing bundle made the verifier give up on
+the scene figures too — the same mistake `--only` was added to fix.
+
 ### A background command's duration was the queue's, not the command's (2026-08-09)
 
 A `sleep 3` was shown as having run **22.6 s**. Claude Code writes a terminal notification TWICE —

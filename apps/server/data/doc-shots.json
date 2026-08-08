@@ -208,7 +208,8 @@
         "apps/server/public/css/feed.css",
         "apps/server/scripts/doc-scenes.ts"
       ],
-      "waitFor": ".fev.err"
+      "waitFor": ".fev.err",
+      "volatile": true
     },
     {
       "id": "home-retrospective",

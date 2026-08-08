@@ -148,3 +148,17 @@ describe('docs/features.md — a figure per surface', () => {
     expect(dead).toEqual([]);
   });
 });
+
+// `volatile` is what lets the pixel comparison be EXACT. It is a claim about a figure — its
+// content moves on its own — and a wrong one is silent: the shot would be reported for a human
+// every time instead of being compared, or worse, a genuinely ticking figure would be compared
+// and differ on every run, which is the noise this whole mechanism exists to remove.
+describe('the volatile flag', () => {
+  test('is claimed only where the figure really carries something that moves', async () => {
+    const manifest = await readManifest();
+    const flagged = manifest.shots.filter((s) => s.volatile).map((s) => s.id);
+    // One figure, and the reason is recorded next to it: the NOW panel prints an age relative to
+    // the clock, so two cuts of the same code differ (`4444m ago` → `4775m ago`, measured).
+    expect(flagged).toEqual(['broken-session']);
+  });
+});

@@ -19,7 +19,7 @@
 import { rmSync } from 'node:fs';
 import { appendFile, cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { openProbeSession, type ProbeSession, slugFor } from '../probe/driver.ts';
 import { cliRoot } from '../src/server/roots.ts';
 import { VERSION } from '../src/server/version.ts';
@@ -31,7 +31,18 @@ import { type DocShot, readManifest } from './doc-shots-check.ts';
  * seedeep shows the slug's LAST hyphen segment — so it is chosen, never incidental.
  */
 const DEMO_CWD = '/tmp/orbit';
-const OUT = process.env['SEEDEEP_DEMO_OUT'] ?? '/tmp/seedeep-demo';
+/**
+ * Where the recorded bundle is KEPT — and the one thing about it that matters is that it is not
+ * under `/tmp`, which is where it used to be. The OS cleans that directory, and it did: the
+ * bundle vanished, `bun run doc-shots` stopped working, and re-making it means driving real
+ * sessions and burning tokens for figures the manifest promises are free to re-cut. A cache the
+ * documentation depends on cannot live somewhere the OS is entitled to empty.
+ *
+ * The REAL home, never `SEEDEEP_HOME`: a dev run points that at `.seedeep-dev` INSIDE the
+ * repository, and a directory of recorded session transcripts must not sit in a git tree even
+ * when it is ignored. `SEEDEEP_DEMO_OUT` still overrides it for a one-off.
+ */
+const OUT = process.env['SEEDEEP_DEMO_OUT'] ?? join(homedir(), '.seedeep', 'demo');
 
 /** Deterministic pseudo-random, so a re-record produces the same fictional log. */
 function lcg(seed: number): () => number {
@@ -1182,13 +1193,21 @@ async function shootScene(sceneId: string, shots: DocShot[], outDir: string, cut
  * The bare command is unchanged, and still FAILS when the bundle is gone: a figure that cannot be
  * cut must not pass quietly, or a widget that moved becomes a picture that lies.
  */
-async function docShots(only?: string): Promise<void> {
+async function docShots(only?: string, opts: { out?: string; ids?: string[] } = {}): Promise<void> {
   const manifest = await readManifest();
-  const outDirAll = join(process.cwd(), manifest.outDir);
+  // `resolve`, not `join`: the verifier passes an ABSOLUTE temp dir, and joining that onto the cwd
+  // built `<repo>/var/folders/…` — a directory of PNGs inside the git tree, and a verification that
+  // then found nothing where it looked and called every figure unverified.
+  const outDirAll = resolve(process.cwd(), opts.out ?? manifest.outDir);
   await mkdir(outDirAll, { recursive: true });
   const cutAll: string[] = [];
-  const wanted = only ? manifest.shots.filter((s) => s.id === only || s.scene === only) : manifest.shots;
+  const wanted = opts.ids
+    ? manifest.shots.filter((s) => opts.ids!.includes(s.id))
+    : only
+      ? manifest.shots.filter((s) => s.id === only || s.scene === only)
+      : manifest.shots;
   if (only && wanted.length === 0) throw new Error(`--only ${only}: no shot or scene by that name in the manifest`);
+  if (opts.ids && wanted.length === 0) throw new Error(`--ids: none of those ids are in the manifest`);
   const scenes = new Map<string, DocShot[]>();
   for (const shot of wanted) {
     const key = shot.scene ?? 'recorded';
@@ -1205,6 +1224,60 @@ async function docShots(only?: string): Promise<void> {
   const missing = wanted.filter((s) => !cutAll.includes(s.id)).map((s) => s.id);
   console.log(`[doc-shots] ${cutAll.length}/${wanted.length} cut → ${manifest.outDir}`);
   if (missing.length > 0) console.log(`[doc-shots] not cut: ${missing.join(', ')}`);
+}
+
+/**
+ * Re-cut these shots into a temp directory and say, for each, whether the PICTURE actually
+ * changed. Prints one line per shot: `SAME <id>`, `DIFFERS <id>`, `VOLATILE <id>`, `UNCUT <id>`.
+ *
+ * This exists because the manifest's dependency map answers a coarser question than the one worth
+ * asking. Every figure declares `client/graph.ts`, so ANY edit to that file flags all fourteen —
+ * measured on a real change that could only alter one of them. A warning that fires when nothing
+ * is wrong is one people learn to scroll past, which is the same as not having it.
+ *
+ * The comparison is EXACT — no tolerance, no threshold. A figure that cannot be compared exactly
+ * is one whose content moves on its own, and the manifest marks those `volatile`: the NOW panel
+ * prints an age relative to the clock, so its figure differs on every cut (`4444m ago` became
+ * `4775m ago` between two runs of the same code). Those are reported as unverifiable rather than
+ * quietly passed — a threshold big enough to absorb a ticking number is big enough to hide a
+ * label, and guessing which is which is exactly what this is meant to stop doing.
+ */
+async function docShotsVerify(ids: string[]): Promise<void> {
+  const manifest = await readManifest();
+  const wanted = manifest.shots.filter((s) => ids.length === 0 || ids.includes(s.id));
+  const volatile = wanted.filter((s) => s.volatile);
+  const comparable = wanted.filter((s) => !s.volatile);
+  for (const s of volatile) console.log(`VOLATILE ${s.id}`);
+  if (comparable.length === 0) return;
+  const tmp = join(tmpdir(), `seedeep-shot-verify-${process.pid}`);
+  try {
+    // By GROUP, each guarded on its own: the recorded shots need a bundle the OS may have deleted,
+    // and one missing bundle must not lose the scene shots too — the mistake `--only` was added to
+    // fix in the first place, made again here and caught by running it.
+    const groups = new Map<string, DocShot[]>();
+    for (const s of comparable) groups.set(s.scene ?? 'recorded', [...(groups.get(s.scene ?? 'recorded') ?? []), s]);
+    for (const shots of groups.values()) {
+      await docShots(undefined, { out: tmp, ids: shots.map((s) => s.id) }).catch((e) =>
+        console.error(`[doc-shots-verify] ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }
+    for (const s of comparable) {
+      const fresh = Bun.file(join(tmp, `${s.id}.png`));
+      if (!(await fresh.exists())) {
+        console.log(`UNCUT ${s.id}`);
+        continue;
+      }
+      const [a, b] = [await fresh.bytes(), await Bun.file(join(process.cwd(), manifest.outDir, `${s.id}.png`)).bytes()];
+      console.log(`${a.length === b.length && a.every((v, i) => v === b[i]) ? 'SAME' : 'DIFFERS'} ${s.id}`);
+    }
+  } catch (e) {
+    // The bundle is gone, the browser would not start: every shot is unverified, and saying so is
+    // the whole point — an unverifiable figure must never read as a verified one.
+    for (const s of comparable) console.log(`UNCUT ${s.id}`);
+    console.error(`[doc-shots-verify] ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
 }
 
 /** Cut the shots that come from the RECORDED session: replayed at its original pace. */
@@ -1348,9 +1421,16 @@ if (cmd === 'record') await record();
 else if (cmd === 'record-extras') await recordExtras();
 else if (cmd === 'shoot') await shoot();
 else if (cmd === 'doc-shots') {
-  const i = process.argv.indexOf('--only');
-  await docShots(i === -1 ? undefined : process.argv[i + 1]);
-} else {
-  console.error('usage: capture-demo.ts record | record-extras | shoot | doc-shots [--only <scene|shot-id>]');
+  const arg = (flag: string) => {
+    const i = process.argv.indexOf(flag);
+    return i === -1 ? undefined : process.argv[i + 1];
+  };
+  const ids = arg('--ids');
+  await docShots(arg('--only'), { out: arg('--out'), ids: ids ? ids.split(',').filter(Boolean) : undefined });
+} else if (cmd === 'doc-shots-verify') await docShotsVerify((process.argv[3] ?? '').split(',').filter(Boolean));
+else {
+  console.error(
+    'usage: capture-demo.ts record | record-extras | shoot | doc-shots [--only <scene|shot-id>] [--ids a,b] [--out <dir>] | doc-shots-verify <id,id>',
+  );
   process.exit(1);
 }
