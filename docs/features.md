@@ -199,12 +199,26 @@ measures nothing.
 
 Its drawer adds the full command, the sentence Claude Code wrote when it ended (the
 only place the exit code exists) and the **output file** — the path where the
-command's output was written, which the transcript names only in that notification.
+command's output was written. The notification that ends a command carries it in a
+tag of its own, and the launch receipt carries the same path in prose (`Output is
+being written to: …`) — on 198 of 198 background launches measured locally, which
+is what makes it readable for a command whose end is never written at all.
+
+A command whose end **Claude Code never wrote** is the one row seedeep cannot read
+off the transcript: 23 of 198 launches measured locally get no notification ever,
+and the rule "launched, nothing said" means *still running* for as long as the
+session stays open. seedeep asks the machine instead — nothing holding its output
+file open means the process is gone — and the row reads **`unknown`** with its
+duration as a bound (`≥ 4m 20s`, the last instant it was seen alive). Never `done`:
+the check learns that something stopped, not what it stopped with. The mechanism,
+and the two sources that were measured and refuted before it, are in
+[`docs/architecture.md`](architecture.md#is-a-background-command-still-alive).
 
 The cockpit above keeps its half of the job, and only that half: it draws **what is
-still running**, and nothing else. A failed command is *counted* there and never
-drawn — its line reads `2 commands failed below`, the same way that card already
-points at a subagent that has finished. Rows for the dead were tried and refused:
+still running**, and nothing else. A command that failed or was never reported is
+*counted* there and never drawn — the line reads `2 commands failed below · 1 never
+reported below`, the same way that card already points at a subagent that has
+finished. Rows for the dead were tried and refused:
 on a session whose commands had all ended, a card headed LIVE listed two corpses,
 which is the same kind of lie as the disappearance this feature exists to fix. The
 count is what keeps the failure from vanishing in silence; the catalogue below is

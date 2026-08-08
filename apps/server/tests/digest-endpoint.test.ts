@@ -836,3 +836,150 @@ test('a session whose last call succeeded carries no error at all', async () => 
     srv.stop();
   }
 });
+
+// ── Background commands ─────────────────────────────────────────────────────────────────
+// The two lines a background command writes, both taken from a real transcript: the RECEIPT (a
+// tool_result whose `toolUseResult` carries `backgroundTaskId` — the only reliable marker) and, if
+// its fate is ever told, a `queue-operation` whose content is a `<task-notification>` block. The
+// prose in the receipt is Claude Code's, verbatim in shape; only the paths and ids are synthetic.
+const bgLaunch = (uuid: string, toolUseId: string, taskId: string, ts: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: ts,
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: `Command running in background with ID: ${taskId}. Output is being written to: /tmp/seedeep-test/tasks/${taskId}.output. You will be notified when it completes.`,
+        },
+      ],
+    },
+    toolUseResult: { stdout: '', stderr: '', interrupted: false, isImage: false, backgroundTaskId: taskId },
+  });
+const bgNotification = (toolUseId: string, taskId: string, status: string, summary: string, ts: string) =>
+  JSON.stringify({
+    type: 'queue-operation',
+    operation: 'enqueue',
+    timestamp: ts,
+    sessionId: SID,
+    content: `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<output-file>/tmp/seedeep-test/tasks/${taskId}.output</output-file>\n<status>${status}</status>\n<summary>${summary}</summary>\n</task-notification>`,
+  });
+
+// Davide's rule, 2026-08-08: the tray is a glance surface, so it is told what is RUNNING and how
+// many there have been — never a command that ended. What that one did is the portal's, one click
+// away on the row. The count is what keeps the silence honest: without it, a session that ran two
+// commands and was told about both would say nothing at all about either.
+test('the digest sends the running commands and how many were launched, never one that ended', async () => {
+  const path = writeSession([
+    typed('u1', 'watch the build', '2026-07-14T10:00:00.000Z'),
+    assistant('a1', 1200, '2026-07-14T10:00:01.000Z'),
+    toolUse(
+      'a2',
+      'toolu_bg1',
+      'Bash',
+      { command: 'bun run build --watch', description: 'Watch the build' },
+      '2026-07-14T10:00:02.000Z',
+    ),
+    bgLaunch('u2', 'toolu_bg1', 'bt1', '2026-07-14T10:00:02.500Z'),
+    toolUse(
+      'a3',
+      'toolu_bg2',
+      'Bash',
+      { command: 'bun test --watch', description: 'Watch the tests' },
+      '2026-07-14T10:00:03.000Z',
+    ),
+    bgLaunch('u3', 'toolu_bg2', 'bt2', '2026-07-14T10:00:03.500Z'),
+    bgNotification(
+      'toolu_bg2',
+      'bt2',
+      'failed',
+      'Background command "Watch the tests" failed with exit code 7',
+      '2026-07-14T10:05:00.000Z',
+    ),
+  ]);
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [record(path)], port: 0 });
+  try {
+    const e = ((await (await fetch(`${srv.url}/api/digest`)).json()) as DigestEntry[])[0]!;
+    assert.deepEqual(
+      e.background.map((c) => c.command),
+      ['Watch the build'],
+      'the one that failed is not on the list a glance surface draws',
+    );
+    assert.equal(e.background[0]!.toolUseId, 'toolu_bg1', 'and the row can open its launch in the portal');
+    assert.equal(e.background[0]!.since, Date.parse('2026-07-14T10:00:02.000Z'), 'the age ticks from the LAUNCH');
+    // Both of them: the figure is the session's whole history, exactly like the subagent count.
+    assert.equal(e.backgroundLaunched, 2);
+  } finally {
+    srv.stop();
+  }
+});
+
+// A launch whose fate is never written stays `running` for as long as the session stays open —
+// measured at 23 of 198 launches locally, and seen live as two rows counting past 40 minutes with
+// nothing of either alive. The probe is the only thing that can close them, so what this pins is
+// the WIRING: a verdict reaches the server's own tree by the one path every client already uses,
+// and the row leaves the running list without ever acquiring a fate nobody stated.
+test('a command the probe finds gone stops being one of the running, and is still counted', async () => {
+  const path = writeSession([
+    typed('u1', 'start the watcher', '2026-07-14T10:00:00.000Z'),
+    assistant('a1', 1200, '2026-07-14T10:00:01.000Z'),
+    toolUse(
+      'a2',
+      'toolu_bg9',
+      'Bash',
+      { command: 'bun run dev', description: 'Start the dev server' },
+      '2026-07-14T10:00:02.000Z',
+    ),
+    bgLaunch('u2', 'toolu_bg9', 'bt9', '2026-07-14T10:00:02.500Z'),
+  ]);
+  const asked: string[] = [];
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [record(path)],
+    port: 0,
+    livenessMs: 20,
+    // The machine's answer, decided by the test: the real prober would be asking THIS box's
+    // process table about a task id that never ran on it.
+    prober: {
+      probe: async (pending) => {
+        asked.push(...pending.map((p) => p.taskId));
+        return pending.map((p) => ({ ...p, lastSeenAlive: '2026-07-14T10:04:02.500Z' }));
+      },
+    },
+  });
+  try {
+    const read = async () => ((await (await fetch(`${srv.url}/api/digest`)).json()) as DigestEntry[])[0]!;
+    // The first read is what CREATES the tree — nothing is probed for a session nobody asked
+    // about, which is what keeps an idle process idle.
+    const before = await read();
+    assert.deepEqual(
+      before.background.map((c) => c.command),
+      ['Start the dev server'],
+    );
+
+    let after = before;
+    for (let i = 0; i < 100 && after.background.length; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      after = await read();
+    }
+    assert.deepEqual(after.background, [], 'the probe answered, so it is no longer RUNNING');
+    assert.equal(after.backgroundLaunched, 1, 'and it is still one of the commands this session ran');
+    assert.ok(asked.includes('bt9'), 'the probe was asked about the task id, which is what names the file');
+
+    // The half a live browser found missing: a client that seeds AFTER the verdict replays the
+    // file, which will never carry it, and drew the row as running again — this feature's own bug
+    // coming back through the one door nobody was watching. The replay has to hand it over.
+    const replay = await (await fetch(`${srv.url}/api/replay?sessionId=${SID}`)).text();
+    assert.ok(replay.includes('command-vanished'), 'a fresh replay carries the verdict');
+    assert.ok(
+      replay.indexOf('command-vanished') < replay.indexOf('replay-end'),
+      'and before the end, so it lands on a tree that already holds the launch',
+    );
+    assert.ok(replay.includes('"lastSeenAlive":"2026-07-14T10:04:02.500Z"'), 'with the bound it was seen at');
+  } finally {
+    srv.stop();
+  }
+});

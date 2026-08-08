@@ -564,11 +564,37 @@ export interface AgentEndEvent extends EventBase {
   // the only human-readable statement of what happened: the exit code lives nowhere else in
   // the transcript. Anonymized, since a summary sometimes quotes the command verbatim.
   summary: string | null;
-  // <output-file> — where the command's output was written. Only the notification carries it: a
-  // background launch's receipt has an empty stdout, so this is the ONLY pointer to what the
-  // command actually printed. Anonymized (it sits under the scratchpad root, which encodes the
-  // uid and the home). Null on a notification that carries none — a subagent's, for one.
+  // <output-file> — where the command's output was written, and the only pointer to what the
+  // command actually printed (the launch receipt's stdout is empty). The receipt names the same
+  // path in prose, so this tag is not the only COPY — measured 2026-08-08, 198 of 198 background
+  // launches carry `Output is being written to: …` — but it is the only structured one, and a
+  // command whose end is never written never produces this line at all. Anonymized (it sits under
+  // the scratchpad root, which encodes the uid and the home). Null on a notification that carries
+  // none — a subagent's, for one.
   outputFile?: string | null;
+}
+
+/**
+ * A background command's process is GONE, and the transcript will never say so.
+ *
+ * Not parsed from any line: emitted by the server's liveness probe (`command-liveness.ts`), which
+ * is the only thing that can answer this. A launch whose shell is killed with the harness no longer
+ * watching gets no `<task-notification>` ever — 23 of 198 launches locally (11.6%) — and the rule
+ * `background && !outcome` then reads "still running" for as long as the session stays open.
+ *
+ * It says one thing and deliberately not more: **no process holds this command's output file open
+ * any more**. That is not "it completed" and carries no status, which is why the reducer turns it
+ * into `unknown` and never into an outcome. `seq: -1`, like every other out-of-band event: it has
+ * no position in any file, and applying it twice must change nothing.
+ */
+export interface CommandVanishedEvent extends EventBase {
+  type: 'command-vanished';
+  /** The launch call — the `tool_use` whose receipt carried the `backgroundTaskId`. */
+  toolUseId: string;
+  /** The last probe that DID find it alive, as its ISO timestamp. Null when no probe ever did:
+   * seedeep started watching after the command was already gone, so there is no lower bound to
+   * state and the row must not invent one. */
+  lastSeenAlive: string | null;
 }
 
 export interface SubagentOutputEvent extends EventBase {
@@ -617,6 +643,7 @@ export type NormalizedEvent =
   | ToolEndEvent
   | AgentEndEvent
   | AgentLaunchEvent
+  | CommandVanishedEvent
   | WorkflowAgentEvent
   | SubagentMetaEvent
   | SubagentOutputEvent

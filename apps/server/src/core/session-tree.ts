@@ -35,12 +35,23 @@ export interface ToolNode {
   /** Where Claude Code wrote the command's output. Only its notification names it, so a command
    * still running has none — and neither has one whose notification never came. */
   outputFile?: string;
+  /** When the liveness probe found no process holding this command's output file open any more.
+   * Set ONLY on a launch the transcript never closed, and deliberately not an `outcome`: nobody
+   * ever said what became of it, so every surface must read it as `unknown`, never as an end. */
+  vanishedTs?: string;
+  /** The last probe that still found it alive — the lower bound of how long it ran. Absent when
+   * seedeep started watching after it was already gone, in which case there is no bound to state. */
+  lastSeenAliveTs?: string;
   /** The launch's own `description` — the name Claude Code quotes back in the notification, and
    * the only human-readable label a background command has. Absent when the launch carried none. */
   description?: string;
   /** This call LAUNCHED a background command. Present on the launch, whatever became of it —
    * `outcome` is what says it ended, so `background && !outcome` is one still running. */
   background?: true;
+  /** Claude Code's own id for the command (`backgroundTaskId`). Carried because it is what names
+   * the command's output file on disk, which is the only thing that can be asked whether the
+   * process is still alive — see `command-liveness.ts`. */
+  backgroundTaskId?: string;
   /** When the launch happened, for the age a running command is shown with. Only on a background
    * launch: the whole ledger carrying a timestamp it has no use for would be paid on every tool. */
   startedTs?: string;
@@ -419,6 +430,8 @@ interface ToolAcc {
   outcomeStatus: string | null; // the same fate as a status code, so nothing has to parse English
   outcomeTs: string | null; // when the notification landed — with startTs, the command's real duration
   outputFile: string | null; // where the command's output went; only the notification names it
+  vanishedTs: string | null; // the probe found nothing holding its output file open (never an outcome)
+  lastSeenAliveTs: string | null; // the last probe that DID — the lower bound of how long it ran
   launchPrompt: string | null; // Agent spawn only
   spawnModel: string | null; // Agent spawn only — model fallback (see snapshot)
   returned: SubagentReturned | null; // Agent result only
@@ -1066,6 +1079,8 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         outcomeStatus: null,
         outcomeTs: null,
         outputFile: null,
+        vanishedTs: null,
+        lastSeenAliveTs: null,
         launchPrompt: e.launchPrompt ?? null,
         spawnModel: e.spawnModel ?? null,
         returned: null,
@@ -1263,6 +1278,17 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         // the SendMessage's would repoint the child at a tool call that spawned nothing.
         if (e.taskId && sp.runId === null) linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === 'command-vanished') {
+      const bg = tools.get(e.toolUseId);
+      // Three guards, and each one is the difference between a fact and a guess. It must be a
+      // BACKGROUND launch (nothing else has an output file to be held open); it must still have
+      // NO outcome, so a probe can never contradict or pre-empt what Claude Code itself said —
+      // the notification is the authority and it can still arrive after this; and the mark is
+      // idempotent, because an out-of-band event carries no position and may be re-delivered.
+      if (bg?.backgroundTaskId && bg.outcome === null) {
+        bg.vanishedTs = e.timestamp;
+        bg.lastSeenAliveTs = e.lastSeenAlive;
+      }
     } else if (e.type === 'compaction') {
       // Keyed by seq so a line re-processed after a reconnect does not duplicate the
       // node (compaction is the one append; the rest of the state is set/Set-based).
@@ -1383,6 +1409,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     // closed in milliseconds — the receipt is not the command — so `ms` cannot answer either.
     if (t.backgroundTaskId) {
       node.background = true;
+      node.backgroundTaskId = t.backgroundTaskId;
       if (t.startTs) node.startedTs = t.startTs;
       // Only a background launch carries the rest: they exist to answer "what became of it, how
       // long did it really take, and where is what it printed" — questions no other tool has.
@@ -1390,6 +1417,8 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       if (t.outcomeTs) node.outcomeTs = t.outcomeTs;
       if (t.outputFile) node.outputFile = t.outputFile;
       if (t.description) node.description = t.description;
+      if (t.vanishedTs) node.vanishedTs = t.vanishedTs;
+      if (t.lastSeenAliveTs) node.lastSeenAliveTs = t.lastSeenAliveTs;
     }
     return node;
   }

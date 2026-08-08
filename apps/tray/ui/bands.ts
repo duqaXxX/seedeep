@@ -57,11 +57,15 @@ export interface DigestEntry {
     toolUseId: string;
     command: string;
     since: number;
-    /** `running`, or `failed` for one of the last three failures the server sends. */
-    state: 'running' | 'failed';
-    /** How long the command ran; null while it still is. */
-    ranMs: number | null;
+    /** Absent from a server that speaks this version: it sends the running ones and nothing else.
+     * Read only to DROP an ended command an older server still sends — drawn, it would wear the
+     * at-work dot and tick a stopwatch on something that is dead, which is the one lie this row
+     * must never tell. */
+    state?: 'running' | 'failed';
   }[];
+  /** How many background commands the session has launched over its whole life. See
+   * {@link commandsLaunched}. */
+  backgroundLaunched: number;
 }
 
 /**
@@ -374,7 +378,13 @@ function now(entry: DigestEntry, at: number): HTMLElement | null {
 }
 
 /**
- * The background commands the session is waiting on, and the ones that failed, one line each.
+ * The background commands the session is waiting on, one line each — the running ones ONLY.
+ *
+ * A command that has ENDED is not on this list, whatever its fate: the count above it says the
+ * session ran some, and what each one did is the portal's, one click away on the row. That is the
+ * rule {@link commandsLaunched} already applies to subagents, and the tray keeps one rule for both
+ * kinds of background work rather than a second one for commands (Davide's call, 2026-08-08,
+ * revising the failed rows that shipped the same day).
  *
  * Below NOW and above the context block, where the agents at work already live — the row's band for
  * things that are running but are not the turn. A command has no model and no context of its own,
@@ -392,23 +402,44 @@ function now(entry: DigestEntry, at: number): HTMLElement | null {
  * surely already up* is reading the line that says whether it is.
  */
 function commands(entry: DigestEntry, at: number): HTMLElement | null {
-  const list = entry.background ?? [];
+  const list = (entry.background ?? []).filter((c) => c.state !== 'failed');
   if (!list.length) return null;
   const wrap = el('div', 'row-bgs');
   for (const c of list) {
-    const failed = c.state === 'failed';
-    // A failed command is not waiting on anything, so it loses the amber dot AND the ticking age:
-    // what it gets is how long it actually ran before it died. Ticking a dead command's age was
-    // exactly the claim the browser used to make by leaving its row in the running list.
-    const line = el('div', failed ? 'row-bg failed' : 'row-bg');
+    const line = el('div', 'row-bg');
     line.append(el('span', 'bgdot'));
     line.append(el('span', 'bg-cmd', c.command));
-    line.append(
-      el('span', 'bg-age', failed ? stopwatch(Math.max(0, c.ranMs ?? 0)) : stopwatch(Math.max(0, at - c.since))),
-    );
+    line.append(el('span', 'bg-age', stopwatch(Math.max(0, at - c.since))));
     wrap.append(line);
   }
   return wrap;
+}
+
+/**
+ * How many background commands the session has launched, over its whole life — one number, next to
+ * the running ones, exactly as {@link launched} does it for subagents: same shape, same wording,
+ * and the same two bands (*Working* and *Idle*). The spare bands draw the running rows without it —
+ * *Needs you* is about the question being asked, and a total is not part of the answer.
+ *
+ * The count the server sends, never the length of the list beside it: {@link commands} draws what
+ * is running THIS SECOND, so a session that fired four commands and was told about all four showed
+ * nothing at all. This line is what survives the last one ending, and it is the whole of what the
+ * tray says about a command that is over — the exit code, the output file and how long it ran are
+ * the portal's, one click away on the row.
+ */
+function commandsLaunched(entry: DigestEntry): HTMLElement | null {
+  const n = entry.backgroundLaunched;
+  // Never a zero, for the reason the subagent count is never a zero: a `Commands 0` line would
+  // spend a row telling most sessions what they are not.
+  if (!n) return null;
+  // The subagent count's own classes, so the two totals cannot drift apart visually, plus one of
+  // its own: sharing every class would leave nothing able to name just this line.
+  const node = el('div', 'row-subs row-cmds');
+  const num = el('span', 'subs-num');
+  num.append(document.createTextNode(String(n)));
+  num.append(el('small', undefined, ' launched'));
+  node.append(el('span', 'ctx-lbl', 'Commands'), num);
+  return node;
 }
 
 /**
@@ -516,10 +547,13 @@ function workingRow(row: Row, actions: BandActions, at: number): HTMLElement {
   if (entry.turn) node.append(el('div', 'row-line row-line--quote', `“${entry.turn.prompt}”`));
   const words = now(entry, at);
   if (words) node.append(words);
+  // Each kind of background work reads the same way: the count first, what is still at it under
+  // the count. The line says what the session has spent on commands (or on subagents), and the
+  // rows below say which part of it is still running.
+  const cmdTotal = commandsLaunched(entry);
+  if (cmdTotal) node.append(cmdTotal);
   const cmds = commands(entry, at);
   if (cmds) node.append(cmds);
-  // The count first, the agents at work under it: the line reads as what the session has spent on
-  // subagents, and the rows below as which part of it is still running.
   const total = launched(entry);
   if (total) node.append(total);
   const ags = agents(entry);
@@ -552,6 +586,8 @@ function idleRow(row: Row, actions: BandActions, at: number): HTMLElement {
   node.append(head(row, el('span', 'row-quiet', quiet((row.endedAt ?? at) - entry.lastActivity))));
   const words = now(entry, at);
   if (words) node.append(words);
+  const cmdTotal = commandsLaunched(entry);
+  if (cmdTotal) node.append(cmdTotal);
   const cmds = commands(entry, at);
   if (cmds) node.append(cmds);
   const total = launched(entry);

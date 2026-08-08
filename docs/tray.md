@@ -373,8 +373,8 @@ looking at them:
 | -- | -- |
 | **Broken** | whose call failed — the session's own or a subagent's — and **the message Claude Code showed**, verbatim and monospace (`Not logged in · Please run /login`), plus how long it has been quiet and the context block |
 | **Needs you** | the request VERBATIM — `Waiting for your approval — Bash`, the command on its own line, monospace — and how long it has been stopped, to the second |
-| **Working** | project · subject, the turn's prompt quoted, **NOW** — the one thing to say about the turn — any **background command still running**, **how many subagents it has launched**, the agents at work, and the context block, which carries model · effort |
-| **Idle** | the same, minus what a settled session does not have: project · subject · how long it has been quiet, **NOW**, any **background command still running**, **how many subagents it launched**, and the context block |
+| **Working** | project · subject, the turn's prompt quoted, **NOW** — the one thing to say about the turn — **how many background commands it has launched** and any **still running**, **how many subagents it has launched**, the agents at work, and the context block, which carries model · effort |
+| **Idle** | the same, minus what a settled session does not have: project · subject · how long it has been quiet, **NOW**, **how many background commands it launched** and any **still running**, **how many subagents it launched**, and the context block |
 
 `turn.state` carries the same liveness the panel draws (`turnIsWorking`): the LAST turn of a session
 whose process reports `busy` (never `shell` — that names a turn already over) is `live` even while
@@ -462,17 +462,34 @@ to say. Three findings decided the contents, each measured rather than assumed:
   say*, which is never rendered as a dash.
 
 **A background command gets a line of its own, in three of the four bands.** `● Start the dev server   4m 12s` —
-monospace because it is a command, amber dot because this is the session waiting on something rather
-than the agent working, and the age on the right because between its launch and its notification
-that is the only thing about it that changes. It has no model and no context of its own, so it
+monospace because it is a command, an **accent** dot because in this panel that colour means one
+thing (at work: the Working row's own border is accent, so is the agent's `◇`, so is the context
+bar), and the age on the right because between its launch and its notification that is the only
+thing about it that changes.
+
+The dot was **amber** until 2026-08-08, on the reasoning that the session is *waiting on* the
+command rather than working on it. The reasoning was fine and the colour was not: amber is spent on
+***Needs you*** in three other places — the band heading, the blocked row's left border, and
+`Waiting for your approval` — and one hue cannot mean both *something is running* and *you are
+blocked* on a surface read at the edge of vision. What tells a command from an agent is the SHAPE,
+`●` against `◇`, which is the job that mark already had. It has no model and no context of its own, so it
 carries none of what an agent's line does. It is named by what the launch called it (Claude Code's
 own `description`), which is also the name Claude Code quotes back when the command ends — one
 command must not have two names on two surfaces.
 
-**A command that FAILED keeps its line, as news rather than work.** The last three failures ride
-along with the running ones: red dot instead of amber, dimmed text, and the age on the right is how
-long the command RAN, not a stopwatch still counting on something that is dead. Before 2026-08-08 a
-failure simply removed the line — the list got shorter, and nothing anywhere said why.
+**A command that has ENDED gets no line at all — it gets counted.** `Commands  4 launched`, above
+the running ones, in the same shape and the same two bands as the subagent total. What that command
+did, what it exited with and how long it ran is the portal's, one click away on the row: the tray
+says a version of the state, and a fate is a detail. The count is what makes the silence honest —
+without it, a session that ran four commands and was told about all four would show nothing at all,
+which is the disappearance this whole finding started from.
+
+Davide's call, 2026-08-08, and it **revokes the rule that shipped that same morning** — the last
+three failures drawn as rows, red dot and dimmed text. Two reasons it went: the tray had a second
+rule for commands where it already had one for subagents, and a failed command was a line important
+enough to draw while the ICON never left *Working* for it, which is a surface disagreeing with
+itself. If a command's failure should ever reach the user without the portal, the place for it is
+the icon state or a notification, not a row in the band.
 
 It is drawn in the *Working* and *Idle* bands — the second is the case it exists for, a row that has
 stopped talking and is still waiting on something it started — and on the ***Needs you*** row too,

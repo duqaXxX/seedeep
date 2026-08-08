@@ -4,7 +4,7 @@ import { isValidCertName } from '../core/cert-name.ts';
 import { looksLikeCommitHash } from '../core/commit-attribution.ts';
 import { liveOf, toCatalogue } from '../core/roster.ts';
 import { looksLikeCardId } from '../core/tracker-cards.ts';
-import { isLive, type NormalizedEvent, type SessionRecord } from '../core/types.ts';
+import { type CommandVanishedEvent, isLive, type NormalizedEvent, type SessionRecord } from '../core/types.ts';
 import { readAgentPrompt } from './agent-prompt.ts';
 import { createAggregateCache, defaultCacheFile, maybeMigrateCache } from './aggregate-cache.ts';
 import { selfInvocation } from './args.ts';
@@ -12,6 +12,7 @@ import { assetPath } from './assets.ts';
 import { readCallIO } from './call-io.ts';
 import { createCardsIndex, defaultCardsIndexFile } from './cards-index.ts';
 import { ClientRegistry, type SseSink } from './clients.ts';
+import { createProber, type PendingCommand, type Vanished } from './command-liveness.ts';
 import { buildComparison } from './compare.ts';
 import { defaultConfig, type SeedDeepConfig, writeConfig } from './config.ts';
 import { digestEntry } from './digest.ts';
@@ -44,6 +45,10 @@ export interface ServerDeps {
   cardsIndexFile?: string;
   /** How often the live stream sends a keepalive comment. Defaults to {@link HEARTBEAT_MS}. */
   heartbeatMs?: number;
+  /** How often background commands with no fate are probed. Defaults to {@link LIVENESS_MS}. */
+  livenessMs?: number;
+  /** The liveness prober, injectable so a test can decide the verdict instead of the machine. */
+  prober?: { probe: (pending: readonly PendingCommand[]) => Promise<Vanished[]> };
   /**
    * Injectable exit function for `POST /api/restart`. Defaults to `process.exit`.
    * Override in tests to capture the call without terminating the process.
@@ -120,6 +125,16 @@ const GZIP_MIN_BYTES = 1400;
  * declare itself lost on a cadence. Exported so a test can assert the relation.
  */
 export const HEARTBEAT_MS = 15_000;
+
+/**
+ * How often the background commands with no fate yet are asked whether their process still exists.
+ *
+ * Deliberately its own clock and not the watcher's 300 ms tick: a probe spends a subprocess (~35 ms
+ * with 691 processes on the box), and nothing about this question moves fast. Two probes are needed
+ * before a row tips, so a command reads `unknown` about half a minute after it dies — against the
+ * 40 minutes it used to keep counting.
+ */
+export const LIVENESS_MS = 15_000;
 
 const encoder = new TextEncoder();
 
@@ -314,6 +329,57 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   // it is the server, not this timer, that decides whether the process stays up.
   const heartbeat = setInterval(() => registry.ping(), deps.heartbeatMs ?? HEARTBEAT_MS);
   (heartbeat as { unref?: () => void }).unref?.();
+
+  // Is a background command still alive? Only the machine can say, and only for a command the
+  // transcript has stopped talking about — see `command-liveness.ts` for why this exists and what
+  // was measured and rejected first. On its own clock, NOT the watcher's 300 ms tick: this spends
+  // a process, and a row that is wrong for 15 s is not the bug — one that is wrong for 40 minutes
+  // is. A verdict is emitted as an ordinary out-of-band event, so the server's own tree and every
+  // browser learn it by the one path they already share.
+  const prober = deps.prober ?? createProber();
+  // Every verdict this process has reached, by session and launch. It is kept because THE FILE
+  // WILL NEVER CARRY IT: a page opened after the probe answered seeds itself by replaying the
+  // transcript, and would put the row straight back to `running` — which is the bug, returning
+  // through the one door nobody was watching. Found by driving the real browser, not by a test.
+  // Bounded by the trees: a session with no tree is a session nobody is watching.
+  const vanished = new Map<string, Map<string, CommandVanishedEvent>>();
+  const liveness = setInterval(() => {
+    void (async () => {
+      const pending: PendingCommand[] = [];
+      const held = liveTrees.sessionIds();
+      for (const sessionId of held) {
+        const snap = liveTrees.get(sessionId)?.snapshot();
+        if (!snap) continue;
+        for (const t of snap.mainTools) {
+          // Already told, or already judged: the probe answers the open question only, and never
+          // asks one twice.
+          if (!t.backgroundTaskId || t.outcome || t.vanishedTs) continue;
+          pending.push({ sessionId, toolUseId: t.id, taskId: t.backgroundTaskId });
+        }
+      }
+      // Forget the verdicts of sessions whose tree is gone, on the same beat: they are remembered
+      // for the clients of a session being watched, and nothing else.
+      const keep = new Set(held);
+      for (const id of vanished.keys()) if (!keep.has(id)) vanished.delete(id);
+      if (!pending.length) return;
+      for (const v of await prober.probe(pending)) {
+        const event = {
+          type: 'command-vanished',
+          sessionId: v.sessionId,
+          root: 'cli', // `Root` has exactly one member; nothing reads it on an event
+          timestamp: new Date().toISOString(),
+          seq: -1, // out of band: it has no position in any file — see live-trees' applyLive
+          toolUseId: v.toolUseId,
+          lastSeenAlive: v.lastSeenAlive,
+        } satisfies CommandVanishedEvent;
+        let forSession = vanished.get(v.sessionId);
+        if (!forSession) vanished.set(v.sessionId, (forSession = new Map()));
+        forSession.set(v.toolUseId, event);
+        deps.watcher.emit('event', event);
+      }
+    })();
+  }, deps.livenessMs ?? LIVENESS_MS);
+  (liveness as { unref?: () => void }).unref?.();
 
   const server = Bun.serve({
     port: deps.port,
@@ -660,6 +726,14 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             }
             if (cancelled) return; // cancel() fired while we were awaiting gen.next()
             if (result.done) {
+              // The one thing a replay of the FILE can never produce: what the liveness probe
+              // learned about a command whose end Claude Code never wrote. Sent last, so it lands
+              // on a tree that already holds the launch it refers to — a client that seeds after
+              // the verdict would otherwise draw the row as running for ever, which is this
+              // feature's own bug coming back through the door nobody was watching.
+              for (const e of vanished.get(sessionId)?.values() ?? []) {
+                controller.enqueue(encoder.encode(sseFrame(id++, e.type, e)));
+              }
               controller.enqueue(encoder.encode(sseFrame(id++, 'replay-end', { sessionId })));
               controller.close();
               return;
@@ -787,6 +861,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     tlsCertOrigin,
     stop() {
       clearInterval(heartbeat);
+      clearInterval(liveness);
       liveTrees.stop();
       deps.watcher.off('event', onEvent);
       deps.watcher.off('session-added', onAdded);

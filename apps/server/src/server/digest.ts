@@ -1,7 +1,7 @@
 import { type NowKind, nowLine } from '../core/activity-line.ts';
 import { windowFor } from '../core/context-windows.ts';
 import { delegatedWork, returnedWork, turnIsWorking } from '../core/graph-derive.ts';
-import { type BackgroundCommand, backgroundCommands } from '../core/selectors.ts';
+import { backgroundCommands } from '../core/selectors.ts';
 import { type AgentNode, hasStarted, type TreeSnapshot, type TurnNode } from '../core/session-tree.ts';
 import { stripMarkdown } from '../core/tree-format.ts';
 import { isLive, isModelBusy, pendingInput, type SessionRecord } from '../core/types.ts';
@@ -79,12 +79,6 @@ export interface DigestCommand {
   /** Epoch ms of the launch. The age is the client's to compute; an age sent over a poll would
    * expire in flight, exactly like `now.ageFrom`. */
   since: number;
-  /** `running`, or `failed` for one of the last three failures. Never `done`: a command that
-   * finished cleanly is not news, and a list that carried it would be a log, not a signal. */
-  state: 'running' | 'failed';
-  /** How long the COMMAND ran (launch → its notification). Null while it is still running — the
-   * client ticks the age from `since` instead, which is the number that is still moving. */
-  ranMs: number | null;
 }
 
 /** One live session, whole, in one entry — a client never joins two payloads to draw a row. */
@@ -168,12 +162,20 @@ export interface DigestEntry {
    */
   subagents: { running: number; launched: number; list: DigestSubagent[] };
   /**
-   * The background commands worth telling a client about: every one still RUNNING — what makes a
-   * session that has stopped talking still be waiting on something — plus the last three that
-   * FAILED. Same derivation and the same three-failure rule as the browser's cockpit, so the two
-   * surfaces cannot disagree about what is running, nor about what went wrong.
+   * The background commands still RUNNING — what makes a session that has stopped talking still be
+   * waiting on something. Nothing that has ENDED, whatever its fate: a client polling this is a
+   * glance surface, and how a command finished is a detail it sends the reader to the portal for.
+   * Davide's call, revising the three-failure rule that shipped first — a failed row the icon did
+   * not consider broken was a line important enough to draw and not important enough to alarm.
    */
   background: DigestCommand[];
+  /**
+   * How many background commands the session has launched over its whole life — the same figure,
+   * for the same reason, as {@link DigestEntry.subagents}'s `launched`: {@link background} holds
+   * what is at work THIS SECOND, so a session that ran four commands and got them all back showed
+   * nothing at all once the last one returned.
+   */
+  backgroundLaunched: number;
 }
 
 /**
@@ -282,6 +284,8 @@ export function digestEntry(
   // there is one — is always at the end. Same choice the browser's NOW panel makes.
   const turn = snap.turnList.at(-1) ?? null;
   const agents = runningAgents(snap.subagents);
+  const allCommands = backgroundCommands(snap.mainTools, { ended: !isLive(rec) });
+  const running = allCommands.filter((c) => c.state === 'running');
   const pendingTool =
     rec.waitingFor === null || snap.openCall === null ? null : { name: snap.openCall.name, arg: snap.openCall.arg };
   return {
@@ -340,26 +344,17 @@ export function digestEntry(
           },
     error: snap.error && { ...snap.error },
     subagents: { running: agents.length, launched: launchedCount(snap.subagents), list: agents },
-    // The running ones, and the last three that FAILED. Same rule as the browser's cockpit, from
-    // the same derivation: a command that failed used to leave this array the instant it failed,
-    // so the tray's list simply got shorter and nothing anywhere said why. `state` is what lets a
-    // client draw the difference instead of inferring it from a length.
-    background: (() => {
-      const all = backgroundCommands(snap.mainTools, { ended: !isLive(rec) });
-      const worthSending = [
-        ...all.filter((c) => c.state === 'running'),
-        ...all.filter((c) => c.state === 'failed').slice(-3),
-      ] as (BackgroundCommand & { state: 'running' | 'failed' })[];
-      return worthSending.map((c) => ({
-        toolUseId: c.toolUseId,
-        // The launch's own name for it, exactly as the browser row and Claude Code's own
-        // sentence call it — one command must not have two names on two surfaces.
-        command: c.label,
-        since: Date.parse(c.since),
-        state: c.state,
-        ranMs: c.ranMs,
-      }));
-    })(),
+    // Only what is RUNNING, plus how many there have ever been — the shape the subagent pair
+    // already has, so one client draws two kinds of background work by one rule. What a command
+    // that ended did, and how long it took, is the portal's: it is one click away on the row.
+    background: running.map((c) => ({
+      toolUseId: c.toolUseId,
+      // The launch's own name for it, exactly as the browser row and Claude Code's own
+      // sentence call it — one command must not have two names on two surfaces.
+      command: c.label,
+      since: Date.parse(c.since),
+    })),
+    backgroundLaunched: allCommands.length,
   };
 }
 

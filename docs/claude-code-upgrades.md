@@ -127,6 +127,16 @@ Two guards cover the first, and they are deliberately different from the two abo
 Neither fails the build. An unknown value is not a crash: the session simply makes no claim, and a
 guard that stopped the server over Claude Code's vocabulary would be worse than the bug.
 
+**A third kind of thing the radar cannot see: a PATH LAYOUT (C26).** seedeep finds a background
+command's output file at `<tmp>/claude-<uid>/<slug>/<session>/tasks/<taskId>.output`, because that
+file is what gets asked whether the command's process still exists — the only way a command whose
+end Claude Code never writes can stop counting. The parsed path cannot be used for it (`anon()`
+masks the session uuid inside it before it reaches an event), so the SHAPE is the mechanism. The
+same probe run that provokes `shell` checks the receipt names that shape. If it ever moves, the
+resolution simply returns nothing and every probe answers "no verdict" — a feature that has gone
+quiet is indistinguishable from one with nothing to report, which is why it needs a claim rather
+than a runtime warning.
+
 ## Three outcomes, never two
 
 | | meaning |

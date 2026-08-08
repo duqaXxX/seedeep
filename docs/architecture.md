@@ -439,6 +439,9 @@ arrived". Turning that into what a surface shows is `displayState`
 | A Workflow run silent past `WF_SILENT_MS` (5 min) | `unknown` | A killed run gets no terminal signal anywhere, so silence is the only evidence left |
 | A subagent with no trace of itself (`!hasStarted`) | `unknown` | Nothing on record says an agent is at work |
 
+A background COMMAND has the same problem and cannot be answered the same way — see
+[Is a background command still alive?](#is-a-background-command-still-alive) below.
+
 `hasStarted(a)` is true when the agent has **any one** sign: an `agentType` from its sidecar,
 tokens billed to it, a tool it ran, or text it returned. Measured 2026-07-29 by replaying 910
 ended sessions through the reducer, 3 of 1327 subagents (0.2%) reach the end still `running` —
@@ -461,6 +464,46 @@ active count uses `displayState` too, so the two never disagree about how many a
 the list differs, which is the point. A Workflow row is exempt from `hasStarted`: its node
 carries no type or tools by construction, and the silence threshold judges it instead.
 
+### Is a background command still alive?
+
+A background command's only ending is its `<task-notification>`, and **some launches never get
+one**: 23 of 198 in the local corpus (11.6%), across 11 sessions. `background && !outcome` then
+reads "still running" for as long as the session stays open — seen live as two rows counting past
+40 minutes with nothing of either alive on the machine. A subagent's `unknown` cannot be borrowed
+here: it is reached by the view knowing the session has CLOSED, and this is a session still open.
+
+So seedeep asks the machine. `apps/server/src/server/command-liveness.ts` runs on its own 15 s
+clock (never the watcher's 300 ms tick — it spends a subprocess), for the commands of sessions a
+tree is already held for, and it asks ONE question: **does any process still hold this command's
+output file open?**
+
+- The file is found from the launch's `backgroundTaskId`, not from the path the transcript prints:
+  `anon()` masks the session uuid inside that path before it can reach an event, so the parsed
+  value cannot open anything. Two `readdir`s under `/tmp/claude-<uid>` and the id names the file.
+- Measured 2026-08-08 on real launches: the whole chain holds it (the harness's `zsh` wrapper, the
+  command's own shell, the leaf), `claude` itself does not, and a command that ends or is killed
+  releases it while the file stays on disk. One `lsof -F pn` answers every command at once in
+  33–35 ms with 691 processes on the box.
+- Two other sources were **measured and refuted** first: Claude Code keeps no registry of its
+  background shells on disk (the task id appears nowhere in `~/.claude` outside the transcript),
+  and the output file's mtime or size says nothing — four healthy `until … sleep 20` waiters had
+  written 0 bytes after tens of minutes ALIVE. Matching `ps` on the command TEXT fails too: the
+  harness re-quotes what it runs, so the string seedeep holds is not the string `ps` prints.
+
+**The verdict is `unknown` and can never be anything else.** The probe learns that something
+stopped, never what it stopped WITH, so it emits a `command-vanished` event — out of band,
+`seq: -1`, applied like `subagent-meta` — and the reducer refuses it outright if the command has
+an `outcome`: Claude Code's own word is the authority and can still arrive afterwards. The row's
+duration becomes the last instant it was SEEN, printed as a bound (`≥ 4m 20s`), never as a
+measurement.
+
+**It fails towards saying nothing.** Two consecutive empty probes before a row tips; no verdict at
+all when the file cannot be found, has been deleted (the scratch root lives under `/tmp`, which
+the OS cleans), or when `lsof` is absent or times out. A missing prober leaves every row exactly
+as it is today. LIMIT: `lsof` only — a Linux box without it gets no verdict rather than a
+`/proc/<pid>/fd` sweep, which is thousands of `readlink`s per probe where this is one process, and
+Windows is out of scope.
+
 ## Normalized event model
 
 The parser flattens the raw log into a small set of events consumers care about:
@@ -477,6 +520,7 @@ The parser flattens the raw log into a small set of events consumers care about:
 | `tool-start`      | a `tool_use` content block                                 | a tool call began — id, name, anonymized `arg`; for an `Agent`/`Task` block also the `launchPrompt` + `subagentType` + the launch `description` (which heads the subagent's row — see the GUI shell); for a Task-family block a `taskRef` instead of an `arg` (see below) |
 | `tool-end`        | a `tool_result` content block                              | a tool call finished — `toolUseId`, `outputSize` (rendered char length); `error: true` when the result is a real FAILURE (a user refusal carries the same `is_error` flag but is NOT a failure — classified by `toolOutcome` in `apps/server/src/server/failure.ts`); for a foreground `Agent` result the inline `returned` payload; for a background one `launched` (a receipt: the subagent STARTED), for a `Workflow` also `workflow` (runId + name), and for a `TaskCreate` result `taskCreated` (the todo number it was given + its subject) |
 | `agent-end`       | a `queue-operation` line whose content is a `<task-notification>` | a background subagent really finished — `toolUseId` (the spawn, **nullable**), `taskId` (`<task-id>`, the child's agentId), `status` (completed/failed/killed/stopped). Fires on every stop, so a resumed agent produces several: last wins, never latched. **The event is gated on `toolUseId` OR `status`**, never on the spawn name alone — requiring it dropped the only signal a subagent with no spawn ever gets. What makes a notification TERMINAL is the `status`: the same line type is written for progress (`event` + `summary`, no status — 54 in the local corpus, re-measured 2026-08-08), and that ends nothing. The reducer enforces it where the difference is destructive: a background COMMAND is closed only by a notification carrying a status, since applying a progress summary as its outcome would mark it `done` minutes early and measure its duration to the wrong instant. Latent rather than live — all 54 progress notifications carry a `<task-id>` and NONE a `<tool-use-id>`, so today none can reach a command at all. The subject is an AGENT, and the line names it TWICE — requiring the spawn name dropped the only signal a subagent with no spawn ever gets, and a skill forked into the background has none by construction (its `meta.json` carries no `toolUseId`). **`toolUseId` is not always a spawn either**: after a `SendMessage` resume Claude Code keys the notification on the resume call (26 of 655 real notifications). So the reducer routes by `toolUseId`, then `taskId → spawn`, then — naming no spawn we hold — records the end against the agentId itself. The line is also written for things that are not subagents (a background `Bash`/`Monitor` task, a `Workflow` run, a nested spawn): those name no agent, so nothing ever looks them up. `<task-id>` carries a type prefix, exact on 862 real terminal notifications — `a…` an agent (751, all naming a child file), `b…` a background shell task (109), `w…` a workflow run (2) |
+| `command-vanished` | NO LINE — the server's liveness probe                     | nothing holds a background command's output file open any more, so its process is gone: `toolUseId`, `lastSeenAlive`. The only event with no source in the transcript, because the fact is not in it — see [Is a background command still alive?](#is-a-background-command-still-alive). It says a command STOPPED and never what it stopped with, so the reducer turns it into `unknown`, refuses it outright when an `outcome` is already there, and applies it idempotently (`seq: -1`, out of band, like `subagent-meta`) |
 | `workflow-agent`  | a run's `subagents/workflows/wf_<runId>/` dir + its `journal.jsonl` | one subagent of a Workflow run — `runId`, `phase` (`seen`/`started`/`result`). `started` minus `result` is the only record of how many are still working |
 | `subagent-meta`   | `agent-*.meta.json` sidecar + the child's model            | agentId → toolUseId link, type, model, and the sidecar's `description` — what the agent was launched to do, which for a forked skill is the ONLY name it has |
 | `subagent-output` | a child assistant line with `stop_reason: "end_turn"`     | the verbatim text a subagent returned to the main session (its final answer) |

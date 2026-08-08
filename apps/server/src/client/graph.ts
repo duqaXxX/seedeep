@@ -1870,6 +1870,12 @@ export function createGraph(
     // silence, which was the whole point of surfacing it.
     const failedCount = bgAll.filter((c) => c.state === 'failed').length;
     const failedBelow = failedCount ? `${failedCount} command${failedCount === 1 ? '' : 's'} failed below` : '';
+    // The same rule for a command the liveness probe found gone: it stopped being one of the
+    // RUNNING the moment nothing held its output file open, so it leaves this list — and the count
+    // is what keeps it from leaving in silence. `never reported` is the catalogue's own word for
+    // the state, not a second name for it: nobody ever said what became of the command.
+    const goneCount = bgAll.filter((c) => c.state === 'unknown').length;
+    const goneBelow = goneCount ? `${goneCount} never reported below` : '';
     const slHead = E('div', 'slhead');
     const slTitleWrap = E('div');
     // The card holds whatever is RUNNING, so it is named for that the moment it holds more than
@@ -1878,6 +1884,7 @@ export function createGraph(
       active.length + (active.length === 1 ? ' subagent' : ' subagents'),
       commands.length ? commands.length + (commands.length === 1 ? ' command running' : ' commands running') : '',
       failedBelow,
+      goneBelow,
       finished ? finished + ' finished below' : '',
     ].filter(Boolean);
     slTitleWrap.append(
@@ -1887,7 +1894,7 @@ export function createGraph(
         'wdesc slcount',
         commands.length
           ? counted.join(' · ')
-          : [active.length + ' running', failedBelow, finished ? finished + ' finished below' : '']
+          : [active.length + ' running', failedBelow, goneBelow, finished ? finished + ' finished below' : '']
               .filter(Boolean)
               .join(' · '),
       ),
@@ -1996,7 +2003,10 @@ export function createGraph(
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
     if (exit) mid.append(E('span', 'schip', 'exit ' + exit[1]));
     r.append(mid);
-    r.append(E('span', 'sdur', c.ranMs !== null ? formatDuration(c.ranMs) : '—'));
+    // `≥` is not decoration: for a command the probe found gone, the figure is the last instant it
+    // was SEEN alive, and nobody ever said when it stopped. Printing it bare would claim a
+    // measurement seedeep does not have.
+    r.append(E('span', 'sdur', c.ranMs === null ? '—' : (c.ranAtLeast ? '≥ ' : '') + formatDuration(c.ranMs)));
     r.title = c.sentence ?? c.command;
     return r;
   }

@@ -21,6 +21,10 @@ const LISTENED: Record<NormalizedEvent['type'], true> = {
   'tool-end': true,
   'agent-end': true,
   'agent-launch': true,
+  // Not parsed from any line — the server's liveness probe emits it. The browser listens for the
+  // same reason it listens to the rest: it owns its own reducer, and a verdict only the server
+  // heard would leave the two disagreeing about what is still running.
+  'command-vanished': true,
   'workflow-agent': true,
   'subagent-meta': true,
   'subagent-output': true,

@@ -526,6 +526,39 @@ export const CLAIMS: Claim[] = [
     provoked: (ctx) => ctx.raw.includes('"backgroundTaskId"'),
     holds: (ctx) => ctx.openSessions.some((s) => s.status === 'shell'),
   },
+
+  // Not a field and not a value: a PATH LAYOUT. seedeep finds a background command's output file
+  // by its task id, because that file is the only thing that can be asked whether the command's
+  // process still exists — so the shape of the path IS the mechanism. Nothing else can watch it:
+  // the radar reads field names, and a layout that moved would simply stop resolving, leaving a
+  // feature that answers "cannot say" for ever and looks exactly like one with nothing to report.
+  {
+    id: 'C26',
+    scene: 13,
+    describe: "a background command's output file is <tmp>/claude-<uid>/<slug>/<session>/tasks/<taskId>.output",
+    reader: 'command-liveness.ts:58',
+    investigate:
+      'seedeep resolves that file from the launch receipt\'s task id to ask whether any process still holds it open — the only way a command whose end Claude Code never writes can stop counting. The parsed path itself cannot be used (anon() masks the session uuid inside it), so the LAYOUT is what the search depends on. If it moved, resolveOutputFile returns null, every probe answers "no verdict", and the rows silently go back to counting for ever.',
+    manual:
+      'launch anything with run_in_background and read the tool_result: the sentence "Output is being written to: …" must name a path under /tmp/claude-<uid> with the task id as the file name inside a tasks/ directory.',
+
+    kind: 'gesture',
+    // Ground truth from the receipt's own marker, never from the path under test.
+    provoked: (ctx) => ctx.raw.includes('"backgroundTaskId"'),
+    holds: (ctx) => {
+      const line = userLineWith(ctx, '"backgroundTaskId"');
+      const taskId = line?.toolUseResult?.backgroundTaskId;
+      if (typeof taskId !== 'string' || !taskId) return false;
+      const text = blocks(line)
+        .map((b: any) => (typeof b?.content === 'string' ? b.content : ''))
+        .join(' ');
+      const named = /Output is being written to:\s*(\S+?)\.\s/.exec(text);
+      if (!named) return false;
+      // The exact shape `resolveOutputFile` walks: root, project slug, session, `tasks`, and the
+      // task id as the file's own name.
+      return new RegExp(`^(?:/private)?/tmp/claude-\\d+/[^/]+/[^/]+/tasks/${taskId}\\.output$`).test(named[1]!);
+    },
+  },
 ];
 
 /** Claims for one scene, in declaration order. */

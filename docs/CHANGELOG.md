@@ -4,6 +4,76 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A background command whose end is never written stops counting for ever (2026-08-08)
+
+Seen live: the cockpit showed **2 commands running**, one for 40m 8s and one for 34m 29s, while
+nothing of either was alive on the machine. Not a parsing bug — the terminal signal simply never
+came. Measured across the whole local corpus: **23 of 198 background launches (11.6%), in 11
+sessions**, never get a `<task-notification>` at all, and `background && !outcome` then means
+"still running" for as long as the session stays open. The number sits on the busiest surface in
+the product, and the kind of wrong it is erodes everything beside it: if *2 commands* is wrong,
+nothing gives the reader a reason to believe *0 subagents*.
+
+Nothing in the transcript will ever close those rows, so seedeep asks the machine — **does any
+process still hold this command's output file open?** One `lsof` on a 15 s clock answers every
+pending command at once (33–35 ms with 691 processes), for the sessions a tree is already held
+for. Two sources were measured and refuted first: Claude Code keeps no registry of its background
+shells on disk, and the output file's mtime or size says nothing at all — four healthy
+`until … sleep 20` waiters had written 0 bytes after tens of minutes ALIVE, so a rule keyed on the
+bytes would have declared all four dead within seconds. Matching `ps` on the command TEXT fails
+too: the harness re-quotes what it runs, so the string seedeep holds is not the string `ps` prints.
+
+**The verdict is `unknown` and can never be anything else** — the probe learns that something
+stopped, never what it stopped with. The row keeps its place in the catalogue with its duration as
+a bound (`≥ 4m 20s`, the last instant it was seen alive), the cockpit counts it (`1 never reported
+below`) and never draws it, and the tray simply stops listing it as running. Everything about it
+fails towards saying nothing: two consecutive empty probes before a row tips, and NO verdict when
+the file cannot be found, has been deleted, or `lsof` is absent — which leaves every row exactly
+as it was before.
+
+Two bugs the tests caught while it was being built, both in the fatal direction (calling a LIVE
+command dead): `lsof` prints the REAL path, so a file under `/tmp` came back as `/private/tmp` and
+matched nothing; and a deleted output file — the scratch root is under `/tmp`, which the OS
+cleans — read as "held by nobody" instead of as unanswerable.
+
+### A running command's dot stops borrowing the colour of *Needs you* (2026-08-08)
+
+The tray drew a background command's dot in **amber**, on the reasoning that the session is
+*waiting on* the command rather than working on it. The reasoning was fine and the colour was not:
+amber is spent on ***Needs you*** in three other places — the band heading, the blocked row's left
+border, `Waiting for your approval` — so one hue meant both *something is running* and *you are
+blocked*, in the same panel, on a surface read at the edge of vision.
+
+The dot is now the **accent**, which in this panel means exactly one thing: at work. The Working
+row's own left border is accent, so is the agent's `◇`, so is the context bar. What tells a command
+from an agent is the SHAPE, `●` against `◇` — the job that mark already had.
+
+Matching the portal's green instead was considered and rejected: green would be a fourth hue on one
+dot inside an otherwise accent-marked panel, and making the tray consistent around it would mean
+repainting the Working border and the context bar too — a whole-panel restyle to chase another
+surface's palette.
+
+### The tray counts the commands a session ran, and draws only the live ones (2026-08-08)
+
+The tray kept the last three failed commands as rows, the deliberate asymmetry recorded in the entry
+below: its band is the whole surface, with no catalogue to point at. Using it settled the question
+the other way. **A command that has ended gets no line at all — it gets counted**, `Commands 4
+launched`, in the same shape and the same two bands as the subagent total that was already there.
+
+Two things decided it, both visible on the running panel. The tray had a **second rule for
+commands** where it already had one for subagents — and the subagent rule's own words are the answer
+here: *what each one was, what it cost and how long it took is the portal's, one click away on the
+row*. And a failed command was a line important enough to draw while **the icon never left
+*Working*** for it: a surface disagreeing with itself about whether the thing matters. If a failure
+should ever reach the user without the portal, the place for it is the icon state or a notification,
+not a row in the band.
+
+The count is what keeps the silence honest: without it a session that ran four commands and was told
+about all four would say nothing about any of them, which is the disappearance this whole finding
+started from. `/api/digest` now sends the running commands and `backgroundLaunched`, and no longer
+sends `state` or `ranMs` — the tray drops an ended command an older server still sends rather than
+drawing it, because drawn it would wear the amber dot and tick a stopwatch on something dead.
+
 ### The live card lists only what is live (2026-08-08)
 
 The background-command catalogue shipped with the last three failures riding along on the cockpit,

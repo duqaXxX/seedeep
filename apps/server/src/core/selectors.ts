@@ -59,9 +59,14 @@ export interface BackgroundCommand {
   since: string;
   /** When the notification landed; null while nothing has said anything. */
   endedAt: string | null;
-  /** The command's OWN duration: launch → notification. Null while it runs, and null forever for
-   * one that was never reported — an unfinished measurement is not a duration. */
+  /** The command's OWN duration: launch → notification. Null while it runs, and null for one that
+   * was never reported and was never seen alive by a probe either — an unfinished measurement is
+   * not a duration. */
   ranMs: number | null;
+  /** `ranMs` is a LOWER BOUND, not the duration: the command was still alive at that instant and
+   * nobody ever said when it stopped. Only ever true on an `unknown`, and a surface that prints
+   * the figure without saying so is claiming a measurement seedeep does not have. */
+  ranAtLeast: boolean;
   /** Claude Code's sentence, verbatim: the only place the exit code is ever written. */
   sentence: string | null;
   outputFile: string | null;
@@ -87,11 +92,24 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
       // null one. Testing against `null` alone read that as "not completed" and painted a clean
       // command failed — the same rule the reducer's `error` has always used, stated once here.
       const clean = t.outcomeStatus == null || t.outcomeStatus === 'completed' || t.outcomeStatus === 'stopped';
-      const state: BackgroundState = !t.outcome ? (opts.ended ? 'unknown' : 'running') : clean ? 'done' : 'failed';
+      // `vanishedTs` is the OPEN session's version of `ended`: the transcript still says nothing,
+      // but the machine has been asked and no process holds the command's output file open any
+      // more. It can only ever produce `unknown` — the probe learns that something stopped, never
+      // what it stopped WITH, and `done` would be a status nobody ever wrote.
+      const state: BackgroundState = !t.outcome
+        ? opts.ended || t.vanishedTs
+          ? 'unknown'
+          : 'running'
+        : clean
+          ? 'done'
+          : 'failed';
       const since = t.startedTs!;
       const endedAt = t.outcomeTs ?? null;
+      // A vanished command has no end instant — only the last moment it was SEEN, which bounds
+      // its duration from below and is stated as a bound, never as the figure itself.
+      const bound = t.outcome ? null : (t.lastSeenAliveTs ?? null);
       const a = Date.parse(since);
-      const b = endedAt === null ? Number.NaN : Date.parse(endedAt);
+      const b = endedAt === null ? (bound === null ? Number.NaN : Date.parse(bound)) : Date.parse(endedAt);
       return {
         toolUseId: t.id,
         label: t.description || t.arg || t.name,
@@ -100,6 +118,7 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
         since,
         endedAt,
         ranMs: Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : null,
+        ranAtLeast: endedAt === null && bound !== null,
         sentence: t.outcome ?? null,
         outputFile: t.outputFile ?? null,
         turnIndex: t.turnIndex,

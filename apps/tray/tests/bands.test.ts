@@ -60,6 +60,7 @@ function entry(over: Partial<DigestEntry> = {}): DigestEntry {
     error: null,
     subagents: { running: 0, launched: 0, list: [] },
     background: [],
+    backgroundLaunched: 0,
     ...over,
   };
 }
@@ -490,8 +491,8 @@ test('a row names its model and its effort, and asserts neither when the log is 
 test('a row says which background commands it is still waiting on, in any band', () => {
   const now = 1_000_000;
   const bg = [
-    { toolUseId: 't1', command: 'bun run dev --watch', since: now - 252_000, state: 'running' as const, ranMs: null },
-    { toolUseId: 't2', command: 'tail -f logs/app.log', since: now - 9_000, state: 'running' as const, ranMs: null },
+    { toolUseId: 't1', command: 'bun run dev --watch', since: now - 252_000 },
+    { toolUseId: 't2', command: 'tail -f logs/app.log', since: now - 9_000 },
   ];
 
   const working = mount(live([entry({ background: bg })]), undefined, now);
@@ -515,31 +516,38 @@ test('a row says which background commands it is still waiting on, in any band',
   assert.equal(find(mount(live([entry()])).node, 'row-bg').length, 0);
 });
 
-// The other half of the same finding: a command that FAILED used to leave the server's array the
-// instant it failed, so the tray's list simply got shorter and nothing said why. It is on the row
-// now — but as news, never as work: no amber dot, and the age it shows is how long it RAN, not a
-// stopwatch still counting on something that is dead.
-test('a row shows a failed command as news, not as something it is waiting on', () => {
+// The other half of the same question, answered the other way (Davide, 2026-08-08): what a command
+// that ENDED did is the portal's, and the tray says only how many there have been. The count is
+// what makes that honest — without it a session that ran four commands and was told about all four
+// would show nothing at all, which is the disappearance this whole finding started from.
+test('a session that has launched commands says how many, whatever is still running', () => {
+  const now = 1_000_000;
+  const bg = [{ toolUseId: 't1', command: 'bun run dev', since: now - 9_000 }];
+  const working = mount(live([entry({ backgroundLaunched: 4, background: bg })]), undefined, now);
+  assert.equal(text(find(working.node, 'row-cmds')[0]), 'Commands4 launched');
+  assert.deepEqual(find(working.node, 'bg-cmd').map(text), ['bun run dev'], 'the running one is still its own row');
+
+  // The point of the count: every command is over, and the row still says the session ran some.
+  const idle = mount(live([entry({ status: 'idle', backgroundLaunched: 4, background: [] })]), undefined, now);
+  assert.equal(text(find(idle.node, 'row-cmds')[0]), 'Commands4 launched');
+  assert.equal(find(idle.node, 'row-bg').length, 0, 'and draws no row for a command that is over');
+
+  // A session that never launched one is not told what it is not.
+  assert.equal(find(mount(live([entry()]), undefined, now).node, 'row-cmds').length, 0);
+});
+
+// An older server still sends the ended ones. Drawn, they would wear the at-work dot and tick a
+// stopwatch on something that is dead — the one claim this row must never make.
+test('an ended command from an older server is dropped, not drawn as running', () => {
   const now = 1_000_000;
   const { node } = mount(
     live([
       entry({
         status: 'idle',
+        backgroundLaunched: 2,
         background: [
-          {
-            toolUseId: 't1',
-            command: 'Tail the transcript',
-            since: now - 252_000,
-            state: 'running' as const,
-            ranMs: null,
-          },
-          {
-            toolUseId: 't2',
-            command: 'Run the capture',
-            since: now - 900_000,
-            state: 'failed' as const,
-            ranMs: 600_000,
-          },
+          { toolUseId: 't1', command: 'Tail the transcript', since: now - 252_000 },
+          { toolUseId: 't2', command: 'Run the capture', since: now - 900_000, state: 'failed' as const },
         ],
       }),
     ]),
@@ -547,11 +555,8 @@ test('a row shows a failed command as news, not as something it is waiting on', 
     now,
   );
 
-  assert.deepEqual(find(node, 'bg-cmd').map(text), ['Tail the transcript', 'Run the capture']);
-  // 10m is what the command RAN. Counting from `since` would print 15m — the age of a thing that
-  // stopped existing five minutes ago.
-  assert.deepEqual(find(node, 'bg-age').map(text), ['4m 12s', '10m 00s']);
-  assert.equal(find(node, 'failed').length, 1, 'and it is marked, so it cannot read as still running');
+  assert.deepEqual(find(node, 'bg-cmd').map(text), ['Tail the transcript']);
+  assert.deepEqual(find(node, 'bg-age').map(text), ['4m 12s']);
 });
 
 test('a working row names the agents at work, and says nothing when none are', () => {

@@ -268,8 +268,16 @@
 
 /* The background commands still running. Monospace because they are commands, and one line each:
    a command reports nothing between its launch and its notification, so there is nothing else about
-   it to draw. The dot is amber, not the accent — this is the session waiting on something, which is
-   a different claim from the agent working. */
+   it to draw.
+
+   The dot is the ACCENT, which in this panel means one thing: at work. The Working row's own left
+   border is accent, so is the agent's ◇, so is the context bar — and a running command is the same
+   claim. It was amber until 2026-08-08, on the reasoning that the session is WAITING on the command
+   rather than working on it; the reasoning was fine and the colour was not, because amber is spent
+   on *Needs you* in three other places (the band heading, the blocked row's border, "Waiting for
+   your approval"). One hue cannot mean both "something is running" and "you are blocked" on a
+   surface read at the edge of vision. What separates a command from an agent is the SHAPE — ● and
+   ◇ — which is the job that mark already had. */
 .row-bgs {
   display: flex;
   flex-direction: column;
@@ -287,22 +295,11 @@
 }
 
 .row-bg .bgdot {
-  background: var(--warn);
+  background: var(--accent);
   border-radius: 50%;
   flex: 0 0 auto;
   height: 6px;
   width: 6px;
-}
-
-/* A command that FAILED: the dot goes red and the text dims. It is on the row for the same reason
-   the browser keeps it — a list that simply got shorter told you nothing — but it is news, not
-   work, and it must not read as something the session is still waiting on. */
-.row-bg.failed {
-  color: #94a3b8;
-}
-
-.row-bg.failed .bgdot {
-  background: var(--alert);
 }
 
 /* One line, cut: a command can be 200 characters and the row's height must not follow it. */

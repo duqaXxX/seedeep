@@ -454,6 +454,8 @@ function createSessionTree(opts) {
         outcomeStatus: null,
         outcomeTs: null,
         outputFile: null,
+        vanishedTs: null,
+        lastSeenAliveTs: null,
         launchPrompt: e.launchPrompt ?? null,
         spawnModel: e.spawnModel ?? null,
         returned: null,
@@ -597,6 +599,12 @@ function createSessionTree(opts) {
         if (e.taskId && sp.runId === null)
           linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === "command-vanished") {
+      const bg = tools.get(e.toolUseId);
+      if (bg?.backgroundTaskId && bg.outcome === null) {
+        bg.vanishedTs = e.timestamp;
+        bg.lastSeenAliveTs = e.lastSeenAlive;
+      }
     } else if (e.type === "compaction") {
       if (!compactionSeqs.has(e.seq)) {
         compactionSeqs.add(e.seq);
@@ -667,6 +675,7 @@ function createSessionTree(opts) {
       node.outcome = t.outcome;
     if (t.backgroundTaskId) {
       node.background = true;
+      node.backgroundTaskId = t.backgroundTaskId;
       if (t.startTs)
         node.startedTs = t.startTs;
       if (t.outcomeStatus !== null)
@@ -677,6 +686,10 @@ function createSessionTree(opts) {
         node.outputFile = t.outputFile;
       if (t.description)
         node.description = t.description;
+      if (t.vanishedTs)
+        node.vanishedTs = t.vanishedTs;
+      if (t.lastSeenAliveTs)
+        node.lastSeenAliveTs = t.lastSeenAliveTs;
     }
     return node;
   }
@@ -2330,6 +2343,7 @@ var LISTENED = {
   "tool-end": true,
   "agent-end": true,
   "agent-launch": true,
+  "command-vanished": true,
   "workflow-agent": true,
   "subagent-meta": true,
   "subagent-output": true,
@@ -3885,11 +3899,12 @@ function runningBackground(tools) {
 function backgroundCommands(tools, opts) {
   return tools.filter((t) => t.background && t.startedTs).map((t) => {
     const clean = t.outcomeStatus == null || t.outcomeStatus === "completed" || t.outcomeStatus === "stopped";
-    const state = !t.outcome ? opts.ended ? "unknown" : "running" : clean ? "done" : "failed";
+    const state = !t.outcome ? opts.ended || t.vanishedTs ? "unknown" : "running" : clean ? "done" : "failed";
     const since = t.startedTs;
     const endedAt = t.outcomeTs ?? null;
+    const bound = t.outcome ? null : t.lastSeenAliveTs ?? null;
     const a = Date.parse(since);
-    const b = endedAt === null ? Number.NaN : Date.parse(endedAt);
+    const b = endedAt === null ? bound === null ? Number.NaN : Date.parse(bound) : Date.parse(endedAt);
     return {
       toolUseId: t.id,
       label: t.description || t.arg || t.name,
@@ -3898,6 +3913,7 @@ function backgroundCommands(tools, opts) {
       since,
       endedAt,
       ranMs: Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : null,
+      ranAtLeast: endedAt === null && bound !== null,
       sentence: t.outcome ?? null,
       outputFile: t.outputFile ?? null,
       turnIndex: t.turnIndex
@@ -7585,15 +7601,18 @@ function createGraph(container, state, opts = {}) {
     const commands = bgAll.filter((c) => c.state === "running");
     const failedCount = bgAll.filter((c) => c.state === "failed").length;
     const failedBelow = failedCount ? `${failedCount} command${failedCount === 1 ? "" : "s"} failed below` : "";
+    const goneCount = bgAll.filter((c) => c.state === "unknown").length;
+    const goneBelow = goneCount ? `${goneCount} never reported below` : "";
     const slHead = E("div", "slhead");
     const slTitleWrap = E("div");
     const counted = [
       active.length + (active.length === 1 ? " subagent" : " subagents"),
       commands.length ? commands.length + (commands.length === 1 ? " command running" : " commands running") : "",
       failedBelow,
+      goneBelow,
       finished ? finished + " finished below" : ""
     ].filter(Boolean);
-    slTitleWrap.append(E("div", "wtitle", commands.length ? "Running · live" : "Subagents · live"), E("div", "wdesc slcount", commands.length ? counted.join(" · ") : [active.length + " running", failedBelow, finished ? finished + " finished below" : ""].filter(Boolean).join(" · ")));
+    slTitleWrap.append(E("div", "wtitle", commands.length ? "Running · live" : "Subagents · live"), E("div", "wdesc slcount", commands.length ? counted.join(" · ") : [active.length + " running", failedBelow, goneBelow, finished ? finished + " finished below" : ""].filter(Boolean).join(" · ")));
     slHead.append(slTitleWrap);
     const subLiveHost = E("div", "sublist");
     if (typeof subLiveHost.addEventListener === "function") {
@@ -7654,7 +7673,7 @@ function createGraph(container, state, opts = {}) {
     if (exit)
       mid.append(E("span", "schip", "exit " + exit[1]));
     r.append(mid);
-    r.append(E("span", "sdur", c.ranMs !== null ? formatDuration(c.ranMs) : "—"));
+    r.append(E("span", "sdur", c.ranMs === null ? "—" : (c.ranAtLeast ? "≥ " : "") + formatDuration(c.ranMs)));
     r.title = c.sentence ?? c.command;
     return r;
   }
