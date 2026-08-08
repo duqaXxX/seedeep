@@ -1178,9 +1178,7 @@ async function docShots(only?: string): Promise<void> {
   const outDirAll = join(process.cwd(), manifest.outDir);
   await mkdir(outDirAll, { recursive: true });
   const cutAll: string[] = [];
-  const wanted = only
-    ? manifest.shots.filter((s) => s.id === only || s.scene === only)
-    : manifest.shots;
+  const wanted = only ? manifest.shots.filter((s) => s.id === only || s.scene === only) : manifest.shots;
   if (only && wanted.length === 0) throw new Error(`--only ${only}: no shot or scene by that name in the manifest`);
   const scenes = new Map<string, DocShot[]>();
   for (const shot of wanted) {
