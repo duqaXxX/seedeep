@@ -1161,26 +1161,42 @@ async function shootScene(sceneId: string, shots: DocShot[], outDir: string, cut
   });
 }
 
-async function docShots(): Promise<void> {
+/**
+ * Cut the figures of `docs/features.md`.
+ *
+ * `--only <scene|shot-id>` narrows the run to one scene or one shot. It exists because the two
+ * halves have very different prerequisites: a SCENE is generated from `doc-scenes.ts` and costs
+ * nothing, while the recorded shots need the bundle a `record` run leaves in a temp directory —
+ * which the OS eventually deletes, and re-making it drives real sessions and burns tokens. Without
+ * the flag, a missing bundle blocks even the figures that need no recording at all.
+ *
+ * The bare command is unchanged, and still FAILS when the bundle is gone: a figure that cannot be
+ * cut must not pass quietly, or a widget that moved becomes a picture that lies.
+ */
+async function docShots(only?: string): Promise<void> {
   const manifest = await readManifest();
   const outDirAll = join(process.cwd(), manifest.outDir);
   await mkdir(outDirAll, { recursive: true });
   const cutAll: string[] = [];
+  const wanted = only
+    ? manifest.shots.filter((s) => s.id === only || s.scene === only)
+    : manifest.shots;
+  if (only && wanted.length === 0) throw new Error(`--only ${only}: no shot or scene by that name in the manifest`);
   const scenes = new Map<string, DocShot[]>();
-  for (const shot of manifest.shots) {
+  for (const shot of wanted) {
     const key = shot.scene ?? 'recorded';
     scenes.set(key, [...(scenes.get(key) ?? []), shot]);
   }
   if (scenes.has('recorded'))
     await shootRecorded(
-      manifest.shots.filter((s) => !s.scene),
+      wanted.filter((s) => !s.scene),
       outDirAll,
       cutAll,
     );
   for (const [id, shots] of scenes) if (id !== 'recorded') await shootScene(id, shots, outDirAll, cutAll);
 
-  const missing = manifest.shots.filter((s) => !cutAll.includes(s.id)).map((s) => s.id);
-  console.log(`[doc-shots] ${cutAll.length}/${manifest.shots.length} cut → ${manifest.outDir}`);
+  const missing = wanted.filter((s) => !cutAll.includes(s.id)).map((s) => s.id);
+  console.log(`[doc-shots] ${cutAll.length}/${wanted.length} cut → ${manifest.outDir}`);
   if (missing.length > 0) console.log(`[doc-shots] not cut: ${missing.join(', ')}`);
 }
 
@@ -1324,8 +1340,10 @@ const cmd = process.argv[2];
 if (cmd === 'record') await record();
 else if (cmd === 'record-extras') await recordExtras();
 else if (cmd === 'shoot') await shoot();
-else if (cmd === 'doc-shots') await docShots();
-else {
-  console.error('usage: capture-demo.ts record | record-extras | shoot | doc-shots');
+else if (cmd === 'doc-shots') {
+  const i = process.argv.indexOf('--only');
+  await docShots(i === -1 ? undefined : process.argv[i + 1]);
+} else {
+  console.error('usage: capture-demo.ts record | record-extras | shoot | doc-shots [--only <scene|shot-id>]');
   process.exit(1);
 }

@@ -66,6 +66,24 @@
       ]
     },
     {
+      "id": "background-commands",
+      "subject": "The bottom card's two tabs: the background commands the session launched, each with its fate",
+      "cue": "end",
+      "scene": "commands",
+      "selector": ".card:has(.wtitle:has-text(\"in launch order\"))",
+      "click": [
+        ".xbtn:has-text(\"Background commands\")"
+      ],
+      "waitFor": ".subrow .badge",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/core/selectors.ts",
+        "apps/server/public/css/live-monitor.css",
+        "apps/server/public/css/drawer.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
       "id": "subagent-drawer",
       "subject": "A subagent's drawer: its launch intent, its tools, and the verbatim output it returned",
       "cue": "end",

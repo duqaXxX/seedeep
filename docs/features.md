@@ -184,6 +184,12 @@ default that moved on its own would leave you unsure what you were reading — a
 the closed tab carries **its count and its failures on its own label**, so nothing
 that needs attention is hidden behind an unmarked door.
 
+![The bottom card on its Background commands tab: five commands in launch order — two done, two failed with their exit codes, one still running — beside a Subagents tab carrying the count of the other list](assets/shots/background-commands.png)
+
+*The same card, switched to its other catalogue. The tab you are not on carries its
+own count, and its failures with it — which is what makes hiding one list behind a
+tab safe.*
+
 Each command is one line: what it was launched to do (Claude Code's own
 `description`, the name it quotes back when the command ends), its state, the turn
 that started it, its exit code, and **how long the command itself ran** — launch

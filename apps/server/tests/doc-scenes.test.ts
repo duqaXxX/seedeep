@@ -12,6 +12,7 @@
 import { describe, expect, test } from 'bun:test';
 import { SCENES, slugOf } from '../scripts/doc-scenes.ts';
 import { windowFor } from '../src/core/context-windows.ts';
+import { backgroundCommands } from '../src/core/selectors.ts';
 import { createSessionTree } from '../src/core/session-tree.ts';
 import type { NormalizedEvent } from '../src/core/types.ts';
 import { computeVerdict, turnBillable } from '../src/core/verdict.ts';
@@ -148,5 +149,49 @@ describe('corpus — five sessions, so a ranking has something to rank', () => {
   test('every session says the shared phrase, which is what Search will rank', () => {
     const all = [{ cwd: scene.cwd, sessionId: scene.sessionId, lines: scene.lines }, ...(scene.archive ?? [])];
     for (const s of all) expect(s.lines.some((l) => l.includes('503 spike'))).toBe(true);
+  });
+});
+
+// The figure this scene exists for is the bottom card with BOTH catalogues filled — the state that
+// makes it grow its two tabs. Every claim the picture makes is asserted here, because a wrong field
+// name would not draw a wrong picture: it would draw an empty one.
+describe('the commands scene', () => {
+  const scene = SCENES.commands!();
+  const snap = snapshotOf(scene.lines, scene.sessionId, scene.children ?? {});
+
+  test('both catalogues have something, which is what puts the tabs on the card', () => {
+    // The two SPAWNS, by the intent each was launched with. The count of `subagents` is not the
+    // assertion: this helper feeds transcripts only, and the agentId → spawn link lives in the
+    // `.meta.json` sidecar that the capture writes and the server reads — without it each child
+    // also appears under its own bare id. What the figure needs is that both spawns parsed and
+    // both catalogues are non-empty.
+    expect(
+      snap.subagents
+        .filter((a) => a.toolUseId !== null)
+        .map((a) => a.title)
+        .sort(),
+    ).toEqual(['Check the docs against the code', 'Review the diff for correctness']);
+    expect(backgroundCommands(snap.mainTools, { ended: false }).length).toBe(5);
+  });
+
+  test('the commands carry every state the figure shows', () => {
+    const byState = backgroundCommands(snap.mainTools, { ended: false }).reduce<Record<string, number>>((acc, c) => {
+      acc[c.state] = (acc[c.state] ?? 0) + 1;
+      return acc;
+    }, {});
+    // Two clean, two failed, and one nothing ever reported — the last is what 8% of real launches do.
+    expect(byState).toEqual({ done: 2, failed: 2, running: 1 });
+  });
+
+  test('a failed row can state its exit code and its real duration, or the picture says nothing', () => {
+    const failed = backgroundCommands(snap.mainTools, { ended: false }).filter((c) => c.state === 'failed');
+    for (const c of failed) {
+      expect(c.sentence).toMatch(/exit code \d+/);
+      expect(c.ranMs).toBeGreaterThan(0);
+      expect(c.outputFile).toMatch(/tasks\/.+\.output$/);
+      // The label is the launch's own description, not the shell one-liner: that is what the row
+      // shows, and what Claude Code quotes back in the sentence beside it.
+      expect(c.sentence).toContain(c.label);
+    }
   });
 });

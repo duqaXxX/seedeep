@@ -180,6 +180,43 @@ class Writer {
     });
   }
 
+  /**
+   * A background command's LAUNCH RECEIPT — the shape that says a Bash went to the background:
+   * an empty stdout and a `backgroundTaskId`. Not `status: 'async_launched'`, which is the
+   * subagent shape; and not `run_in_background` in the input either, since a foreground command
+   * PROMOTED by the timeout carries none.
+   */
+  backgroundLaunch(toolUseId: string, taskId: string): string {
+    return this.push({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: '' }] },
+      toolUseResult: {
+        stdout: '',
+        stderr: '',
+        interrupted: false,
+        isImage: false,
+        noOutputExpected: false,
+        backgroundTaskId: taskId,
+      },
+    });
+  }
+
+  /**
+   * The notification that ends a background command, minutes or hours later. Its `<summary>` is
+   * the only place the exit code is ever written, and the `<status>` is what makes it terminal —
+   * the same line type is written for progress and ends nothing.
+   */
+  notification(toolUseId: string, taskId: string, status: string, summary: string): string {
+    return this.push({
+      type: 'queue-operation',
+      operation: 'enqueue',
+      content:
+        `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n` +
+        `<output-file>/tmp/orbit/tasks/${taskId}.output</output-file>\n<status>${status}</status>\n` +
+        `<summary>${summary}</summary>\n</task-notification>`,
+    });
+  }
+
   /** The line that closes a turn. Its absence is what makes a turn read as interrupted. */
   turnEnd(durationMs: number, messageCount: number): string {
     return this.push({ type: 'system', subtype: 'turn_duration', durationMs, messageCount });
@@ -519,7 +556,182 @@ function corpus(): Scene {
 }
 
 /** Every synthetic scene, by the id a shot names in `doc-shots.json`. */
+
+/**
+ * A session that leaned on the background: five shell commands launched to run while the turn went
+ * on, two subagents beside them, and among the commands the state no recording can be relied on to
+ * produce — one that FAILED, one still running, one whose fate was never reported.
+ *
+ * It exists for the bottom card: with both catalogues non-empty it grows its two tabs, which is
+ * precisely the state a figure has to show and which a quiet session never reaches.
+ */
+function commands(): Scene {
+  const cwd = '/tmp/orbit';
+  const sessionId = '5f2a91c4-3d7e-4b18-9a06-2c8e5d1f7b43';
+  const at = clock('2026-03-04T09:12:00.000Z');
+  const w = new Writer(sessionId, cwd, at);
+
+  w.typed('Cut the release: build every target, run the suite, and watch the tag.');
+  w.call({
+    text: 'Launching the long ones in the background so the turn is not blocked.',
+    cacheRead: 48_000,
+    out: 340,
+    tools: [
+      {
+        id: 'toolu_c1',
+        name: 'Bash',
+        input: {
+          command: 'bun run build:server:all',
+          description: 'Build every platform binary',
+          run_in_background: true,
+        },
+      },
+      {
+        id: 'toolu_c2',
+        name: 'Bash',
+        input: {
+          command: 'bun run test --coverage',
+          description: 'Run the suite with coverage',
+          run_in_background: true,
+        },
+      },
+    ],
+  });
+  w.backgroundLaunch('toolu_c1', 'b1k4m9x2z');
+  w.backgroundLaunch('toolu_c2', 'b7p3q8w5v');
+  w.notification(
+    'toolu_c2',
+    'b7p3q8w5v',
+    'completed',
+    'Background command "Run the suite with coverage" completed (exit code 0)',
+  );
+  w.call({ text: 'The suite is green. The build is still going.', cacheRead: 61_000, out: 180 });
+  w.turnEnd(41_000, 9);
+
+  w.typed('While that runs, review the diff and watch the release.');
+  w.call({
+    text: 'Two reviewers on the diff, and a watcher on the tag.',
+    cacheRead: 74_000,
+    out: 620,
+    tools: [
+      {
+        id: 'toolu_a1',
+        name: 'Agent',
+        input: {
+          description: 'Review the diff for correctness',
+          subagent_type: 'general-purpose',
+          model: 'sonnet',
+          prompt: 'Read the diff of the last three commits and report defects only.',
+        },
+      },
+      {
+        id: 'toolu_a2',
+        name: 'Agent',
+        input: {
+          description: 'Check the docs against the code',
+          subagent_type: 'general-purpose',
+          model: 'sonnet',
+          prompt: 'Read docs/ and report every sentence the code contradicts.',
+        },
+      },
+      {
+        id: 'toolu_c3',
+        name: 'Bash',
+        input: {
+          command: 'gh run watch --exit-status',
+          description: 'Watch the release workflow',
+          run_in_background: true,
+        },
+      },
+    ],
+  });
+  w.result('toolu_a1', 'Two defects, both in the parser branch. Detail above.');
+  w.result('toolu_a2', 'Three sentences no longer true, listed with their line numbers.');
+  w.backgroundLaunch('toolu_c3', 'b2n6r4t8y');
+  w.notification(
+    'toolu_c1',
+    'b1k4m9x2z',
+    'completed',
+    'Background command "Build every platform binary" completed (exit code 0)',
+  );
+  w.notification(
+    'toolu_c3',
+    'b2n6r4t8y',
+    'failed',
+    'Background command "Watch the release workflow" failed with exit code 1',
+  );
+  w.call({
+    text: 'The build is done, the reviewers came back, and the workflow watcher exited 1 — the tag never landed.',
+    cacheRead: 96_000,
+    out: 720,
+    tools: [
+      {
+        id: 'toolu_c4',
+        name: 'Bash',
+        input: {
+          command: 'until gh release view v0.13.0 >/dev/null 2>&1; do sleep 20; done',
+          description: 'Wait for the release to appear',
+          run_in_background: true,
+        },
+      },
+      {
+        id: 'toolu_c5',
+        name: 'Bash',
+        input: {
+          command: 'tail -f /tmp/orbit/logs/publish.log',
+          description: 'Follow the publish log',
+          run_in_background: true,
+        },
+      },
+    ],
+  });
+  w.backgroundLaunch('toolu_c4', 'b9j5h1k7l');
+  w.backgroundLaunch('toolu_c5', 'b3d8f2g6s');
+  // c4 is killed from outside — the case that produces the failure nobody is told about in words,
+  // and c5 is simply never reported, which is what 8% of real launches do.
+  w.notification(
+    'toolu_c4',
+    'b9j5h1k7l',
+    'failed',
+    'Background command "Wait for the release to appear" failed with exit code 144',
+  );
+  w.turnEnd(88_000, 17);
+
+  return {
+    id: 'commands',
+    cwd,
+    sessionId,
+    lines: w.lines,
+    status: 'busy',
+    children: {
+      a1: child({
+        agentId: 'a1',
+        sessionId,
+        cwd,
+        prompt: 'Read the diff of the last three commits and report defects only.',
+        model: SONNET,
+        returned: 'Two defects, both in the parser branch.',
+        cacheRead: 18_200,
+        out: 900,
+        at,
+      }),
+      a2: child({
+        agentId: 'a2',
+        sessionId,
+        cwd,
+        prompt: 'Read docs/ and report every sentence the code contradicts.',
+        model: SONNET,
+        returned: 'Three sentences no longer true, listed with their line numbers.',
+        cacheRead: 14_800,
+        out: 640,
+        at,
+      }),
+    },
+  };
+}
+
 export const SCENES: Record<string, () => Scene> = {
+  commands,
   'busy-day': busyDay,
   broken: brokenSession,
   corpus,
