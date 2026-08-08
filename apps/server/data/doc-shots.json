@@ -176,7 +176,12 @@
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/feed.css",
         "apps/server/scripts/doc-scenes.ts"
-      ]
+      ],
+      "click": [
+        ".scope-banner",
+        ".tstrip .sbars .sb >> nth=0"
+      ],
+      "waitFor": ".fev.err"
     },
     {
       "id": "broken-session",
