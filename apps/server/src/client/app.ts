@@ -6,7 +6,7 @@ import type { SessionCards } from '../core/tracker-cards.ts';
 import { tabLabel } from '../core/tree-format.ts';
 import type { Comparison, Retrospective, SearchResponse, SessionRecord } from '../core/types.ts';
 import { AuthEventSource, type AuthState, authFetch, currentAuthState, initAuth, onAuthState } from './auth.ts';
-import { markDevBuild } from './build-mark.ts';
+import { markDevBuild, markVersion } from './build-mark.ts';
 import { createCompareView } from './compare-view.ts';
 import { createDropdown } from './dropdown.ts';
 import { createEndGuard } from './end-guard.ts';
@@ -37,8 +37,13 @@ initAuth();
 // every tick forever. Failures are silent — an unmarked portal is the released one, which is the
 // safe way to be wrong about a badge.
 void authFetch('/api/config')
-  .then((r) => r.json() as Promise<{ dev?: boolean }>)
-  .then((cfg) => markDevBuild(cfg.dev === true, document.querySelector('header > strong')))
+  .then((r) => r.json() as Promise<{ dev?: boolean; version?: string }>)
+  .then((cfg) => {
+    const brand = document.querySelector('header > strong');
+    // Version first, so a checkout reads "seedeep 0.0.0 dev" and not the other way round.
+    markVersion(cfg.version, brand);
+    markDevBuild(cfg.dev === true, brand);
+  })
   .catch(() => {
     /* an unmarked page rather than a wrong one */
   });

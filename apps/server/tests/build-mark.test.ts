@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEV_TITLE, MARK_CLASS, type MarkHost, markDevBuild } from '../src/client/build-mark.ts';
+import {
+  DEV_TITLE,
+  MARK_CLASS,
+  type MarkHost,
+  VERSION_CLASS,
+  markDevBuild,
+  markVersion,
+} from '../src/client/build-mark.ts';
 import { fakeDoc, findByClass, textOf } from './fake-dom.ts';
 
 /** The brand element the mark hangs on, and the document it lives in. */
@@ -53,4 +60,52 @@ test('no brand still renames the tab', () => {
   markDevBuild(true, null, doc);
 
   assert.equal(doc.title, DEV_TITLE);
+});
+
+const versions = (brand: unknown) => findByClass(brand, VERSION_CLASS);
+
+// Unlike the dev chip, this one is on every portal — it is what a bug report quotes.
+test('the brand states the version it is served by', () => {
+  const { doc, brand } = page();
+
+  markVersion('0.12.0', brand, doc);
+
+  assert.equal(versions(brand).length, 1);
+  assert.equal(textOf(versions(brand)[0]), '0.12.0');
+});
+
+// A server too old to report its version leaves the brand alone: a dash beside the wordmark reads
+// as a broken page, and the number is exactly the thing that must never be guessed.
+test('an unreported version adds nothing', () => {
+  const { doc, brand } = page();
+
+  markVersion(undefined, brand, doc);
+  markVersion('', brand, doc);
+
+  assert.equal(versions(brand).length, 0);
+});
+
+test('marking the version twice marks once', () => {
+  const { doc, brand } = page();
+
+  markVersion('0.12.0', brand, doc);
+  markVersion('0.12.0', brand, doc);
+
+  assert.equal(versions(brand).length, 1);
+});
+
+// Both marks live on the same brand, and a checkout must still say so — the version does not
+// replace the dev chip, it precedes it.
+test('a checkout shows the version AND the dev chip, in that order', () => {
+  const { doc, brand } = page();
+
+  markVersion('0.12.0', brand, doc);
+  markDevBuild(true, brand, doc);
+
+  assert.equal(versions(brand).length, 1);
+  assert.equal(chips(brand).length, 1);
+  assert.deepEqual(
+    (brand as unknown as { children: { className: string }[] }).children.map((c) => c.className),
+    [VERSION_CLASS, MARK_CLASS],
+  );
 });

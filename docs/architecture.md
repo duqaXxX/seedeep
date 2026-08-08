@@ -2370,6 +2370,15 @@ executable. The portal reads it once at load and, when it is true, renames the t
 and puts a chip beside the brand (`client/build-mark.ts`). A release shows nothing — a badge every
 install carries is a badge nobody reads.
 
+The same response carries **`version`**, and unlike the chip the brand states it on **every**
+portal, in muted monospace right of the wordmark: it is not a badge but a fact, and it is the one
+number a bug report quotes — the settings panel still holds it, but reading it there is a panel you
+have to go open. On a checkout both marks show, version first — `seedeep 0.12.0 dev`. It is the
+release the SERVER reported and never a constant compiled into the bundle: `public/lib/` is a build
+artifact, so a stale `build:client` would otherwise print a version nothing is running. A server too
+old to report one draws nothing at all — a dash beside the wordmark reads as a broken page, and this
+is the value that must never be guessed.
+
 It exists because the two seedeeps on a machine are **indistinguishable by their content**: the
 sessions come from `~/.claude/projects`, which belongs to Claude Code, so a dev portal and an
 installed one list exactly the same work. Everything else is separate — config, certificate, token,

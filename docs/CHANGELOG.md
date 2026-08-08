@@ -4,6 +4,19 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### The brand says which version is answering (2026-08-09)
+
+The portal now prints the running server's version beside the wordmark, on every install:
+`seedeep 0.12.0`, and `seedeep 0.12.0 dev` on a checkout — the development chip is unchanged and
+still says nothing on a release. It was readable only by opening the settings panel, which is a
+step nobody takes before quoting a version in a bug report.
+
+It comes from `GET /api/config`, the same single request at load that the development chip already
+used, so the header costs no extra round trip. **Never from a constant compiled into the bundle**:
+`public/lib/` is a build artifact, and a stale `build:client` would print a number nothing is
+running. A server too old to report a version draws nothing rather than a dash — this is the one
+value a guess is worse than a silence about.
+
 ### The figure gate compares pictures, and the bundle it needs leaves `/tmp` (2026-08-09)
 
 Two problems with the same root: the mechanism that keeps the documentation's figures honest was

@@ -276,6 +276,19 @@ header {
   border-color: rgba(110, 231, 183, 0.4);
 }
 
+/* The version the running server reported — see `client/build-mark.ts`. Unlike the dev chip below
+   it is on every portal, so it is styled to be READ WHEN LOOKED FOR and not before: monospace
+   because it is a number to be copied into a bug report, muted and light because a wordmark that
+   shouts its patch level is a wordmark competing with the session. */
+.version-mark {
+  margin-left: 0.4rem;
+  color: var(--lo);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
 /* The development mark — see `client/build-mark.ts`. Present only on a portal a checkout is
    serving, so it is never a decoration: if you can see it, you are not looking at a release. Amber
    because that is the palette's "pay attention to this", and small because it sits beside the

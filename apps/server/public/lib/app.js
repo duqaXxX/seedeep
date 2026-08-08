@@ -1198,7 +1198,16 @@ class AuthEventSource {
 
 // apps/server/src/client/build-mark.ts
 var MARK_CLASS = "build-mark";
+var VERSION_CLASS = "version-mark";
 var DEV_TITLE = "seedeep dev";
+function markVersion(version, brand, doc = document) {
+  if (!version || !brand || brand.querySelector(`.${VERSION_CLASS}`))
+    return;
+  const label = doc.createElement("span");
+  label.className = VERSION_CLASS;
+  label.textContent = version;
+  brand.append(label);
+}
 function markDevBuild(dev, brand, doc = document) {
   if (!dev)
     return;
@@ -9339,7 +9348,11 @@ function buildLoader() {
 
 // apps/server/src/client/app.ts
 initAuth();
-authFetch("/api/config").then((r) => r.json()).then((cfg) => markDevBuild(cfg.dev === true, document.querySelector("header > strong"))).catch(() => {});
+authFetch("/api/config").then((r) => r.json()).then((cfg) => {
+  const brand = document.querySelector("header > strong");
+  markVersion(cfg.version, brand);
+  markDevBuild(cfg.dev === true, brand);
+}).catch(() => {});
 var stream = createStream({ EventSourceImpl: AuthEventSource });
 function rootEl(id) {
   const el8 = document.getElementById(id);
