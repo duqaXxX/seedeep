@@ -64,8 +64,13 @@ export interface DigestEntry {
     state?: 'running' | 'failed';
   }[];
   /** How many background commands the session has launched over its whole life. See
-   * {@link commandsLaunched}. */
-  backgroundLaunched: number;
+   * {@link commandsLaunched}.
+   *
+   * OPTIONAL for the same reason `state` above is: an older server does not send it. That case is
+   * the worst one this pair has — such a server still sends its last three FAILURES, which
+   * `commands` now drops, and with no count either the failure would leave the tray entirely.
+   * Typed so the compiler shows the case rather than letting it read as impossible. */
+  backgroundLaunched?: number;
 }
 
 /**
@@ -428,17 +433,26 @@ function commands(entry: DigestEntry, at: number): HTMLElement | null {
  * the portal's, one click away on the row.
  */
 function commandsLaunched(entry: DigestEntry): HTMLElement | null {
-  const n = entry.backgroundLaunched;
-  // Never a zero, for the reason the subagent count is never a zero: a `Commands 0` line would
-  // spend a row telling most sessions what they are not.
+  // The extra class is what lets anything name just this line; the shared ones are what keep the
+  // two totals from drifting apart visually.
+  return countRow('Commands', entry.backgroundLaunched ?? 0, 'row-cmds');
+}
+
+/**
+ * `<label>  <n> launched` — the shape both totals use, written once.
+ *
+ * Never a zero: on the 84% of real sessions that never spawn a subagent (measured over 721
+ * transcripts) a `Subagents 0` line would spend a row telling every session what it is not, and
+ * the same holds for commands. `launched` is not decoration — the line sits directly above the
+ * rows of what is still at work, and a bare `12` over three rows reads as *12 running*.
+ */
+function countRow(label: string, n: number, extraClass?: string): HTMLElement | null {
   if (!n) return null;
-  // The subagent count's own classes, so the two totals cannot drift apart visually, plus one of
-  // its own: sharing every class would leave nothing able to name just this line.
-  const node = el('div', 'row-subs row-cmds');
+  const node = el('div', extraClass ? `row-subs ${extraClass}` : 'row-subs');
   const num = el('span', 'subs-num');
   num.append(document.createTextNode(String(n)));
   num.append(el('small', undefined, ' launched'));
-  node.append(el('span', 'ctx-lbl', 'Commands'), num);
+  node.append(el('span', 'ctx-lbl', label), num);
   return node;
 }
 
@@ -482,20 +496,11 @@ function agents(entry: DigestEntry): HTMLElement | null {
  * survives the return, which is the whole point of the row on *Idle*.
  *
  * Just the figure: what each one was, what it cost, how long it took is the portal's, one click
- * away on the row itself. The word `launched` is not decoration — on *Working* this line sits above
- * the running agents, and a bare `12` over three rows reads as "12 running".
+ * away on the row itself. See {@link countRow} for the shape, which the command total shares — one
+ * function rather than two copies, so the two lines cannot drift apart in code either.
  */
 function launched(entry: DigestEntry): HTMLElement | null {
-  const n = entry.subagents.launched;
-  // Never a zero: on the 84% of real sessions that never spawn one (measured over 721 transcripts),
-  // a `Subagents 0` line would spend a row telling every session what it is not.
-  if (!n) return null;
-  const node = el('div', 'row-subs');
-  const num = el('span', 'subs-num');
-  num.append(document.createTextNode(String(n)));
-  num.append(el('small', undefined, ' launched'));
-  node.append(el('span', 'ctx-lbl', 'Subagents'), num);
-  return node;
+  return countRow('Subagents', entry.subagents.launched);
 }
 
 /**

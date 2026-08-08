@@ -38,8 +38,21 @@ const SCRATCH_ROOTS = ['/private/tmp', '/tmp'];
 const PROBE_TIMEOUT_MS = 4_000;
 
 /** Probes with no holder before a command tips to `unknown`. One is enough to be right and not
- * enough to be safe: a second costs one interval and removes every transient. */
+ * enough to be safe: a second costs one interval and removes every transient.
+ *
+ * Two is also enough against the one case that could be mistaken for a silent death — a command
+ * that finished CLEANLY releases the file at the same instant, and its notification has to arrive
+ * before the second strike. Measured 2026-08-08 over every local transcript, on commands that
+ * state their own duration: the notification is written **0.0 s** after the process exits (11
+ * samples, min −0.0 s, max 0.0 s). The margin is two full intervals against a latency of zero. */
 export const STRIKES = 2;
+
+/** How many probes may look for a command's output file before it is left unanswerable. The
+ * failures are permanent by nature — a transcript from another machine, a cleaned `/tmp`, a layout
+ * Claude Code moved — so retrying for the life of the session buys nothing and walks the scratch
+ * root every interval. Four covers the only transient case (the file appearing a beat after the
+ * launch line) many times over. */
+export const RESOLVE_TRIES = 4;
 
 /** What a probe learned about one command. `null` means NO VERDICT — not "dead". */
 export type Verdict = boolean | null;
@@ -55,8 +68,12 @@ export type Verdict = boolean | null;
  * Returns null when nothing matches: a session from another machine, a root that was cleaned, or a
  * layout Claude Code has since changed. Every one of those must read as "cannot answer".
  */
-export async function resolveOutputFile(taskId: string, uid: number): Promise<string | null> {
-  for (const base of SCRATCH_ROOTS) {
+export async function resolveOutputFile(
+  taskId: string,
+  uid: number,
+  roots: readonly string[] = SCRATCH_ROOTS,
+): Promise<string | null> {
+  for (const base of roots) {
     const root = join(base, `claude-${uid}`);
     let slugs: string[];
     try {
@@ -96,7 +113,10 @@ export async function resolveOutputFile(taskId: string, uid: number): Promise<st
  * `/proc/<pid>/fd` sweep, which is thousands of `readlink`s per probe where this is one process;
  * Windows has neither and is out of scope. A missing prober must never read as "the command died".
  */
-export async function heldOpen(paths: readonly string[]): Promise<Map<string, Verdict>> {
+export async function heldOpen(
+  paths: readonly string[],
+  run: (targets: readonly string[]) => Promise<string | null> = lsof,
+): Promise<Map<string, Verdict>> {
   const out = new Map<string, Verdict>();
   if (!paths.length) return out;
   // Two things happen here, and BOTH exist because getting them wrong says "dead" about something
@@ -116,7 +136,7 @@ export async function heldOpen(paths: readonly string[]): Promise<Map<string, Ve
   }
   const targets = [...new Set([...real.values()].filter((v): v is string => v !== null))];
   if (!targets.length) return out;
-  const raw = await lsof(targets);
+  const raw = await run(targets);
   if (raw === null) {
     for (const p of paths) out.set(p, null);
     return out;
@@ -130,6 +150,26 @@ export async function heldOpen(paths: readonly string[]): Promise<Map<string, Ve
   return out;
 }
 
+/**
+ * What one `lsof` run means: its output, or `null` for NO VERDICT.
+ *
+ * **stderr is the discriminator, never the exit code**, and this is the rule the whole feature's
+ * safety rests on. Measured on lsof 4.91: a file simply held by nobody — an ANSWER — exits **1**
+ * with stdout AND stderr both empty, while a rejected invocation (`-ZZZ`) exits **1** with an
+ * empty stdout and 573 bytes of stderr. Reading that empty stdout as an answer marked every
+ * background command of every watched session as vanished, at once and in silence, on any lsof
+ * this code cannot drive — the exact direction the module header says must never happen.
+ *
+ * Its own function because it is the one thing here a test can hold: the flags cannot be varied
+ * from outside, so a test that could not feed these three shapes could not check the rule at all.
+ */
+export function lsofVerdict(err: unknown, stdout: string | undefined, stderr: string | undefined): string | null {
+  const e = err as (NodeJS.ErrnoException & { killed?: boolean }) | null;
+  if (e && (e.code === 'ENOENT' || e.killed)) return null;
+  if (!stdout && stderr?.trim()) return null;
+  return stdout ?? '';
+}
+
 /** `lsof -F pn` over the paths, or null when the tool is absent, errored, or took too long. */
 function lsof(paths: readonly string[]): Promise<string | null> {
   return new Promise((resolve) => {
@@ -140,13 +180,7 @@ function lsof(paths: readonly string[]): Promise<string | null> {
       'lsof',
       ['-F', 'pn', '--', ...paths],
       { timeout: PROBE_TIMEOUT_MS, maxBuffer: 1_000_000 },
-      (err, stdout) => {
-        // lsof exits 1 when any path is simply held by nobody, which is an ANSWER, not a failure —
-        // so the code cannot be the test. Only two things are unanswerable: the binary is not
-        // there (ENOENT), or the call was killed on the timeout.
-        if (err && ((err as NodeJS.ErrnoException).code === 'ENOENT' || err.killed)) return resolve(null);
-        resolve(stdout ?? '');
-      },
+      (err, stdout, stderr) => resolve(lsofVerdict(err, stdout, stderr)),
     );
     child.on('error', () => resolve(null));
   });
@@ -154,9 +188,14 @@ function lsof(paths: readonly string[]): Promise<string | null> {
 
 /** One background command as the prober tracks it, across polls. */
 interface Tracked {
-  /** The resolved output file, or null while unresolved. Resolution is attempted once per probe
-   * until it succeeds: a file appears a moment after the launch line does. */
+  /** The resolved output file, or null while unresolved. Resolution is retried across probes
+   * because a file appears a moment after the launch line does — but only {@link RESOLVE_TRIES}
+   * times: the cases the JSDoc names (another machine, a cleaned root, a layout that moved) are
+   * PERMANENT, and re-walking the scratch root for them every 15 s for the life of the session is
+   * work that can never produce an answer. */
   path: string | null;
+  /** Resolution attempts spent. At {@link RESOLVE_TRIES} the command is left unanswerable. */
+  tries: number;
   /** Consecutive probes that found the file present and held by nobody. */
   strikes: number;
   /** The last probe that found it held, as an ISO timestamp. */
@@ -214,15 +253,21 @@ export function createProber(
       const live = new Set(pending.map(key));
       for (const k of [...tracked.keys()]) if (!live.has(k)) tracked.delete(k);
 
-      for (const c of pending) {
-        const k = key(c);
-        let t = tracked.get(k);
-        if (!t) {
-          t = { path: null, strikes: 0, lastSeenAlive: null, reported: false };
-          tracked.set(k, t);
-        }
-        if (t.path === null) t.path = await resolve(c.taskId, uid);
-      }
+      // Resolutions in parallel, and bounded: each one walks the scratch root, and a command whose
+      // file will never be found must not pay for that walk on every probe for ever.
+      await Promise.all(
+        pending.map(async (c) => {
+          const k = key(c);
+          let t = tracked.get(k);
+          if (!t) {
+            t = { path: null, tries: 0, strikes: 0, lastSeenAlive: null, reported: false };
+            tracked.set(k, t);
+          }
+          if (t.path !== null || t.tries >= RESOLVE_TRIES) return;
+          t.tries += 1;
+          t.path = await resolve(c.taskId, uid);
+        }),
+      );
 
       const paths = [...new Set(pending.map((c) => tracked.get(key(c))?.path).filter((p): p is string => !!p))];
       const held = await held0(paths);

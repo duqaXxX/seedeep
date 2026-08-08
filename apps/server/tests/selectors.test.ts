@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  backgroundCommands,
   contextFraction,
   contextHogs,
   maxReturnedLen,
@@ -46,9 +47,29 @@ test('runningBackground: launched and not yet told what became of it, oldest fir
     tool({ id: 't1', name: 'Bash', arg: 'bun run dev', background: true, startedTs: at(3), turnIndex: 2 }),
     tool({ id: 't2', name: 'Bash', arg: 'bun test', background: true, startedTs: at(1), turnIndex: 1 }),
     // Reported its fate: no longer running, whatever that fate was.
-    tool({ id: 't3', name: 'Bash', arg: 'ls', background: true, startedTs: at(0), outcome: 'completed (exit code 0)' }),
+    tool({
+      id: 't3',
+      name: 'Bash',
+      arg: 'ls',
+      background: true,
+      startedTs: at(0),
+      // Both fields, because the reducer only ever sets them together — the notification that
+      // carries the sentence is the one that carries the status. A node with the sentence alone
+      // is a shape no real session produces, and `state` keys on the STATUS.
+      outcome: 'completed (exit code 0)',
+      outcomeStatus: 'completed',
+    }),
     // A failure is an outcome too — the row goes red, but nothing is still going.
-    tool({ id: 't4', name: 'Bash', arg: 'boom', background: true, startedTs: at(0), outcome: 'failed', error: true }),
+    tool({
+      id: 't4',
+      name: 'Bash',
+      arg: 'boom',
+      background: true,
+      startedTs: at(0),
+      outcome: 'failed',
+      outcomeStatus: 'failed',
+      error: true,
+    }),
     // An ordinary call, however long it took: it did not launch anything.
     tool({ id: 't5', name: 'Bash', arg: 'sleep 1', ms: 1000 }),
   ]);
@@ -307,4 +328,52 @@ test('turnCostStats: no interrupted turns → escCount 0', () => {
 test('turnCostStats: empty turnList returns zero', () => {
   const s = makeSnapshot({ turnList: [] });
   assert.deepEqual(turnCostStats(s), { escCount: 0 });
+});
+
+// The probe's half of the same question. `vanishedTs` is what an OPEN session has instead of
+// `opts.ended`: nobody ever said what became of the command, so it can only ever read `unknown` —
+// and the figure beside it is the last instant it was SEEN, which is a BOUND, not a duration.
+test('backgroundCommands: a command the probe found gone reads unknown, with its duration as a bound', () => {
+  const base = {
+    name: 'Bash',
+    arg: 'bun run dev',
+    background: true as const,
+    backgroundTaskId: 'bt1',
+    startedTs: '2026-07-14T10:00:00.000Z',
+  };
+  const [gone] = backgroundCommands(
+    [tool({ ...base, id: 't1', vanishedTs: '2026-07-14T10:05:00.000Z', lastSeenAliveTs: '2026-07-14T10:04:20.000Z' })],
+    { ended: false },
+  );
+  assert.equal(gone?.state, 'unknown', 'the session is open and the transcript still says nothing');
+  assert.equal(gone?.ranMs, 260_000, 'launch → last sighting, never launch → verdict');
+  assert.equal(gone?.ranAtLeast, true, 'and the surface must say so rather than print it as measured');
+
+  // Seen gone before it was ever seen alive — seedeep started watching too late. There is no bound
+  // to state, and inventing one from the launch would be a duration nobody measured.
+  const [never] = backgroundCommands([tool({ ...base, id: 't2', vanishedTs: '2026-07-14T10:05:00.000Z' })], {
+    ended: false,
+  });
+  assert.equal(never?.state, 'unknown');
+  assert.equal(never?.ranMs, null);
+  assert.equal(never?.ranAtLeast, false);
+
+  // And the probe never outranks the transcript: a fate arrived, so the fate is what shows.
+  const [told] = backgroundCommands(
+    [
+      tool({
+        ...base,
+        id: 't3',
+        vanishedTs: '2026-07-14T10:05:00.000Z',
+        lastSeenAliveTs: '2026-07-14T10:04:20.000Z',
+        outcome: 'Background command "dev" failed with exit code 7',
+        outcomeStatus: 'failed',
+        outcomeTs: '2026-07-14T10:06:00.000Z',
+      }),
+    ],
+    { ended: false },
+  );
+  assert.equal(told?.state, 'failed');
+  assert.equal(told?.ranMs, 360_000, 'measured to the notification, and no longer a bound');
+  assert.equal(told?.ranAtLeast, false);
 });

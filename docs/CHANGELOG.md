@@ -4,6 +4,32 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A background command's duration was the queue's, not the command's (2026-08-09)
+
+A `sleep 3` was shown as having run **22.6 s**. Claude Code writes a terminal notification TWICE —
+`enqueue`, then `remove` when the queue is drained — and the reducer is last-wins, so the end
+instant it kept was the DRAIN's. The repeat was believed inert because the payloads are identical;
+the payloads are, the line timestamps are not.
+
+Measured over every local transcript: **281 of 611 notifications are written more than once**, and
+the spread between the first and the last copy is p50 **3.9 s**, p90 **30.9 s**, max **76 minutes**.
+Every background command that got two copies has been showing an inflated duration — on the
+catalogue row, in its drawer, and in the Trace. The end instant is now the FIRST time anything said
+so; the status and the sentence stay last-wins, where a repeat is genuinely inert.
+
+Two other things went with it, both from a review of the liveness probe:
+
+- **What says a command ended is the `<status>`, never the sentence.** They travel together today
+  (0 of 870 status notifications carry no summary), but a status with no summary would have left a
+  cleanly finished command reading `running` — and then `unknown` once the probe answered, which is
+  a command reported as never reported.
+- **`lsof` failing is not an answer.** It exits 1 both when nobody holds a file — a real answer —
+  and when the invocation is rejected; only stderr tells them apart (measured: 0 bytes against 573).
+  Reading the failure as an answer marked every background command of every watched session as
+  vanished, at once and in silence. Also fixed: the probe rounds can no longer overlap, a round that
+  throws no longer takes the process down with it, and a session re-seeding no longer loses the
+  verdicts already reached for it.
+
 ### A background command whose end is never written stops counting for ever (2026-08-08)
 
 Seen live: the cockpit showed **2 commands running**, one for 40m 8s and one for 34m 29s, while

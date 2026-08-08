@@ -343,39 +343,51 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   // through the one door nobody was watching. Found by driving the real browser, not by a test.
   // Bounded by the trees: a session with no tree is a session nobody is watching.
   const vanished = new Map<string, Map<string, CommandVanishedEvent>>();
+  // A round can outlive its interval (a slow scratch-root walk, an lsof near its timeout), and the
+  // prober carries per-command state across calls: two overlapping rounds would both read the same
+  // strike count, both increment it, and tip a command on ONE real interval instead of two — the
+  // guarantee the two-strike rule exists to give.
+  let probing = false;
   const liveness = setInterval(() => {
+    if (probing) return;
+    probing = true;
     void (async () => {
-      const pending: PendingCommand[] = [];
-      const held = liveTrees.sessionIds();
-      for (const sessionId of held) {
-        const snap = liveTrees.get(sessionId)?.snapshot();
-        if (!snap) continue;
-        for (const t of snap.mainTools) {
-          // Already told, or already judged: the probe answers the open question only, and never
-          // asks one twice.
-          if (!t.backgroundTaskId || t.outcome || t.vanishedTs) continue;
-          pending.push({ sessionId, toolUseId: t.id, taskId: t.backgroundTaskId });
+      try {
+        const pending: PendingCommand[] = [];
+        for (const sessionId of liveTrees.sessionIds()) {
+          // Not `snapshot()`: that rebuilds every tool node of the session, and this tick runs on
+          // every watched session whether or not it ever launched a command.
+          for (const c of liveTrees.get(sessionId)?.pendingBackground() ?? []) {
+            pending.push({ sessionId, toolUseId: c.toolUseId, taskId: c.taskId });
+          }
         }
-      }
-      // Forget the verdicts of sessions whose tree is gone, on the same beat: they are remembered
-      // for the clients of a session being watched, and nothing else.
-      const keep = new Set(held);
-      for (const id of vanished.keys()) if (!keep.has(id)) vanished.delete(id);
-      if (!pending.length) return;
-      for (const v of await prober.probe(pending)) {
-        const event = {
-          type: 'command-vanished',
-          sessionId: v.sessionId,
-          root: 'cli', // `Root` has exactly one member; nothing reads it on an event
-          timestamp: new Date().toISOString(),
-          seq: -1, // out of band: it has no position in any file — see live-trees' applyLive
-          toolUseId: v.toolUseId,
-          lastSeenAlive: v.lastSeenAlive,
-        } satisfies CommandVanishedEvent;
-        let forSession = vanished.get(v.sessionId);
-        if (!forSession) vanished.set(v.sessionId, (forSession = new Map()));
-        forSession.set(v.toolUseId, event);
-        deps.watcher.emit('event', event);
+        // Forget the verdicts of sessions no tree is held for. Keyed on {@link LiveTrees.has},
+        // which counts a tree still SEEDING: a session that re-seeds would otherwise lose its
+        // verdicts to this prune and come back drawing the row as running — the regression the
+        // map exists to prevent, through a door one interval wide.
+        for (const id of vanished.keys()) if (!liveTrees.has(id)) vanished.delete(id);
+        if (!pending.length) return;
+        for (const v of await prober.probe(pending)) {
+          const event = {
+            type: 'command-vanished',
+            sessionId: v.sessionId,
+            root: 'cli', // `Root` has exactly one member; nothing reads it on an event
+            timestamp: new Date().toISOString(),
+            seq: -1, // out of band: it has no position in any file — see live-trees' applyLive
+            toolUseId: v.toolUseId,
+            lastSeenAlive: v.lastSeenAlive,
+          } satisfies CommandVanishedEvent;
+          let forSession = vanished.get(v.sessionId);
+          if (!forSession) vanished.set(v.sessionId, (forSession = new Map()));
+          forSession.set(v.toolUseId, event);
+          deps.watcher.emit('event', event);
+        }
+      } catch {
+        // A liveness round that throws must cost nothing but this round. Unhandled, it would be an
+        // unhandled REJECTION on a background timer — no request to attribute it to, and the whole
+        // process down. The digest handler wraps the same reads for the same reason.
+      } finally {
+        probing = false;
       }
     })();
   }, deps.livenessMs ?? LIVENESS_MS);

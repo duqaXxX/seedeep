@@ -38,9 +38,14 @@ export interface LiveTrees {
   ensure(rec: SessionRecord): Promise<Tree>;
   /** The tree if it is already seeded, else `undefined`. Never starts a seed. */
   get(sessionId: string): Tree | undefined;
-  /** Every session a tree is held for. The liveness probe walks these and nothing else: a session
-   * nobody has asked about has no tree, and a row nobody is looking at cannot be wrong on screen. */
+  /** Every session a SEEDED tree is held for. The liveness probe walks these and nothing else: a
+   * session nobody has asked about has no tree, and a row nobody is looking at cannot be wrong on
+   * screen. */
   sessionIds(): string[];
+  /** Whether a tree is held at all, SEEDING INCLUDED. The difference from {@link sessionIds} is the
+   * whole point: anything that prunes per-session state must not throw it away during the seconds
+   * a session is re-seeding, or the state comes back missing. */
+  has(sessionId: string): boolean;
   /** When this process first saw the session's last word, for `nowLine`'s hold. */
   wordSeenAt(sessionId: string): number | null;
   /** Drop every tree whose session is not in `liveIds` — the caller owns the live set. */
@@ -184,6 +189,10 @@ export function createLiveTrees(deps: { watcher: EventEmitter; replay?: Replay }
       // Seeded ones only, for `get`'s reason: a tree still filling would be asked what it is
       // waiting on before it has read the line that says so.
       return [...entries].filter(([, e]) => e.buffer === null).map(([id]) => id);
+    },
+
+    has(sessionId: string): boolean {
+      return entries.has(sessionId);
     },
 
     wordSeenAt(sessionId: string): number | null {

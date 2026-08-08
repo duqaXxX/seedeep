@@ -195,7 +195,9 @@ Each command is one line: what it was launched to do (Claude Code's own
 that started it, its exit code, and **how long the command itself ran** — launch
 instant to the notification that ended it, which for a killed build can be hours.
 The row's duration is never the launch call's, which closes in milliseconds and
-measures nothing.
+measures nothing — and never the SECOND copy of the notification either: Claude
+Code writes it twice, and the later copy is written when its queue drains, up to 76
+minutes after the command actually stopped.
 
 Its drawer adds the full command, the sentence Claude Code wrote when it ended (the
 only place the exit code exists) and the **output file** — the path where the

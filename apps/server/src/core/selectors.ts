@@ -91,12 +91,18 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
       // carry a summary and no `<status>` at all, and the node then has no field rather than a
       // null one. Testing against `null` alone read that as "not completed" and painted a clean
       // command failed — the same rule the reducer's `error` has always used, stated once here.
-      const clean = t.outcomeStatus == null || t.outcomeStatus === 'completed' || t.outcomeStatus === 'stopped';
-      // `vanishedTs` is the OPEN session's version of `ended`: the transcript still says nothing,
-      // but the machine has been asked and no process holds the command's output file open any
-      // more. It can only ever produce `unknown` — the probe learns that something stopped, never
-      // what it stopped WITH, and `done` would be a status nobody ever wrote.
-      const state: BackgroundState = !t.outcome
+      // What says a command ENDED is the notification's `<status>`, never its sentence. They are
+      // written together today (0 of 870 status notifications locally carry no summary), but the
+      // sentence is the human's copy and the status is the code's: a status with no summary would
+      // otherwise leave a cleanly finished command reading `running`, and then `unknown` once the
+      // probe answered — a command reported as never reported.
+      const ended = t.outcomeStatus != null;
+      const clean = t.outcomeStatus === 'completed' || t.outcomeStatus === 'stopped';
+      // `vanishedTs` is the OPEN session's version of `opts.ended`: the transcript still says
+      // nothing, but the machine has been asked and no process holds the command's output file
+      // open any more. It can only ever produce `unknown` — the probe learns that something
+      // stopped, never what it stopped WITH, and `done` would be a status nobody ever wrote.
+      const state: BackgroundState = !ended
         ? opts.ended || t.vanishedTs
           ? 'unknown'
           : 'running'
@@ -107,7 +113,7 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
       const endedAt = t.outcomeTs ?? null;
       // A vanished command has no end instant — only the last moment it was SEEN, which bounds
       // its duration from below and is stated as a bound, never as the figure itself.
-      const bound = t.outcome ? null : (t.lastSeenAliveTs ?? null);
+      const bound = ended ? null : (t.lastSeenAliveTs ?? null);
       const a = Date.parse(since);
       const b = endedAt === null ? (bound === null ? Number.NaN : Date.parse(bound)) : Date.parse(endedAt);
       return {

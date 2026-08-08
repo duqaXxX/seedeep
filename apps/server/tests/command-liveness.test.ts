@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
-import { closeSync, mkdirSync, mkdtempSync, openSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createProber, heldOpen, type PendingCommand, type Verdict } from '../src/server/command-liveness.ts';
+import {
+  createProber,
+  heldOpen,
+  lsofVerdict,
+  type PendingCommand,
+  resolveOutputFile,
+  STRIKES,
+  type Verdict,
+} from '../src/server/command-liveness.ts';
 
 // The probe answers a question no line in the transcript can, so its failure mode is the one that
 // matters: saying a LIVE command is gone. Everything below is about that direction — how many
@@ -40,9 +48,14 @@ function scripted(rounds: (boolean | null)[], path: string | null = '/x/tasks/t.
   };
 }
 
-test('one empty probe is not a verdict — it takes two in a row', async () => {
-  const p = scripted([false, false]);
-  assert.deepEqual(await p.probe([cmd('a')]), [], 'one strike says nothing');
+// Driven by the constant, not by a hand-copied 2: `STRIKES` carries a doc comment justifying its
+// exact value against a measured latency, and a constant no test holds can be changed without a
+// single thing going red.
+test('a verdict takes STRIKES empty probes in a row, and not one fewer', async () => {
+  const p = scripted(Array(STRIKES).fill(false));
+  for (let i = 1; i < STRIKES; i++) {
+    assert.deepEqual(await p.probe([cmd('a')]), [], `strike ${i} of ${STRIKES} says nothing`);
+  }
   const out = await p.probe([cmd('a')]);
   assert.deepEqual(
     out.map((v) => v.toolUseId),
@@ -105,5 +118,44 @@ test('heldOpen tells a file this process holds open from one it does not', async
     assert.equal(held.get(closed), false, 'and nothing is holding the other');
   } finally {
     closeSync(fd);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A path that does not exist is UNANSWERABLE, never a death: the scratch root lives under /tmp,
+// which the OS cleans, so a command can outlive its own output file.
+test('a file that is not there earns no verdict at all', async () => {
+  const held = await heldOpen(['/definitely/not/here/x.output']);
+  assert.equal(held.get('/definitely/not/here/x.output'), null);
+});
+
+// The rule the whole feature's safety rests on, fed the three shapes that were MEASURED on
+// lsof 4.91. Exit 1 means both "nobody holds it" and "the invocation failed"; only stderr tells
+// them apart, and reading the failure as an answer marks every command in every session dead.
+test('lsof: an empty answer is an answer, an empty answer WITH stderr is not', () => {
+  const exit1 = Object.assign(new Error('Command failed'), { code: 1 });
+  assert.equal(lsofVerdict(exit1, '', ''), '', 'nobody holds it — a real answer');
+  assert.equal(lsofVerdict(exit1, '', 'lsof: illegal option character: Z\n'), null, 'a rejected invocation');
+  assert.equal(lsofVerdict(Object.assign(new Error('x'), { code: 'ENOENT' }), '', ''), null, 'no lsof on the box');
+  assert.equal(lsofVerdict(Object.assign(new Error('x'), { killed: true }), '', ''), null, 'killed on the timeout');
+  assert.equal(lsofVerdict(null, 'p1\nn/tmp/a\n', ''), 'p1\nn/tmp/a\n', 'and a normal hit is passed through');
+  // Warnings on stderr must NOT throw away an answer lsof did give — it warns readily about
+  // unreadable mounts while still reporting what it could see.
+  assert.equal(lsofVerdict(exit1, 'p1\nn/tmp/a\n', 'lsof: WARNING: /home is inaccessible\n'), 'p1\nn/tmp/a\n');
+});
+
+// The path layout IS the mechanism (see the C26 schema claim): if this walk is wrong the feature
+// answers "no verdict" for ever and looks exactly like one with nothing to report.
+test('resolveOutputFile finds a command output file by its task id alone', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'seedeep-root-'));
+  const uid = 4242;
+  const dir = join(root, `claude-${uid}`, '-Users-x-proj', '11111111-2222-3333-4444-555555555555', 'tasks');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'btask9.output'), '');
+  try {
+    assert.equal(await resolveOutputFile('btask9', uid, [root]), join(dir, 'btask9.output'));
+    assert.equal(await resolveOutputFile('nosuch', uid, [root]), null, 'and says nothing when it is not there');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

@@ -491,7 +491,11 @@ export function parseLine(
   // `content` is an XML-ish string (no uuid, no message) — nothing like a tool_result, which
   // is why it stayed unparsed and background subagents looked finished from birth.
   // Written TWICE per notification (operation 'enqueue' then 'remove', 662 + 78 in real logs)
-  // with an identical payload; the reducer is last-wins per toolUseId, so the repeat is inert.
+  // with an identical PAYLOAD — but not at the same instant, and that difference was not inert:
+  // last-wins took the second copy's line timestamp as the moment the command ended, so a `sleep 3`
+  // read 22.6 s. Measured 2026-08-09, 281 of 611 notifications repeat, first-to-last p50 3.9 s /
+  // p90 30.9 s / max 76 min. The reducer now freezes `outcomeTs` on the FIRST copy; the status and
+  // the sentence stay last-wins, where the repeat really is inert.
   if (type === 'queue-operation' && typeof d.content === 'string' && d.content.includes('<task-notification>')) {
     const toolUseId = tag(d.content, 'tool-use-id');
     const status = tag(d.content, 'status');

@@ -983,3 +983,51 @@ test('a command the probe finds gone stops being one of the running, and is stil
     srv.stop();
   }
 });
+
+// A terminal notification is written TWICE — `enqueue`, then `remove` when the queue is drained —
+// and the reducer is last-wins. Taking the second copy's timestamp as the moment the command ended
+// made the duration the DRAIN's, not the command's. Measured 2026-08-08 over every local
+// transcript: 281 of 611 notifications are written more than once, the spread between first and
+// last is p50 3.9 s / p90 30.9 s / max 76 MINUTES, and a `sleep 3` was shown as having run 22.6 s.
+test('a command ran until its notification FIRST said so, not until the queue drained', async () => {
+  const path = writeSession([
+    typed('u1', 'run it', '2026-07-14T10:00:00.000Z'),
+    assistant('a1', 1200, '2026-07-14T10:00:01.000Z'),
+    toolUse('a2', 'toolu_bg7', 'Bash', { command: 'sleep 3', description: 'Sleep three' }, '2026-07-14T10:00:02.000Z'),
+    bgLaunch('u2', 'toolu_bg7', 'bt7', '2026-07-14T10:00:02.000Z'),
+    // The process ends at +3s and Claude Code says so at once (measured: 0.0 s of latency)…
+    bgNotification(
+      'toolu_bg7',
+      'bt7',
+      'completed',
+      'Background command "Sleep three" completed',
+      '2026-07-14T10:00:05.000Z',
+    ),
+    // …and the identical payload is written again 20 s later, when the queue is drained.
+    bgNotification(
+      'toolu_bg7',
+      'bt7',
+      'completed',
+      'Background command "Sleep three" completed',
+      '2026-07-14T10:00:25.000Z',
+    ),
+  ]);
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [record(path)], port: 0 });
+  try {
+    const e = ((await (await fetch(`${srv.url}/api/digest`)).json()) as DigestEntry[])[0]!;
+    assert.equal(e.backgroundLaunched, 1);
+    assert.deepEqual(e.background, [], 'it ended, so it is not running');
+    // The reducer's own numbers, read where the catalogue reads them.
+    const { backgroundCommands } = await import('../src/core/selectors.ts');
+    const { streamReplay } = await import('../src/server/replay.ts');
+    const { createSessionTree } = await import('../src/core/session-tree.ts');
+    const { windowFor } = await import('../src/core/context-windows.ts');
+    const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+    for await (const ev of streamReplay(path, { sessionId: SID, root: 'cli' })) tree.apply(ev);
+    const [cmd] = backgroundCommands(tree.snapshot().mainTools, { ended: true });
+    assert.equal(cmd?.state, 'done');
+    assert.equal(cmd?.ranMs, 3_000, 'three seconds, not the twenty-three the second copy would give');
+  } finally {
+    srv.stop();
+  }
+});

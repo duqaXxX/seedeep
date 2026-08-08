@@ -1262,7 +1262,14 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         // surfaces agree rather than seedeep inventing a semantics the logs do not carry.
         bg.outcome = e.summary;
         bg.outcomeStatus = e.status;
-        bg.outcomeTs = e.timestamp || null;
+        // FIRST terminal notification only, and this is a duration bug, not a preference. Claude
+        // Code writes the same notification TWICE (`enqueue`, then `remove` when the queue drains)
+        // and last-wins was taking the DRAIN's timestamp as the moment the command ended. Measured
+        // 2026-08-08 over every local transcript: 281 of 611 notifications are written more than
+        // once, and the spread between first and last is p50 3.9 s, p90 30.9 s, max 76 MINUTES —
+        // a `sleep 3` was shown as having run 22.6 s. The end instant is the first time anything
+        // said so; the status and the sentence stay last-wins, where a repeat is genuinely inert.
+        if (bg.outcomeTs === null) bg.outcomeTs = e.timestamp || null;
         if (e.outputFile) bg.outputFile = e.outputFile;
         // Last-wins, never a latch: `remove` repeats `enqueue`'s payload, and a status can only
         // be superseded by a later one about the same command.
@@ -1285,7 +1292,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       // NO outcome, so a probe can never contradict or pre-empt what Claude Code itself said —
       // the notification is the authority and it can still arrive after this; and the mark is
       // idempotent, because an out-of-band event carries no position and may be re-delivered.
-      if (bg?.backgroundTaskId && bg.outcome === null) {
+      if (bg?.backgroundTaskId && bg.outcomeStatus === null) {
         bg.vanishedTs = e.timestamp;
         bg.lastSeenAliveTs = e.lastSeenAlive;
       }
@@ -1892,5 +1899,26 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
    */
   const currentError = () => sessionError && { ...sessionError };
 
-  return { apply, snapshot, onChange, onEvent, currentError };
+  /**
+   * The background commands still waiting for a fate — launched, no status, no verdict yet.
+   *
+   * A narrow accessor for the same reason {@link currentError} is one: the liveness probe needs
+   * two strings per pending command, and `snapshot()` would rebuild every tool node of the session
+   * (1521 on the largest real one) every 15 s, on every watched session, including the great
+   * majority that never launch a command at all.
+   *
+   * The end test is `outcomeStatus`, never the summary: a notification carrying a `<status>` and
+   * no `<summary>` leaves `outcome` unset, and probing a command Claude Code has already reported
+   * on could only produce a verdict about something that is finished.
+   */
+  const pendingBackground = (): { toolUseId: string; taskId: string }[] => {
+    const out: { toolUseId: string; taskId: string }[] = [];
+    for (const [id, t] of tools) {
+      if (!t.backgroundTaskId || t.outcomeStatus !== null || t.vanishedTs !== null) continue;
+      out.push({ toolUseId: id, taskId: t.backgroundTaskId });
+    }
+    return out;
+  };
+
+  return { apply, snapshot, onChange, onEvent, currentError, pendingBackground };
 }

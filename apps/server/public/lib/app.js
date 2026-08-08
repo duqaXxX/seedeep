@@ -588,7 +588,8 @@ function createSessionTree(opts) {
       if (bg?.backgroundTaskId && e.status !== null) {
         bg.outcome = e.summary;
         bg.outcomeStatus = e.status;
-        bg.outcomeTs = e.timestamp || null;
+        if (bg.outcomeTs === null)
+          bg.outcomeTs = e.timestamp || null;
         if (e.outputFile)
           bg.outputFile = e.outputFile;
         bg.error = e.status !== null && e.status !== "completed" && e.status !== "stopped";
@@ -601,7 +602,7 @@ function createSessionTree(opts) {
       }
     } else if (e.type === "command-vanished") {
       const bg = tools.get(e.toolUseId);
-      if (bg?.backgroundTaskId && bg.outcome === null) {
+      if (bg?.backgroundTaskId && bg.outcomeStatus === null) {
         bg.vanishedTs = e.timestamp;
         bg.lastSeenAliveTs = e.lastSeenAlive;
       }
@@ -1001,7 +1002,16 @@ function createSessionTree(opts) {
     return () => eventListeners.delete(cb);
   }
   const currentError = () => sessionError && { ...sessionError };
-  return { apply, snapshot, onChange, onEvent, currentError };
+  const pendingBackground = () => {
+    const out = [];
+    for (const [id, t] of tools) {
+      if (!t.backgroundTaskId || t.outcomeStatus !== null || t.vanishedTs !== null)
+        continue;
+      out.push({ toolUseId: id, taskId: t.backgroundTaskId });
+    }
+    return out;
+  };
+  return { apply, snapshot, onChange, onEvent, currentError, pendingBackground };
 }
 
 // apps/server/src/core/tree-format.ts
@@ -3898,11 +3908,12 @@ function runningBackground(tools) {
 }
 function backgroundCommands(tools, opts) {
   return tools.filter((t) => t.background && t.startedTs).map((t) => {
-    const clean = t.outcomeStatus == null || t.outcomeStatus === "completed" || t.outcomeStatus === "stopped";
-    const state = !t.outcome ? opts.ended || t.vanishedTs ? "unknown" : "running" : clean ? "done" : "failed";
+    const ended2 = t.outcomeStatus != null;
+    const clean = t.outcomeStatus === "completed" || t.outcomeStatus === "stopped";
+    const state = !ended2 ? opts.ended || t.vanishedTs ? "unknown" : "running" : clean ? "done" : "failed";
     const since = t.startedTs;
     const endedAt = t.outcomeTs ?? null;
-    const bound = t.outcome ? null : t.lastSeenAliveTs ?? null;
+    const bound = ended2 ? null : t.lastSeenAliveTs ?? null;
     const a = Date.parse(since);
     const b = endedAt === null ? bound === null ? Number.NaN : Date.parse(bound) : Date.parse(endedAt);
     return {

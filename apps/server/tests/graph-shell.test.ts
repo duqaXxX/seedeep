@@ -1219,6 +1219,7 @@ test('a background command that reported its fate is no longer running', () => {
       background: true,
       startedTs: new Date(Date.now() - 4 * 60_000).toISOString(),
       outcome: 'Background command "dev" completed (exit code 0)',
+      outcomeStatus: 'completed',
     },
   ];
   const state = drivableState(snap);
@@ -1606,6 +1607,7 @@ test('tool drawer: a background command states its fate, and its ms is called a 
       background: true,
       error: true,
       outcome: 'Background command "Deliberate failure" failed with exit code 7',
+      outcomeStatus: 'failed',
     },
   ];
   const state = drivableState(snap);
