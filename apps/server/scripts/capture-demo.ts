@@ -1191,13 +1191,30 @@ function makeTake(
   // A shot that declares its own height gets it for its own duration and gives it straight back:
   // the runs take several shots against one page, and a viewport left short would silently crop the
   // next one — the failure that looks like a widget having moved.
+  //
+  // CAPPED, because every wait inside `takeOne` has a deadline and the run still hung twice, for an
+  // hour each time, on the same shot that had just succeeded on its own — intermittently, somewhere
+  // under the browser, printing nothing. The cause is not established and the cap does not need it:
+  // a capture that stops must SAY so, and 3 minutes is far past the slowest shot ever measured
+  // (~20s). Losing one figure to a spurious timeout is recoverable; a run nobody can tell from a
+  // slow one is what cost the two hours.
   return async (shot: DocShot): Promise<void> => {
     const shared = page.viewportSize();
     if (shot.viewportHeight && shared) await page.setViewportSize({ ...shared, height: shot.viewportHeight });
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await takeOne(shot);
+      await Promise.race([
+        takeOne(shot),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`${shot.id}: no verdict after 180s — the capture stopped`)),
+            180_000,
+          );
+        }),
+      ]);
     } finally {
-      if (shot.viewportHeight && shared) await page.setViewportSize(shared);
+      if (timer) clearTimeout(timer);
+      if (shot.viewportHeight && shared) await page.setViewportSize(shared).catch(() => {});
     }
   };
 }
