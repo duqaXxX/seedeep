@@ -1,4 +1,10 @@
-import { CTRLB_COMMAND, ECHO_MARKER, ESC_MARKER, POST_ESC_MARKER, SCENE1_MARKER } from '../src/server/schema-contract.ts';
+import {
+  CTRLB_COMMAND,
+  ECHO_MARKER,
+  ESC_MARKER,
+  POST_ESC_MARKER,
+  SCENE1_MARKER,
+} from '../src/server/schema-contract.ts';
 import type { ProbeSession } from './driver.ts';
 
 /**

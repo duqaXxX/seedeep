@@ -419,8 +419,7 @@ export function parseLine(
             // seen together on 221 receipts.
             ev.background = {
               taskId: tur.backgroundTaskId,
-              by:
-                tur.backgroundedByUser === true ? 'user' : tur.timedOutAfterMs !== undefined ? 'timeout' : 'agent',
+              by: tur.backgroundedByUser === true ? 'user' : tur.timedOutAfterMs !== undefined ? 'timeout' : 'agent',
             };
           }
           out.push(ev);

@@ -1342,7 +1342,11 @@ test('golden transcript: the receipt says WHO put the command in the background'
   // lives on another line and the parser never sees the two together), and a hand-built event
   // could only ever confirm that belief instead of testing it.
   const authorOf = (launch: string, extra: object) => {
-    const s = runLines([typed('u1', 'start it'), launch, backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc', extra)]);
+    const s = runLines([
+      typed('u1', 'start it'),
+      launch,
+      backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc', extra),
+    ]);
     return backgroundCommands(s.mainTools, { ended: false })[0]!.by;
   };
   // The model asked for it: no marker on the receipt at all, which is why 'agent' is the default.

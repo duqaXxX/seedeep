@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canCertify, closeWithEvidence, evaluate, isBroken, manualChecklist, report } from '../probe/verify.ts';
 import type { Claim, ClaimContext } from '../src/server/schema-contract.ts';
-import { CLAIMS, claimsForScene, CTRLB_COMMAND, SCENE1_MARKER } from '../src/server/schema-contract.ts';
+import { CLAIMS, CTRLB_COMMAND, claimsForScene, SCENE1_MARKER } from '../src/server/schema-contract.ts';
 
 /**
  * The scene-1 lines a real driven session produces. The SHAPE is not invented:
