@@ -185,8 +185,12 @@ class Writer {
    * an empty stdout and a `backgroundTaskId`. Not `status: 'async_launched'`, which is the
    * subagent shape; and not `run_in_background` in the input either, since a foreground command
    * PROMOTED by the timeout carries none.
+   *
+   * `extra` carries the marker that names WHO put it there — `backgroundedByUser` (Ctrl+B) or
+   * `timedOutAfterMs` (the promotion); a receipt with neither is the model's own choice, which
+   * is the majority and the unlabelled case.
    */
-  backgroundLaunch(toolUseId: string, taskId: string): string {
+  backgroundLaunch(toolUseId: string, taskId: string, extra: object = {}): string {
     return this.push({
       type: 'user',
       message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: '' }] },
@@ -197,6 +201,7 @@ class Writer {
         isImage: false,
         noOutputExpected: false,
         backgroundTaskId: taskId,
+        ...extra,
       },
     });
   }
@@ -718,13 +723,16 @@ function commands(): Scene {
     cacheRead: 96_000,
     out: 720,
     tools: [
+      // The two minority authors, and both are launched in the FOREGROUND — that is what makes
+      // them possible: c4 outlives its call's timeout and Claude Code promotes it, c5 is taken away
+      // by the user's Ctrl+B. Neither input can carry `run_in_background` without making the
+      // receipt below a contradiction.
       {
         id: 'toolu_c4',
         name: 'Bash',
         input: {
           command: 'until gh release view v0.13.0 >/dev/null 2>&1; do sleep 20; done',
           description: 'Wait for the release to appear',
-          run_in_background: true,
         },
       },
       {
@@ -733,13 +741,12 @@ function commands(): Scene {
         input: {
           command: 'tail -f /tmp/orbit/logs/publish.log',
           description: 'Follow the publish log',
-          run_in_background: true,
         },
       },
     ],
   });
-  w.backgroundLaunch('toolu_c4', 'b9j5h1k7l');
-  w.backgroundLaunch('toolu_c5', 'b3d8f2g6s');
+  w.backgroundLaunch('toolu_c4', 'b9j5h1k7l', { timedOutAfterMs: 120_000 });
+  w.backgroundLaunch('toolu_c5', 'b3d8f2g6s', { backgroundedByUser: true });
   // c4 is killed from outside — the case that produces the failure nobody is told about in words,
   // and c5 is simply never reported, which is what 8% of real launches do.
   w.notification(

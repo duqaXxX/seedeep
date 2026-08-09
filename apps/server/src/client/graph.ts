@@ -65,7 +65,7 @@ import {
   stripMarkdown,
   summarizeTools,
 } from '../core/tree-format.ts';
-import type { Baseline, NormalizedEvent } from '../core/types.ts';
+import type { BackgroundAuthor, Baseline, NormalizedEvent } from '../core/types.ts';
 import { bucketFor, computeVerdict, computeVerdicts, type TurnVerdict, turnBillable } from '../core/verdict.ts';
 import { authFetch } from './auth.ts';
 import { cardsList, renderCardsCard } from './cards-view.ts';
@@ -1957,6 +1957,15 @@ export function createGraph(
    * at all between its launch and its notification. The age is the one thing that moves, and it is
    * computed from the launch instant on the shared ticker rather than stored.
    */
+  // The chip word for a background command's author. Only the two minority branches say WHO: the
+  // agent's is what a background command already means to a reader, so labelling it would put a
+  // word on 88% of the rows (measured over 221 launches) to tell them what they already knew.
+  const BG_AUTHOR_LABEL: Record<BackgroundAuthor, string> = {
+    agent: 'background',
+    timeout: 'auto-backgrounded',
+    user: 'backgrounded by you',
+  };
+
   function bgActiveRow(c: BackgroundCommand): HTMLElement {
     const r = E('div', 'subrow act');
     r.onclick = () => openBlock({ kind: 'tool', toolUseId: c.toolUseId });
@@ -1965,7 +1974,7 @@ export function createGraph(
     // — so the row and the sentence that closes it call the command the same thing. A launch
     // without one keeps the shell text, which is all it has (4 of 178 locally).
     l1.append(E('span', 'sdot'), E('b', null, c.label));
-    l1.append(E('span', 'schip', 'background'));
+    l1.append(E('span', 'schip', BG_AUTHOR_LABEL[c.by]));
     const since = Date.parse(c.since);
     const age = E('span', 'sel');
     if (!Number.isNaN(since)) {
@@ -1998,6 +2007,9 @@ export function createGraph(
     mid.append(E('b', null, c.label));
     mid.append(E('span', `badge b-${c.state === 'done' ? 'done' : c.state}`, c.state));
     if (c.turnIndex !== null) mid.append(E('span', 'schip', 'turn ' + c.turnIndex));
+    // Same word the live row used, so the row a reader watched running and the row it became are
+    // telling one story about one command.
+    if (c.by !== 'agent') mid.append(E('span', 'schip', BG_AUTHOR_LABEL[c.by]));
     // The exit code lives in Claude Code's sentence and nowhere else, so the chip quotes it from
     // there rather than inventing a parse of the command's own semantics.
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
@@ -3021,6 +3033,7 @@ export function createGraph(
       turnIndex?: number | null;
       error?: true;
       background?: true;
+      backgroundBy?: BackgroundAuthor;
       outcome?: string;
       outcomeTs?: string;
       outputFile?: string;
@@ -3045,7 +3058,9 @@ export function createGraph(
     // The same marker the Trace block carries, for the same reason: everything below measures the
     // LAUNCH, while the command it started outlives this call — by 2.8 minutes at the median, and
     // by hours at the tail (measured over 120 real launches).
-    if (t.background) th.querySelector('.deyebrow')?.append(E('span', 'dchip bg', 'background'));
+    // Same word as the row this drawer was opened from — the two must not name one command twice.
+    if (t.background)
+      th.querySelector('.deyebrow')?.append(E('span', 'dchip bg', BG_AUTHOR_LABEL[t.backgroundBy ?? 'agent']));
     dbody.append(th);
     // A tool opened from the live feed can still be RUNNING: toolDuration's null case says
     // "running…", the same wording the feed row and the cards use — never a bare '—', which

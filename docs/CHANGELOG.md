@@ -4,6 +4,35 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A background command has three authors, and now the rows say which (2026-08-09)
+
+Claude Code started writing `toolUseResult.backgroundedByUser`, and the radar reported it as a field
+seedeep had never seen. Measured over the **221 background receipts** in 515 local sessions, it turns
+out to name the missing third of a story seedeep already tells: a command reaches the background
+because the **model** asked (`run_in_background` in the launch input, 194), because **the call's own
+timeout** promoted it (`timedOutAfterMs`, 22 — and it is the CALL's timeout, 45s–600s locally,
+matching what the model asked for, not the fixed 120s it is easy to assume), or because the **user**
+pressed Ctrl+B (this field, 1).
+The three signals are mutually exclusive — never two on one receipt — and only the last has no other
+marker of its own, so inferring it from the absence of the other two mislabels every receipt written
+before `timedOutAfterMs` existed (CC 2.1.211): a timeout then reads as a model choice.
+
+So the receipt now derives `background.by` — from the receipt ALONE, since the launch input lives on
+another line — and the three surfaces that draw a background command say who when it was not the
+agent: the live row's chip, the same chip on the catalogue row it becomes, and the drawer both open
+into. The agent's branch stays bare, which is what those rows already meant, and it is also the
+fallback for a receipt too old to carry either marker — the worst case is a missing chip, never a
+wrong one. Verified against the one real Ctrl+B receipt in the local corpus: 15 rows on screen,
+exactly one labelled, and it is the command whose receipt carries the field.
+
+A field with one sighting is exactly what the probe is for. New **scene 14** launches a command in
+the foreground and takes it away with Ctrl+B, and claim **C27** requires the receipt to say so.
+Its `provoked` reads the SHAPE, never the field under test: a foreground command that comes back with
+a `backgroundTaskId` and no `timedOutAfterMs` — impossible for a 47s command anyway — can only have
+been backgrounded by the keystroke the probe pressed. The scene runs after scene 13 on purpose,
+since a `status: "shell"` it caused would otherwise satisfy scene 13's claim in place of that claim's
+own command.
+
 ### Re-cutting a figure is a judgement, not an automatism (2026-08-09)
 
 `doc-shots:check` said "may be stale" about figures that were fine. The map is per-FILE, and

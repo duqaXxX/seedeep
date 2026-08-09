@@ -137,6 +137,19 @@ resolution simply returns nothing and every probe answers "no verdict" — a fea
 quiet is indistinguishable from one with nothing to report, which is why it needs a claim rather
 than a runtime warning.
 
+**A field whose only proof is a keystroke (C27).** A background command has three possible authors,
+and the receipt names each with a different field: the model asked (`run_in_background` in the launch
+input), the call's own timeout promoted it (`timedOutAfterMs` — the CALL's timeout, not a constant:
+45s–600s across 22 local promotions, matching the `timeout` the model asked for), or the user pressed
+Ctrl+B (`backgroundedByUser`). Measured over 221 background receipts in 515 sessions on 2026-08-09, the
+three are mutually exclusive, and the last is the only one with no fallback: read as "neither of the
+other two", a receipt written before `timedOutAfterMs` existed turns a timeout into a model choice.
+The radar cannot hold a field it has merely seen once, and no amount of real sessions can either —
+the gesture is a keystroke nobody presses on purpose. So scene 14 presses it: a command launched in
+the FOREGROUND, then Ctrl+B, and a receipt that must say who did it. `provoked` reads the shape of
+that receipt (a foreground launch that came back with a task id and no timeout) and never the field
+under test.
+
 ## Three outcomes, never two
 
 | | meaning |

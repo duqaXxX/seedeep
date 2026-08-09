@@ -450,9 +450,11 @@ line (`apps/server/src/server/failure.ts`, `toolOutcome`), not the Trace.
 **A background command fails LATER than its span.** A `Bash` launched in the
 background returns a receipt in ~100ms — the call's work was starting the
 command, so the span closes there and its duration stays the launch's, never
-the command's lifetime. (A foreground command *promoted* to the background by
-the 120s timeout is the same case with a different number: its span is the
-timeout it ran for — 18 of 114 measured spans are minutes long, not 100ms.) The
+the command's lifetime. (A foreground command *promoted* to the background when
+it outlives its call's own timeout is the same case with a different number: its
+span is the timeout it ran for, and that is not a constant — 45s to 600s across
+22 local promotions, matching the `timeout` the call asked for, two minutes when
+it asked for none. 18 of 114 measured spans are minutes long, not 100ms.) The
 outcome arrives minutes or hours afterwards (p50 2.9m, p90 32m, max 8.8h,
 measured 2026-08-02 over 731 local transcripts: 120 launches, 114 notified), on
 a `queue-operation` line, and is the only place the exit code exists. The span store keeps those spans (and only those: the gate is the

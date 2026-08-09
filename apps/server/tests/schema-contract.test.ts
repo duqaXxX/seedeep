@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canCertify, evaluate, isBroken, manualChecklist, report } from '../probe/verify.ts';
+import { canCertify, closeWithEvidence, evaluate, isBroken, manualChecklist, report } from '../probe/verify.ts';
 import type { Claim, ClaimContext } from '../src/server/schema-contract.ts';
-import { CLAIMS, claimsForScene, SCENE1_MARKER } from '../src/server/schema-contract.ts';
+import { CLAIMS, claimsForScene, CTRLB_COMMAND, SCENE1_MARKER } from '../src/server/schema-contract.ts';
 
 /**
  * The scene-1 lines a real driven session produces. The SHAPE is not invented:
@@ -192,6 +192,74 @@ test('everything the probe could not prove becomes an actionable manual checklis
 
 test('a fully-proven run has an empty manual checklist', () => {
   assert.equal(manualChecklist(evaluate(claimsForScene(1), ctxOf(REAL_SHAPE_LINES))), '');
+});
+
+/**
+ * Scene 14's two lines. The SHAPE is the one real Ctrl+B receipt in the local corpus
+ * (2026-08-09, CC 2.1.225): a Bash `tool_use` with no `run_in_background`, answered by a
+ * `toolUseResult` carrying `backgroundTaskId` and `backgroundedByUser` and no `timedOutAfterMs`.
+ * Content is synthetic; shape is a fact.
+ */
+const ctrlbLines = (over: Record<string, unknown> = {}) => [
+  {
+    type: 'assistant',
+    sessionId: 'probe-1',
+    version: '2.1.225',
+    message: {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'toolu_ctrlb', name: 'Bash', input: { command: CTRLB_COMMAND } }],
+    },
+    uuid: 'a-14',
+  },
+  {
+    type: 'user',
+    sessionId: 'probe-1',
+    version: '2.1.225',
+    message: { role: 'user', content: [{ tool_use_id: 'toolu_ctrlb', type: 'tool_result', content: 'ok' }] },
+    toolUseResult: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'bprobe1', ...over },
+    uuid: 'u-14',
+  },
+];
+
+test('scene 14 HOLDS when the Ctrl+B receipt names the user', () => {
+  const r = evaluate(claimsForScene(14), ctxOf(ctrlbLines({ backgroundedByUser: true })));
+  assert.deepEqual(
+    r.map((x) => x.outcome),
+    ['HOLDS'],
+  );
+});
+
+test('scene 14 is BROKEN when the field goes but the gesture landed', () => {
+  // The flip-off of the fix: same transcript, field removed. A claim that passed both ways
+  // would be decoration.
+  const r = evaluate(claimsForScene(14), ctxOf(ctrlbLines()));
+  assert.equal(r[0]!.outcome, 'BROKEN');
+});
+
+test('scene 14 is UNPROVEN when the model backgrounded the command itself', () => {
+  // Ground truth, not the field: with `run_in_background` in the input the receipt says nothing
+  // about Ctrl+B, so the run must learn NOTHING rather than report a break.
+  const lines = ctrlbLines();
+  (lines[0]!.message.content as any)[0].input.run_in_background = true;
+  assert.equal(evaluate(claimsForScene(14), ctxOf(lines))[0]!.outcome, 'UNPROVEN');
+});
+
+test('scene 14 is UNPROVEN when the call’s timeout backgrounded the command', () => {
+  const r = evaluate(claimsForScene(14), ctxOf(ctrlbLines({ timedOutAfterMs: 120_000 })));
+  assert.equal(r[0]!.outcome, 'UNPROVEN');
+});
+
+test('C27 can be closed by EVIDENCE — a real session runs anything but the scene’s command', () => {
+  // `closeWithEvidence` re-runs `holds` against real transcripts, where nothing ever runs the
+  // probe's `sleep 47`. A `holds` anchored to that command could never close this claim from a
+  // real sighting, and a Ctrl+B the probe failed to land would keep the version uncertifiable
+  // with the proof sitting on disk.
+  const lines = ctrlbLines({ backgroundedByUser: true });
+  (lines[0]!.message.content as any)[0].input.command = 'tail -f /home/dev/logs/publish.log';
+  const unproven = evaluate([{ ...claimsForScene(14)[0]!, provoked: () => false }], ctxOf([]));
+  assert.equal(unproven[0]!.outcome, 'UNPROVEN');
+  const closed = closeWithEvidence(unproven, [ctxOf(lines)], '2.1.225');
+  assert.equal(closed[0]!.outcome, 'HOLDS');
 });
 
 test('every model claim carries a manual instruction — it WILL land on the checklist', () => {

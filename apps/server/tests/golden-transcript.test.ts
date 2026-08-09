@@ -1293,7 +1293,7 @@ test('golden transcript: failed and killed are distinct terminal states, absent 
 // A background COMMAND (a Bash, not a subagent). Its receipt is not an `async_launched` status
 // but a `backgroundTaskId` — the only reliable marker, since a foreground command PROMOTED to
 // the background by the 120s timeout carries no `run_in_background` input at all.
-const backgroundLaunchReceipt = (uuid: string, toolUseId: string, taskId: string) =>
+const backgroundLaunchReceipt = (uuid: string, toolUseId: string, taskId: string, extra: object = {}) =>
   JSON.stringify({
     type: 'user',
     uuid,
@@ -1306,6 +1306,7 @@ const backgroundLaunchReceipt = (uuid: string, toolUseId: string, taskId: string
       isImage: false,
       noOutputExpected: false,
       backgroundTaskId: taskId,
+      ...extra,
     },
   });
 // The command's fate, minutes or hours later. The `<summary>` is the ONLY place the outcome is
@@ -1333,6 +1334,26 @@ const bashLaunch = (uuid: string, id: string, description: string) =>
   });
 
 const FAILED_SUMMARY = 'Background command "Start seedeep server" failed with exit code 144';
+
+test('golden transcript: the receipt says WHO put the command in the background', () => {
+  // The three authors, each from the marker Claude Code really writes — measured over the 221
+  // background receipts in 515 local sessions (2026-08-09), where the three never co-occur.
+  // Driven from raw lines on purpose: the derivation reads the RECEIPT alone (the launch input
+  // lives on another line and the parser never sees the two together), and a hand-built event
+  // could only ever confirm that belief instead of testing it.
+  const authorOf = (launch: string, extra: object) => {
+    const s = runLines([typed('u1', 'start it'), launch, backgroundLaunchReceipt('u2', 'toolu_b1', 'b0cm7fbxc', extra)]);
+    return backgroundCommands(s.mainTools, { ended: false })[0]!.by;
+  };
+  // The model asked for it: no marker on the receipt at all, which is why 'agent' is the default.
+  assert.equal(authorOf(bashLaunch('a1', 'toolu_b1', 'Start seedeep server'), {}), 'agent');
+  // Promoted by the 120s timeout — a FOREGROUND launch, so its input carries no
+  // `run_in_background`, and `timedOutAfterMs` is the only thing that tells it from the next case.
+  const foreground = toolUse('a1', 'toolu_b1', 'Bash', { command: 'cargo test', description: 'Run the tests' });
+  assert.equal(authorOf(foreground, { timedOutAfterMs: 120_000 }), 'timeout');
+  // The user pressed Ctrl+B. Same foreground launch — only the marker differs.
+  assert.equal(authorOf(foreground, { backgroundedByUser: true }), 'user');
+});
 
 test('golden transcript: a failed background command carries CC’s own words onto its Bash row', () => {
   const before = runLines([

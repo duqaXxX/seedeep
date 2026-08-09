@@ -413,7 +413,15 @@ export function parseLine(
           // has nothing to attach to and is dropped, which is how a command that exited 144
           // read as a clean 74ms call.
           if (tur && typeof tur === 'object' && typeof tur.backgroundTaskId === 'string') {
-            ev.background = { taskId: tur.backgroundTaskId };
+            // WHO put it there, read off the receipt alone — the launch input lives on another
+            // line, and the receipt already carries a distinct marker for each author (see
+            // BackgroundAuthor). Order matters only in principle: the two markers were never
+            // seen together on 221 receipts.
+            ev.background = {
+              taskId: tur.backgroundTaskId,
+              by:
+                tur.backgroundedByUser === true ? 'user' : tur.timedOutAfterMs !== undefined ? 'timeout' : 'agent',
+            };
           }
           out.push(ev);
         }

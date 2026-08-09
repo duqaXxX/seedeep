@@ -260,6 +260,22 @@ export function isModelBusy(s: Pick<SessionRecord, 'status'>): boolean {
 }
 
 /** What a blocked session is waiting for, when it is the HUMAN it waits on. */
+/**
+ * Who put a command in the background: the model asked for it, the call's own timeout promoted it
+ * (two minutes by default, up to ten if the call asked for it — never a fixed number), or the user
+ * took it away with Ctrl+B.
+ *
+ * The launch receipt names each with a different field, and measured over the 221 background
+ * receipts in 515 local sessions (2026-08-09) the three are mutually exclusive — never two at
+ * once. Only the user's has a marker of its own (`backgroundedByUser`, CC 2.1.225+); the other
+ * two are told apart by `timedOutAfterMs`, which did not exist before CC 2.1.211.
+ *
+ * 'agent' is therefore the DEFAULT, and deliberately so: it is the value a receipt gets when it
+ * carries no marker at all, and it is the branch every surface leaves unlabelled. A receipt too
+ * old to say which of the three it was can then only cost a missing label, never a wrong one.
+ */
+export type BackgroundAuthor = 'agent' | 'timeout' | 'user';
+
 export type PendingKind = 'permission' | 'input';
 
 /**
@@ -524,10 +540,13 @@ export interface ToolEndEvent extends EventBase {
   // A BACKGROUND COMMAND's launch receipt (a Bash, not a subagent): the tool returned in ~74ms
   // having only STARTED the command, whose real outcome arrives later as an `agent-end` naming
   // the same tool_use id. `backgroundTaskId` is the only reliable marker — a foreground command
-  // PROMOTED to the background by the 120s timeout carries no `run_in_background` input (11 of
-  // 43 measured), and a `Monitor` call gets a `b`-prefixed notification but never this field.
+  // PROMOTED to the background when it outlives its CALL's timeout (never a fixed number: 45s to
+  // 600s across 22 local promotions, matching the `timeout` the call asked for and defaulting to
+  // two minutes) carries no `run_in_background` input at all: 27 of 221 receipts measured
+  // 2026-08-09, and a `Monitor` call gets a `b`-prefixed notification but never this field.
   // Consumers key on its PRESENCE to know a later notification is about a command they ran.
-  background?: { taskId: string };
+  // `by` names WHO put it there — see {@link BackgroundAuthor}.
+  background?: { taskId: string; by: BackgroundAuthor };
 }
 
 /**

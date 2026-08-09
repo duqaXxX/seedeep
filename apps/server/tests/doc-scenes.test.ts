@@ -183,6 +183,17 @@ describe('the commands scene', () => {
     expect(byState).toEqual({ done: 2, failed: 2, running: 1 });
   });
 
+  test('the three authors are all in the picture, one chip each and the majority bare', () => {
+    // The figure's whole claim about who backgrounds a command. Asserted here because a wrong
+    // field name in the scene would draw a picture where every row is the default one — and
+    // nothing else in the suite can look at a PNG.
+    const byAuthor = backgroundCommands(snap.mainTools, { ended: false }).reduce<Record<string, number>>((acc, c) => {
+      acc[c.by] = (acc[c.by] ?? 0) + 1;
+      return acc;
+    }, {});
+    expect(byAuthor).toEqual({ agent: 3, timeout: 1, user: 1 });
+  });
+
   test('a failed row can state its exit code and its real duration, or the picture says nothing', () => {
     const failed = backgroundCommands(snap.mainTools, { ended: false }).filter((c) => c.state === 'failed');
     for (const c of failed) {

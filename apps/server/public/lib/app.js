@@ -450,6 +450,7 @@ function createSessionTree(opts) {
         ctx: 0,
         error: false,
         backgroundTaskId: null,
+        backgroundBy: null,
         outcome: null,
         outcomeStatus: null,
         outcomeTs: null,
@@ -518,6 +519,7 @@ function createSessionTree(opts) {
           pendingBgOutcome.delete(e.toolUseId);
         if (e.background) {
           t.backgroundTaskId = e.background.taskId;
+          t.backgroundBy = e.background.by;
           if (parked) {
             t.outcome = parked.summary;
             t.outcomeStatus = parked.status;
@@ -677,6 +679,7 @@ function createSessionTree(opts) {
     if (t.backgroundTaskId) {
       node.background = true;
       node.backgroundTaskId = t.backgroundTaskId;
+      node.backgroundBy = t.backgroundBy ?? "agent";
       if (t.startTs)
         node.startedTs = t.startTs;
       if (t.outcomeStatus !== null)
@@ -3947,7 +3950,8 @@ function backgroundCommands(tools, opts) {
       ranAtLeast: endedAt === null && bound !== null,
       sentence: t.outcome ?? null,
       outputFile: t.outputFile ?? null,
-      turnIndex: t.turnIndex
+      turnIndex: t.turnIndex,
+      by: t.backgroundBy ?? "agent"
     };
   }).sort((a, b) => a.since.localeCompare(b.since));
 }
@@ -7673,12 +7677,17 @@ function createGraph(container, state, opts = {}) {
     empty.append(E("div", "slempty-t", "No subagents running"), E("div", "slempty-s", finished ? finished + " finished this session — see the full list below" : "Spawned subagents will appear here live"));
     subLiveHost.append(empty);
   }
+  const BG_AUTHOR_LABEL = {
+    agent: "background",
+    timeout: "auto-backgrounded",
+    user: "backgrounded by you"
+  };
   function bgActiveRow(c) {
     const r = E("div", "subrow act");
     r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
     const l1 = E("div", "sl1");
     l1.append(E("span", "sdot"), E("b", null, c.label));
-    l1.append(E("span", "schip", "background"));
+    l1.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
     const since = Date.parse(c.since);
     const age = E("span", "sel");
     if (!Number.isNaN(since)) {
@@ -7700,6 +7709,8 @@ function createGraph(container, state, opts = {}) {
     mid.append(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state));
     if (c.turnIndex !== null)
       mid.append(E("span", "schip", "turn " + c.turnIndex));
+    if (c.by !== "agent")
+      mid.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
     if (exit)
       mid.append(E("span", "schip", "exit " + exit[1]));
@@ -8404,7 +8415,7 @@ function createGraph(container, state, opts = {}) {
     if (t.error)
       th.querySelector(".deyebrow")?.append(E("span", "dchip err", "failed"));
     if (t.background)
-      th.querySelector(".deyebrow")?.append(E("span", "dchip bg", "background"));
+      th.querySelector(".deyebrow")?.append(E("span", "dchip bg", BG_AUTHOR_LABEL[t.backgroundBy ?? "agent"]));
     dbody.append(th);
     const bgRan = t.background && t.startedTs && t.outcomeTs ? Date.parse(t.outcomeTs) - Date.parse(t.startedTs) : null;
     dbody.append(kpis(kpi2(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended2)), t.background ? kpi2("Ran for", bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : "—") : kpi2("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));

@@ -6,6 +6,7 @@
 import type { AgentNode, FileChangeNode, ToolNode, TreeSnapshot } from './session-tree.ts';
 import { sumTokensByModel } from './session-tree.ts';
 import { isScratchPath } from './text.ts';
+import type { BackgroundAuthor } from './types.ts';
 
 /** A background command the session launched and has not been told the fate of. */
 export interface RunningCommand {
@@ -71,6 +72,9 @@ export interface BackgroundCommand {
   sentence: string | null;
   outputFile: string | null;
   turnIndex: number | null;
+  /** Who put it in the background. Surfaces label the two minority branches and leave 'agent'
+   * bare — it is what a background command already means to a reader. */
+  by: BackgroundAuthor;
 }
 
 /**
@@ -128,6 +132,9 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
         sentence: t.outcome ?? null,
         outputFile: t.outputFile ?? null,
         turnIndex: t.turnIndex,
+        // A node written before the reducer carried the author (a snapshot restored from an older
+        // build) falls back to the unlabelled branch: an omitted label, never a wrong one.
+        by: t.backgroundBy ?? 'agent',
       };
     })
     .sort((a, b) => a.since.localeCompare(b.since));

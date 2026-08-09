@@ -197,6 +197,15 @@ that needs attention is hidden behind an unmarked door.
 own count, and its failures with it — which is what makes hiding one list behind a
 tab safe.*
 
+A command reaches the background three ways, and the rows say which when it is not
+the obvious one: the agent asked for it, **the call's own timeout** promoted a
+foreground command that was still running (two minutes by default, and the agent can
+ask for up to ten), or **you** pressed `Ctrl+B` and took it away from the agent. The first is what a background command already means to a
+reader — it is 88% of them — so its rows stay bare; the other two carry a chip,
+`auto-backgrounded` and `backgrounded by you`, on the live row, on the catalogue row
+it becomes, and in the drawer both open. A command whose receipt is too old to say
+which it was reads as the bare case: an omitted chip, never a wrong one.
+
 Each command is one line: what it was launched to do (Claude Code's own
 `description`, the name it quotes back when the command ends), its state, the turn
 that started it, its exit code, and **how long the command itself ran** — launch

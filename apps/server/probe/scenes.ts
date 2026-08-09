@@ -1,4 +1,4 @@
-import { ECHO_MARKER, ESC_MARKER, POST_ESC_MARKER, SCENE1_MARKER } from '../src/server/schema-contract.ts';
+import { CTRLB_COMMAND, ECHO_MARKER, ESC_MARKER, POST_ESC_MARKER, SCENE1_MARKER } from '../src/server/schema-contract.ts';
 import type { ProbeSession } from './driver.ts';
 
 /**
@@ -89,6 +89,16 @@ Do nothing else.
 // after the turn had already finished. The token counter is written by Claude
 // Code while it generates, whatever it generates.
 const STREAMING = /↓\d+tokens/;
+
+/** Polls the driven session's transcript until `marker` appears in it, or the timeout expires. */
+async function seenInTranscript(s: ProbeSession, marker: string, timeoutMs: number): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    if ((await s.transcript())?.includes(marker)) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
 
 export interface SceneReport {
   scene: number;
@@ -202,7 +212,7 @@ export async function runScenes(s: ProbeSession, log: (m: string) => void = () =
     await s.settle();
   });
 
-  // Last, and it has to be: the state it provokes only exists while the TURN IS OVER and the
+  // Last of the turn-shaped scenes, and it has to be: the state it provokes only exists while the TURN IS OVER and the
   // command is not — so the scene ends its turn on purpose and then waits, doing nothing, for the
   // run's 2-second sampler to see the PID file in that state. A shorter command than the wait, or
   // no wait at all, and the state passes between two samples and the claim reads UNPROVEN.
@@ -215,6 +225,30 @@ export async function runScenes(s: ProbeSession, log: (m: string) => void = () =
     // The turn has ended; the command has ~40s left. Five samples at 2s is plenty, and this is
     // dead time for the session, not for Claude — nothing is being generated.
     await new Promise((r) => setTimeout(r, 10_000));
+  });
+
+  // Last, and the position buys nothing for scene 13: `openSessions` is one flat pool sampled
+  // across the WHOLE run (run.ts), so a `status: "shell"` this scene causes can satisfy C25
+  // whatever the order. That is not a stolen green — C25 claims something about the PHENOMENON
+  // (a background command outliving its turn writes 'shell'), and this scene produces exactly
+  // that phenomenon by another route. It runs last because it is the one scene that deliberately
+  // leaves a command alive when the run ends, and nothing after it should have to care.
+  //
+  // The second ordered scene, and it says so like scene 6: the gesture only exists if the command
+  // is in the FOREGROUND when Ctrl+B lands, and background is what Claude picks on its own for
+  // anything long. Ordering the foreground is what makes the minority branch reachable at all;
+  // if Claude backgrounds it anyway, the receipt shows it and the claim reads UNPROVEN.
+  await scene(14, 'Ctrl+B on a running foreground command (ordered — see the caveat)', async () => {
+    await s.typeLine(`run \`${CTRLB_COMMAND}\` in the foreground and tell me when it is done`);
+    // Waits for the LAUNCH ITSELF in the transcript, not for a word on the screen: the TUI's hint
+    // line is CC's prose and would make the scene hostage to its wording, while the `tool_use`
+    // block is written when it closes — i.e. as the command starts running (p50 0.23s).
+    const started = await seenInTranscript(s, `"command":"${CTRLB_COMMAND}`, 90_000);
+    if (!started) throw new Error('the command was never launched, so there was nothing to background');
+    // A beat, so Ctrl+B lands on a command the TUI has already put on screen as running.
+    await new Promise((r) => setTimeout(r, 2_000));
+    s.send('\x02');
+    await s.settle(5_000, 120_000);
   });
 
   return out;

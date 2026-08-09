@@ -1,5 +1,5 @@
 import { callWeight } from './token-weight.ts';
-import type { NormalizedEvent, SubagentReturned, TaskRef } from './types.ts';
+import type { BackgroundAuthor, NormalizedEvent, SubagentReturned, TaskRef } from './types.ts';
 import { SPAWN_TOOL_NAMES } from './types.ts';
 
 // Re-exported for the view, which must mark a spawn row exactly as the reducer counts one.
@@ -52,6 +52,8 @@ export interface ToolNode {
    * the command's output file on disk, which is the only thing that can be asked whether the
    * process is still alive — see `command-liveness.ts`. */
   backgroundTaskId?: string;
+  /** Who put the command in the background. Only on a background launch, and always set there. */
+  backgroundBy?: BackgroundAuthor;
   /** When the launch happened, for the age a running command is shown with. Only on a background
    * launch: the whole ledger carrying a timestamp it has no use for would be paid on every tool. */
   startedTs?: string;
@@ -426,6 +428,7 @@ interface ToolAcc {
   ctx: number;
   error: boolean; // the tool_result came back a real failure (refusals excluded)
   backgroundTaskId: string | null; // set by the launch receipt of a background command (Bash only)
+  backgroundBy: BackgroundAuthor | null; // who put it there; set by the same receipt
   outcome: string | null; // a background command's fate, in Claude Code's own words
   outcomeStatus: string | null; // the same fate as a status code, so nothing has to parse English
   outcomeTs: string | null; // when the notification landed — with startTs, the command's real duration
@@ -1075,6 +1078,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         ctx: 0,
         error: false,
         backgroundTaskId: null,
+        backgroundBy: null,
         outcome: null,
         outcomeStatus: null,
         outcomeTs: null,
@@ -1155,6 +1159,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         if (parked) pendingBgOutcome.delete(e.toolUseId);
         if (e.background) {
           t.backgroundTaskId = e.background.taskId;
+          t.backgroundBy = e.background.by;
           if (parked) {
             t.outcome = parked.summary;
             t.outcomeStatus = parked.status;
@@ -1417,6 +1422,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     if (t.backgroundTaskId) {
       node.background = true;
       node.backgroundTaskId = t.backgroundTaskId;
+      node.backgroundBy = t.backgroundBy ?? 'agent';
       if (t.startTs) node.startedTs = t.startTs;
       // Only a background launch carries the rest: they exist to answer "what became of it, how
       // long did it really take, and where is what it printed" — questions no other tool has.

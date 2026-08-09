@@ -75,6 +75,31 @@ function anyAssistant(ctx: ClaimContext, pred: (d: any) => boolean): boolean {
   return typed(ctx, 'assistant').some(pred);
 }
 
+/**
+ * The launch receipt of the background command whose `tool_use` ran `commandMarker`, with the
+ * input that asked for it — walked tool_use → tool_result rather than found by text, because a
+ * probe run writes SEVERAL background receipts (scene 13 writes one of its own) and the wrong
+ * one proves nothing about the gesture under test.
+ */
+function backgroundReceiptOf(ctx: ClaimContext, commandMarker: string): { result: any; input: any } | null {
+  const inputs = new Map<string, any>();
+  for (const d of typed(ctx, 'assistant')) {
+    for (const b of blocks(d)) {
+      if (b?.type === 'tool_use' && typeof b?.input?.command === 'string' && b.input.command.includes(commandMarker)) {
+        inputs.set(b.id, b.input);
+      }
+    }
+  }
+  for (const d of typed(ctx, 'user')) {
+    const res = blocks(d).find((b: any) => b?.type === 'tool_result' && inputs.has(b.tool_use_id));
+    if (!res) continue;
+    const tur = d.toolUseResult;
+    if (!tur || typeof tur !== 'object' || typeof tur.backgroundTaskId !== 'string') continue;
+    return { result: tur, input: inputs.get(res.tool_use_id) };
+  }
+  return null;
+}
+
 /** The probe's scene-1 prompt; the marker that proves a typed prompt happened. */
 export const SCENE1_MARKER = 'say only the word ok';
 export const ECHO_MARKER = 'probe-echo';
@@ -90,6 +115,15 @@ export const SKILL_MARKER = 'probeskillok';
 // happened" for a scene that had run perfectly.
 export const ESC_MARKER = 'count slowly from 1 to 200, one number per line';
 export const POST_ESC_MARKER = 'say only the word done';
+// The command scene 14 runs in the FOREGROUND and then takes away with Ctrl+B. Short on purpose:
+// a Bash that outlives its call's own timeout is promoted to the background by Claude Code, and
+// that receipt looks the same but for `timedOutAfterMs` — so a command the timeout could reach
+// would make the gesture prove nothing. The timeout is the CALL's, not a constant: measured over
+// 22 promotions locally it ranges 45s–600s and matches the `timeout` the model asked for (16 of
+// 22 named one), the rest falling to the tool's 2-minute default. 47s is under that default and
+// the scene never asks for another. scenes.ts imports it — see ESC_MARKER's note on what two
+// copies of a scene's own text cost.
+export const CTRLB_COMMAND = 'sleep 47';
 
 export const CLAIMS: Claim[] = [
   // ── Scene 1: a typed prompt ────────────────────────────────────────────────
@@ -558,6 +592,40 @@ export const CLAIMS: Claim[] = [
       // task id as the file's own name.
       return new RegExp(`^(?:/private)?/tmp/claude-\\d+/[^/]+/[^/]+/tasks/${taskId}\\.output$`).test(named[1]!);
     },
+  },
+
+  // ── Scene 14: the user takes a running command away ────────────────────────
+  // A background command has THREE possible authors, and the receipt names each with a different
+  // field: the model asked (`run_in_background` in the input), the call's timeout promoted it
+  // (`timedOutAfterMs`), or the user pressed Ctrl+B (this one). Measured 2026-08-09 over 221
+  // background receipts in 515 local sessions: the three are mutually exclusive, never two at
+  // once. This is the only POSITIVE marker of the third author — without it the case can only be
+  // inferred from the absence of the other two, which is exactly the reading that mislabels the
+  // pre-2.1.211 receipts (no timeout field existed yet, so a timeout reads as a model choice).
+  {
+    id: 'C27',
+    scene: 14,
+    describe: 'toolUseResult.backgroundedByUser marks a command the USER moved to the background (Ctrl+B)',
+    reader: 'parser.ts:415',
+    investigate:
+      'the receipt of a Ctrl+B background carries no other signal of its own — no `run_in_background` in the input, no `timedOutAfterMs` — so if this field goes, the command becomes indistinguishable from one the model chose to background, and the live row, the catalogue row and the drawer can only tell the majority story about it.',
+    manual:
+      'start a long foreground command in a real session, press Ctrl+B while it runs, and read the tool_result line: toolUseResult must carry backgroundedByUser: true beside backgroundTaskId.',
+
+    kind: 'gesture',
+    // Ground truth from the SHAPE of the receipt, never from the field under test: a command the
+    // model launched in the foreground that nonetheless came back with a task id, and not from
+    // the timeout (which cannot reach a 47s command anyway), can only have been taken away by the
+    // Ctrl+B the probe pressed.
+    provoked: (ctx) => {
+      const r = backgroundReceiptOf(ctx, CTRLB_COMMAND);
+      return !!r && r.input?.run_in_background !== true && r.result.timedOutAfterMs === undefined;
+    },
+    // `holds` is deliberately NOT tied to the probe's own command, unlike `provoked`: the same
+    // predicate is re-run by `closeWithEvidence` over REAL sessions, where nothing ever runs the
+    // scene's command — an anchored one could never close this claim from evidence, and a Ctrl+B
+    // the probe failed to land would leave it open for ever even with a real sighting on disk.
+    holds: (ctx) => typed(ctx, 'user').some((d) => d?.toolUseResult?.backgroundedByUser === true),
   },
 ];
 
