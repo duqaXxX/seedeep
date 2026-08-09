@@ -110,6 +110,27 @@ test('every channel says how often the network is asked, and that a restart is n
   }
 });
 
+// The pointer is named only where it works. `planSelfUpdate` refuses a download, a checkout and
+// Windows, and an advice line pointing at a command that answers "I cannot do that here" is worse
+// than saying nothing.
+test('self-update is offered exactly where it can run', () => {
+  const bun: Channel = { kind: 'bun', command: 'bun install -g seedeep --trust' };
+  assert.match(updateAdvice(bun, '/x', at('1.0.0'), false, 'darwin'), /seedeep self-update/);
+  assert.match(
+    updateAdvice({ kind: 'npm', command: 'npm i -g seedeep@latest' }, '/x', at('1.0.0'), false, 'linux'),
+    /seedeep self-update/,
+  );
+  assert.doesNotMatch(updateAdvice(bun, '/x', at('1.0.0'), false, 'win32'), /seedeep self-update/);
+  assert.doesNotMatch(
+    updateAdvice({ kind: 'download', command: null }, '/x', at('1.0.0'), false, 'darwin'),
+    /seedeep self-update/,
+  );
+  assert.doesNotMatch(
+    updateAdvice({ kind: 'checkout', command: null }, '/x', at('1.0.0'), false, 'darwin'),
+    /seedeep self-update/,
+  );
+});
+
 test('--offline says so rather than pretending it checked', () => {
   const channel: Channel = { kind: 'checkout', command: null };
   assert.match(updateAdvice(channel, '/bin/x', status('1.0.0', '1.2.0', 'behind'), true), /--offline/);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseArgs } from '../src/server/args.ts';
+import { parseArgs, SUBCOMMANDS } from '../src/server/args.ts';
 import { usage, versionLine } from '../src/server/help.ts';
 
 test('every spelling of help and version is recognised, and none of them acts', () => {
@@ -22,9 +22,13 @@ test('help wins wherever it appears, and over version', () => {
 
 // The help text is the only place the CLI's surface is written down in one piece; a command or
 // flag the parser accepts and the text omits is one nobody can find.
+// Read from the PARSER, never from a second list here: the hand-written one silently stayed true
+// while `self-update` was added and left undocumented — a list that cannot notice is not a test.
+const UNDOCUMENTED = new Set(['serve', 'help', 'version', 'claude-code']);
+
 test('the help text names every subcommand the parser accepts', () => {
   const text = usage('1.0.0');
-  for (const command of ['open', 'start', 'stop', 'restart', 'report', 'update', 'install-command']) {
+  for (const command of SUBCOMMANDS.filter((c) => !UNDOCUMENTED.has(c))) {
     assert.match(text, new RegExp(`seedeep ${command}\\b`), `"${command}" is missing from --help`);
   }
   for (const flag of ['--port', '--host', '--no-open', '--session', '--full', '--offline', '--force']) {

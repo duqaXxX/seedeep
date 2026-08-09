@@ -19,12 +19,13 @@ const COMMANDS: [string, string][] = [
   ['seedeep status', 'what state this machine is in — server, version, update, /seedeep'],
   ['seedeep report', 'what a session cost and where its tokens went — the newest of this directory'],
   ['seedeep update', 'say how THIS installation is updated — prints the command, never runs it'],
+  ['seedeep self-update', 'install the new version through that command, then restart the server'],
   ['seedeep install-command', 'write the /seedeep slash command into Claude Code (--force to replace)'],
 ];
 
 /** The flags, grouped by the commands that accept them. */
 const FLAGS: [string, string][] = [
-  ['--port <n>', 'serve, open, start, stop, restart, status — the port (default 44842)'],
+  ['--port <n>', 'serve, open, start, stop, restart, status, self-update — the port (default 44842)'],
   ['--host <addr>', 'serve — the bind address; anything but loopback turns on TLS and a token'],
   ['--no-open', 'serve — do not open the browser'],
   ['--session <id>', "report — a session other than this directory's newest"],
@@ -50,7 +51,7 @@ export function usage(version = VERSION): string {
     ...pad(FLAGS),
     '',
     'Inside Claude Code, `seedeep install-command` gives you /seedeep, which carries the same',
-    'words: /seedeep open, start, stop, restart, status, report [full], update.',
+    'words: /seedeep open, start, stop, restart, status, report [full], update, self-update.',
     '',
   ].join('\n');
 }

@@ -11,6 +11,7 @@ import { openCommand, startCommand } from './open-cmd.ts';
 import { latestSessionInProject, runReport } from './report.ts';
 import { restartCommand } from './restart-cmd.ts';
 import { announce, withdraw } from './run-state.ts';
+import { runSelfUpdatePreview, selfUpdateCommand } from './self-update-cmd.ts';
 import { startServer } from './server.ts';
 import { runStatus } from './status-cmd.ts';
 import { stopCommand } from './stop-cmd.ts';
@@ -111,6 +112,8 @@ async function runSubcommand(argv: string[]): Promise<number | null> {
       return withConfig(opts, (port, config) => runStatus(port, config));
     case 'update':
       return runUpdate({ offline: opts.offline });
+    case 'self-update':
+      return withConfig(opts, selfUpdateCommand);
     case 'report':
       return reportHere(opts);
     case 'open':
@@ -170,6 +173,11 @@ async function runClaudeCommand(opts: CliOptions): Promise<number> {
       return withConfig(opts, (port, config) => runStatus(port, config));
     case 'update':
       return runUpdate();
+    // The PREVIEW, never the install: this runs inside Claude Code's preprocessing, which blocks the
+    // turn and pastes whatever it prints. The install is the `seedeep self-update` the model then
+    // runs as a Bash call — pre-approved by the command file's `Bash(seedeep:*)`.
+    case 'self-update':
+      return runSelfUpdatePreview();
     case 'stop':
       return withConfig(opts, (port) => stopCommand(port));
     case 'start':

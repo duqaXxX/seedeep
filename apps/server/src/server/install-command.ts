@@ -93,7 +93,7 @@ export function ownershipOf(text: string, version = VERSION): Ownership {
 function commandFileBody(): string {
   return `---
 description: Open seedeep's GUI, check its status, report on this session, or restart/stop the server
-argument-hint: [open|start|stop|restart|status|report|report full|update]
+argument-hint: [open|start|stop|restart|status|report|report full|update|self-update]
 disable-model-invocation: true
 allowed-tools: Bash(seedeep:*)
 ---
@@ -110,9 +110,15 @@ The block above is seedeep's output.
   still only a report, and acting on it is the user's to decide.
 - \`update\`: show the command it printed, verbatim. Do NOT run it — updating is the user's to do,
   in their own terminal, where they can see it happen.
+- \`self-update\`: the block above says only what WOULD happen; nothing is installed yet. If it ends
+  with "Nothing to run", report that in one line and stop. Otherwise run \`seedeep self-update\` with
+  Bash and report its last line. That one command does all of it — it installs, checks the executable
+  really changed, and restarts the server. Never run the package manager yourself, and never stop or
+  start the server around it.
 
 In every case: do nothing else. Do not start processes, do not investigate, do not try to fix
-anything you see in the output.
+anything you see in the output. The single exception is the \`seedeep self-update\` above, and only
+for that word.
 `;
 }
 

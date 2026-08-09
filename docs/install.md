@@ -102,9 +102,11 @@ After that, any Claude Code session has these:
 | `/seedeep restart` | replaces the running server with a fresh one |
 | `/seedeep report` | what this session cost and where its tokens went; `report full` adds a line per turn |
 | `/seedeep update` | says how *this* installation is updated — it prints the command, and never runs it |
+| `/seedeep self-update` | installs that version and restarts the server, without leaving the session (macOS and Linux) |
 
 The same words exist on the console — `seedeep open`, `seedeep start`,
-`seedeep stop`, `seedeep restart`, `seedeep report`, `seedeep update`. A server
+`seedeep stop`, `seedeep restart`, `seedeep report`, `seedeep update`,
+`seedeep self-update`. A server
 started this way keeps running when the session ends, because it is started
 detached, exactly like one you launched yourself; `stop` is what ends it, and it
 asks with SIGTERM rather than killing, so the server closes down properly.
@@ -140,8 +142,7 @@ part of installing seedeep, and no upgrade does it behind your back.
 **Updating seedeep itself** is `seedeep update`. It asks npm which version is
 current, reads where this executable actually lives — a package manager's
 `node_modules`, or a file you downloaded — and prints the one command that updates
-*that*. It never runs it: updating is yours to do, in a terminal where you can watch
-it happen.
+*that*. It never runs it — that is what `seedeep self-update` below is for.
 
 That version check is **the only outbound request seedeep ever makes**, and it
 happens **at most once an hour**: the answer is cached, so the command, the portal's
@@ -151,14 +152,39 @@ never withholds the advice — you are still told how this install would update.
 
 When a newer version exists you are told once per release: a notification from the
 tray (switchable off in its Settings, with the other three), a line in the portal's
-About section, and a line after `seedeep open` / `seedeep start`. Nothing is ever
-installed for you: every one of them points at `seedeep update`, which prints the
-command and lets you run it where you can watch it happen. Nothing updates by itself
-either — npm documents no background or scheduled update, for global packages or any
-other kind. If you want it automatic, that belongs in your own scheduler
-(`npm update -g seedeep` on a cron), where you decided it.
+About section, and a line after `seedeep open` / `seedeep start`. Nothing updates by
+itself — npm documents no background or scheduled update, for global packages or any
+other kind, and none of those notices installs anything. If you want it automatic,
+that belongs in your own scheduler (`npm update -g seedeep` on a cron), where you
+decided it.
 
 A running server keeps the old code until you restart it, whichever way you updated.
+
+### `seedeep self-update`
+
+`seedeep self-update` is the one command that does install, and only when you type
+it. It runs the same command `seedeep update` would have printed, then **checks that
+the executable on disk really changed**, and only then restarts the running server so
+it serves the new code. If no server of yours was running, none is started.
+
+The check is not ceremony: under bun, an install without `--trust` is blocked from
+putting the binary in place *and still reports success*, so the install's exit code
+cannot be the evidence. Nothing is restarted until the version answers differently.
+
+It refuses, with the sentence that resolves each case instead of a half-done install:
+
+| | |
+|---|---|
+| a downloaded executable | there is nothing to install — replace the file with the new release |
+| a checkout | `git pull`, and the next `bun start` is the new code |
+| Windows | a running `.exe` cannot be replaced: `seedeep stop`, the install command, `seedeep start` |
+| a version *ahead* of npm's | that is a build of your own, and installing would downgrade it |
+
+Inside Claude Code, `/seedeep self-update` first reports what *would* happen —
+version, channel, and whether it can run at all — and Claude then runs the single
+`seedeep self-update` command, which the command file already allows. The package
+manager is never invoked by Claude directly, and `/seedeep update` still only
+reports: the word that tells and the word that acts stay separate.
 
 ## The macOS permission the server asks for
 

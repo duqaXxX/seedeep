@@ -43,6 +43,9 @@ export type Channel =
 // `node_modules/seedeep/`, so it is reported as npm and shown npm's command — which for pnpm is the
 // wrong manager. Their global layouts are not verified here (neither is installed on the machine
 // this was written on), and guessing a path would be the same mistake in the other direction.
+// The same applies to bun under a custom `BUN_INSTALL` (measured 2026-08-09: a prefix that is not
+// named `.bun` reads as npm), which `seedeep self-update` then RUNS rather than merely prints.
+// Asking bun for its own global root would settle it, and is not what this path-only test does.
 export function detectChannel(realExecPath: string, fromSource = FROM_SOURCE): Channel {
   if (fromSource) return { kind: 'checkout', command: null };
   if (realExecPath.includes('/node_modules/seedeep/') || realExecPath.includes('\\node_modules\\seedeep\\')) {
@@ -51,6 +54,54 @@ export function detectChannel(realExecPath: string, fromSource = FROM_SOURCE): C
       : { kind: 'npm', command: 'npm i -g seedeep@latest' };
   }
   return { kind: 'download', command: null };
+}
+
+/** Whether this installation can replace itself, and with which command. */
+export type SelfUpdatePlan =
+  | { kind: 'install'; command: string; argv: string[] }
+  /** Nothing will be run: `reason` is the sentence that resolves it instead. */
+  | { kind: 'refused'; reason: string };
+
+/**
+ * Decide whether `seedeep self-update` can run here, from the channel and the platform. It lives
+ * beside {@link detectChannel} because it is a fact about the CHANNEL — what this installation is
+ * able to do to itself — while running it is another file's job.
+ *
+ * The channel is asked first: `git pull` is the answer for a checkout on every platform, so
+ * reporting Windows' limitation there would name the wrong obstacle.
+ *
+ * The argv is the command split on spaces, which is exact here and only here: these strings are this
+ * file's own literals, with no quoting and no argument containing a space.
+ */
+export function planSelfUpdate(channel: Channel, platform: NodeJS.Platform): SelfUpdatePlan {
+  switch (channel.kind) {
+    case 'download':
+      return {
+        kind: 'refused',
+        reason:
+          'this seedeep is an executable you downloaded, not a package-manager install — updating it is ' +
+          'replacing the file with the one from https://github.com/duqaXxX/seedeep/releases/latest',
+      };
+    case 'checkout':
+      return {
+        kind: 'refused',
+        reason: 'this seedeep runs from a checkout — `git pull`, and the next `bun start` is the new code.',
+      };
+    case 'bun':
+    case 'npm':
+      // LIMIT: Windows locks a running executable against being replaced, so the package manager
+      // would fail against the very binary it is installing over. Doing it anyway would need a
+      // detached helper that outlives this process — not written, and not guessed at here.
+      if (platform === 'win32') {
+        return {
+          kind: 'refused',
+          reason:
+            'on Windows a running executable cannot be replaced, so seedeep cannot update itself. Run ' +
+            `\`seedeep stop\`, then \`${channel.command}\`, then \`seedeep start\`.`,
+        };
+      }
+      return { kind: 'install', command: channel.command, argv: channel.command.split(' ') };
+  }
 }
 
 /**
@@ -86,6 +137,7 @@ export function updateAdvice(
   execPath: string,
   status: UpdateStatus = { current: VERSION, latest: null, standing: 'unknown', checkedAt: null, reason: null },
   offline = false,
+  platform: NodeJS.Platform = process.platform,
 ): string {
   const lines = [`seedeep ${status.current} — ${execPath}`, checkLine(status, offline)];
   switch (channel.kind) {
@@ -115,6 +167,11 @@ export function updateAdvice(
     case 'checkout':
       lines.push('running from a checkout — `git pull`, and the next `bun start` is the new code.');
       break;
+  }
+  // Named only where it would actually work: `planSelfUpdate` refuses a download, a checkout and
+  // Windows, and pointing at a command that answers "I cannot do that here" is worse than silence.
+  if (planSelfUpdate(channel, platform).kind === 'install') {
+    lines.push('', 'Or `seedeep self-update`, which runs that command here and restarts the server for you.');
   }
   lines.push(
     '',

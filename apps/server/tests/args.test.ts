@@ -95,3 +95,10 @@ test('a flag belonging to another subcommand throws rather than being ignored', 
   assert.throws(() => parseArgs(['open', '--no-open']), /unknown option "--no-open" for "open"/);
   assert.throws(() => parseArgs(['install-command', '--port', '1']), /unknown option "--port"/);
 });
+
+test('self-update takes the port it will restart, and nothing else', () => {
+  assert.deepEqual(parseArgs(['self-update']), { command: 'self-update' });
+  assert.deepEqual(parseArgs(['self-update', '--port', '9000']), { command: 'self-update', port: 9000 });
+  // No `--offline`: installing without knowing what is out there is not a mode of this command.
+  assert.throws(() => parseArgs(['self-update', '--offline']), /unknown option "--offline"/);
+});

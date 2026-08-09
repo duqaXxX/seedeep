@@ -23,6 +23,7 @@ export type ClaudePlan =
   | { kind: 'start' }
   | { kind: 'status' }
   | { kind: 'update' }
+  | { kind: 'self-update' }
   | { kind: 'error'; message: string };
 
 /**
@@ -55,6 +56,10 @@ export function planClaudeCommand(rest: string[]): ClaudePlan {
       return { kind: 'status' };
     case 'update':
       return { kind: 'update' };
+    // Deliberately a word of its own, never a mode of `update`: one says how, the other does it, and
+    // a reporting command that installs because it decided the moment was right is not a report.
+    case 'self-update':
+      return { kind: 'self-update' };
     case 'report':
       if (tail.length && tail[0] !== 'full') {
         return { kind: 'error', message: `seedeep: report takes "full" or nothing, not "${tail[0]}"` };
@@ -63,7 +68,7 @@ export function planClaudeCommand(rest: string[]): ClaudePlan {
     default:
       return {
         kind: 'error',
-        message: `seedeep: "${word}" is not a /seedeep command — try open, start, stop, restart, report or update`,
+        message: `seedeep: "${word}" is not a /seedeep command — try open, start, stop, restart, report, update or self-update`,
       };
   }
 }

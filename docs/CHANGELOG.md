@@ -4,6 +4,32 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### `seedeep self-update` — the update runs where you asked for it (2026-08-09)
+
+`seedeep update` printed a command and stopped, so updating meant leaving the session for a terminal.
+The reason it stopped was sound but narrower than it looked: it argued against installing inside the
+`/seedeep` slash command's `` !`…` `` block, which is **preprocessing** — it blocks the turn and pastes
+its whole output into the session. It said nothing about a Bash call the agent makes normally, where
+the output is a tool result and the progress is visible.
+
+So the install becomes a seedeep verb rather than a package-manager command typed by an agent:
+`seedeep self-update` runs the channel's own command, **checks that the executable on disk really
+changed**, and only then restarts the running server. That check is the point — under bun an install
+without `--trust` is blocked from placing the binary *and still exits 0*, so the exit code cannot be
+the evidence. A failed install leaves the running server untouched, and no server is started where
+none was running.
+
+It refuses where a package manager is not the answer, each with the sentence that resolves it: a
+downloaded executable, a checkout, Windows (a running `.exe` cannot be replaced — no detached helper
+is written, so the platform is out of scope), and a version *ahead* of npm's, where "update" would
+mean downgrading a build of your own.
+
+`/seedeep self-update` is a word of its own, never a mode of `/seedeep update`: one says how, the
+other does it, and a reporting command that installs because the moment looked right is not a report.
+The slash command's preprocessing prints only what *would* happen, and the single command Claude then
+runs is already covered by the command file's `Bash(seedeep:*)` — the package manager is never
+invoked by the agent directly.
+
 ### A background command has three authors, and now the rows say which (2026-08-09)
 
 Claude Code started writing `toolUseResult.backgroundedByUser`, and the radar reported it as a field

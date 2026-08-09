@@ -21,12 +21,19 @@ test('restart, stop and update are their own plans', () => {
   assert.deepEqual(planClaudeCommand([ID, 'update']), { kind: 'update' });
 });
 
+// The one that installs is a word of its own: `update` must never become the command that acts
+// because a model read the situation and decided the moment was right.
+test('self-update is a separate word from update, not a mode of it', () => {
+  assert.deepEqual(planClaudeCommand([ID, 'self-update']), { kind: 'self-update' });
+  assert.notDeepEqual(planClaudeCommand([ID, 'update']), planClaudeCommand([ID, 'self-update']));
+});
+
 // The command file cannot validate anything — it is a template. Everything typed after /seedeep
 // arrives here verbatim, so this is the only place a mistake can be caught.
-test('an unknown word names the three that exist', () => {
+test('an unknown word names the ones that exist', () => {
   const plan = planClaudeCommand([ID, 'summary']);
   assert.equal(plan.kind, 'error');
-  assert.match(plan.kind === 'error' ? plan.message : '', /open, start, stop, restart, report or update/);
+  assert.match(plan.kind === 'error' ? plan.message : '', /open, start, stop, restart, report, update or self-update/);
 });
 
 test('a word after report that is not "full" is refused rather than ignored', () => {

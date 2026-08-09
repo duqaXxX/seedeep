@@ -30,6 +30,7 @@ export type Subcommand =
   | 'stop'
   | 'status'
   | 'update'
+  | 'self-update'
   | 'install-command'
   | 'claude-code'
   | 'help'
@@ -46,11 +47,18 @@ const FLAGS: Record<Subcommand, ReadonlySet<string>> = {
   stop: new Set(['--port']),
   status: new Set(['--port']),
   update: new Set(['--offline']),
+  // `--port`, like `restart`: the install is machine-wide, but the server put back on the new code
+  // is one of them. No `--offline` — installing without knowing what is out there is not a mode.
+  'self-update': new Set(['--port']),
   'install-command': new Set(['--force']),
   'claude-code': new Set([]),
   help: new Set([]),
   version: new Set([]),
 };
+
+/** Every subcommand the parser accepts, so `--help` can be checked against the parser rather than
+ * against a second list somebody has to remember to extend. */
+export const SUBCOMMANDS = Object.keys(FLAGS) as Subcommand[];
 
 /** Asking what the program is never runs it, so these are recognised ANYWHERE in `argv` and win
  * over everything else: `seedeep report --help` explains rather than reporting, which is what a
