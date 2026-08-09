@@ -34,22 +34,33 @@ export type Channel =
 /**
  * Read the channel off the resolved path of the running executable.
  *
- * A package manager installs into `node_modules/seedeep/`, and bun's global root is under `.bun/`
- * (measured: `~/.bun/install/global/node_modules/seedeep/bin/seedeep.exe`, reached through a
- * symlink at `~/.bun/bin/seedeep`). Anything outside a `node_modules` is a file the user put where
- * it is — which is exactly what a downloaded release asset is.
+ * A package manager installs into `node_modules/seedeep/`, and bun's global root is
+ * `$BUN_INSTALL/install/global` (measured 2026-08-09, bun 1.3.13, against both the default prefix
+ * and a custom `BUN_INSTALL`: the `install/global/node_modules/` LAYOUT is bun's, while the prefix
+ * NAME is the user's — so the layout is what is matched, and `.bun/` only as an older-install
+ * fallback). npm cannot produce that segment: its own layout puts `lib/` in between,
+ * `<prefix>/lib/node_modules/seedeep/`. Anything outside a `node_modules` is a file the user put
+ * where it is — which is exactly what a downloaded release asset is.
+ *
+ * Reading the path, rather than asking bun for its global root, keeps this synchronous and pure:
+ * an npm-installed seedeep has no reason to have bun on PATH, and the subprocess would decide the
+ * channel on whether an unrelated tool happens to be installed.
  */
 // LIMIT: only bun and npm are told apart. A global install by pnpm or yarn also lands in a
 // `node_modules/seedeep/`, so it is reported as npm and shown npm's command — which for pnpm is the
 // wrong manager. Their global layouts are not verified here (neither is installed on the machine
 // this was written on), and guessing a path would be the same mistake in the other direction.
-// The same applies to bun under a custom `BUN_INSTALL` (measured 2026-08-09: a prefix that is not
-// named `.bun` reads as npm), which `seedeep self-update` then RUNS rather than merely prints.
-// Asking bun for its own global root would settle it, and is not what this path-only test does.
+// Windows is unverified too: bun's layout there is assumed to be the same segment with backslashes,
+// and the cost of being wrong is only a printed sentence, since `planSelfUpdate` refuses on win32.
 export function detectChannel(realExecPath: string, fromSource = FROM_SOURCE): Channel {
   if (fromSource) return { kind: 'checkout', command: null };
   if (realExecPath.includes('/node_modules/seedeep/') || realExecPath.includes('\\node_modules\\seedeep\\')) {
-    return realExecPath.includes('/.bun/') || realExecPath.includes('\\.bun\\')
+    const bunLayout =
+      realExecPath.includes('/install/global/node_modules/') ||
+      realExecPath.includes('\\install\\global\\node_modules\\') ||
+      realExecPath.includes('/.bun/') ||
+      realExecPath.includes('\\.bun\\');
+    return bunLayout
       ? { kind: 'bun', command: 'bun install -g seedeep --trust' }
       : { kind: 'npm', command: 'npm i -g seedeep@latest' };
   }

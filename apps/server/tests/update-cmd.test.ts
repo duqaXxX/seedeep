@@ -28,6 +28,22 @@ test('the channel comes from where the executable actually lives', () => {
   assert.equal(detectChannel('/home/dev/.bun/bin/bun', true).kind, 'checkout');
 });
 
+// Measured 2026-08-09 (bun 1.3.13): `BUN_INSTALL=<prefix> bun install -g` writes to
+// `<prefix>/install/global/node_modules/<pkg>` — the LAYOUT is bun's, the directory NAME is the
+// user's. Matching `.bun/` alone handed a bun install npm's command, which `seedeep self-update`
+// then RUNS. npm cannot produce this segment: its own layout is `<prefix>/lib/node_modules/<pkg>`.
+test("bun's global layout is the test, not the default prefix name", () => {
+  const custom = '/home/dev/tools/bun-prefix/install/global/node_modules/seedeep/bin/seedeep.exe';
+  assert.equal(detectChannel(custom, false).kind, 'bun');
+  assert.equal(detectChannel(custom, false).command, 'bun install -g seedeep --trust');
+  assert.equal(
+    detectChannel('C:\\Users\\dev\\tools\\bunp\\install\\global\\node_modules\\seedeep\\bin\\seedeep.exe', false).kind,
+    'bun',
+  );
+  // The npm prefix a name-based test would trip on: `lib/` sits between it and the packages.
+  assert.equal(detectChannel('/opt/install/global/lib/node_modules/seedeep/bin/seedeep.exe', false).kind, 'npm');
+});
+
 test('a package-manager install prints one command to run', () => {
   const bun = detectChannel('/home/dev/.bun/install/global/node_modules/seedeep/bin/seedeep.exe', false);
   const npm = detectChannel('/usr/lib/node_modules/seedeep/bin/seedeep.exe', false);

@@ -4,6 +4,24 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A bun install is recognised by bun's layout, not by the prefix's name (2026-08-09)
+
+The channel was read by looking for `.bun/` in the path of the running executable, so a global
+install under a custom `BUN_INSTALL` fell through to npm and was handed npm's command. That was a
+wrong sentence on screen until `self-update` made it the command seedeep RUNS — on a machine with
+both managers, npm would install a second copy at its own prefix and which `seedeep` answers
+afterwards would depend on PATH order.
+
+Measured on bun 1.3.13, against the default prefix and a custom one: `bun install -g` writes to
+`<prefix>/install/global/node_modules/<pkg>`. The layout is bun's and the prefix's name is the
+user's, so the layout is what the test matches now (`.bun/` stays as a fallback for older
+installs). npm cannot produce that segment — its own layout puts `lib/` in between. Asking bun for
+its global root would have settled it too, at the price of a subprocess and of deciding the channel
+on whether an unrelated tool happens to be on PATH; reading the path keeps the answer pure.
+
+pnpm and yarn still read as npm, and Windows' bun layout is assumed rather than measured — both are
+stated at the `// LIMIT:` on `detectChannel`.
+
 ### The three things the docs never said (2026-08-09)
 
 An audit of the public docs against the code found three surfaces the reader had no way to reach,
