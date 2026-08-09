@@ -89,6 +89,17 @@ describe('the real manifest', () => {
     expect([...used].filter((id) => !declared.includes(id))).toEqual([]);
   });
 
+  test('every shot declares what it must contain, or nothing can tell a wrong figure from a right one', async () => {
+    // `waitFor` is the only place a figure states its own subject in a form the run can CHECK, and
+    // an unmet one now fails. That protection is worth exactly as much as the declarations exist:
+    // a shot without one is photographed whenever the page happens to be there, and the three
+    // faults this rule came from were all figures of a state that never happened — subagents that
+    // had finished but showed as running, a Trace with no child data, a list with nothing indented.
+    // Not one of them was visible to the suite; only to a person looking at the picture.
+    const real = await readManifest();
+    expect(real.shots.filter((s) => !s.waitFor).map((s) => s.id)).toEqual([]);
+  });
+
   test('ids are unique and file-safe, since each one names a PNG', async () => {
     const real = await readManifest();
     const ids = real.shots.map((s) => s.id);
