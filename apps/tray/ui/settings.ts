@@ -175,7 +175,7 @@ function notificationSection(prefs: Prefs, actions: SettingsActions): HTMLElemen
   const node = section('Notify me when');
   node.append(
     toggle(prefs.notify, 'A session needs you', (on) => actions.setNotify(on)),
-    toggle(prefs.notifyFailed, 'A session breaks', (on) => actions.setNotifyFailed(on)),
+    toggle(prefs.notifyFailed, 'A session fails', (on) => actions.setNotifyFailed(on)),
     toggle(prefs.notifyFinished, 'A session finishes', (on) => actions.setNotifyFinished(on)),
     toggle(prefs.notifyUpdate, 'A new server version is out', (on) => actions.setNotifyUpdate(on)),
   );

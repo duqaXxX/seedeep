@@ -2,6 +2,28 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
+## 0.15.0 (2026-08-10)
+
+### The tray can open the portal itself, not only a session (2026-08-10)
+
+Until now the only way from the tray into seedeep web was clicking a session row, so with nothing
+running there was no way in at all. The portal's home is now one click away from two places, both
+calling one new Rust command (`open_portal`, `Conn::portal_url(None)`): the footer's address, on
+every connected screen, and a button in the empty state. The footer carries it so the way in does
+not disappear the moment a session starts — the address was already on that line, inert, naming the
+thing a click opens. A new test also pins the seam nothing was checking: every `invoke('…')` the
+webview makes is a command `main.rs` registers, so a mistyped name fails the suite instead of
+failing silently in the built app.
+
+### The failure switch says *fails*, not *breaks* (2026-08-10)
+
+The tray's second notification switch is now *A session fails*. It has always meant one thing — the
+last model call failed — but on its own in a list of four, *a session breaks* reads just as easily
+as a session taking a break, and it was misread that way in review as "a notification for when the
+user stops a session". The prose that used to spell it out under each switch was dropped on
+2026-08-05 to fit the 392×560 panel, which is what left the label carrying the whole meaning. The
+*Broken* band keeps its name: it sits beside a red icon and names a state, not a preference.
+
 ## 0.14.0 (2026-08-10)
 
 ### A release is not a reason to re-cut a figure (2026-08-10)

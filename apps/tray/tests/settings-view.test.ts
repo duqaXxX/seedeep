@@ -132,7 +132,9 @@ test('each notification switch stores its own setting', () => {
   // The order is the urgency the whole app is built on: what stopped a session first, what merely
   // finished one next — and last the one switch that is not about a session at all.
   assert.equal(switches[0]!.getAttribute('aria-label'), 'A session needs you');
-  assert.equal(switches[1]!.getAttribute('aria-label'), 'A session breaks');
+  // "fails", never "breaks": the label is about a model call that FAILED, and "a session breaks"
+  // reads just as easily as a session taking a break — which is how it was misread in review.
+  assert.equal(switches[1]!.getAttribute('aria-label'), 'A session fails');
   // The interruption rule is NOT on the label: a turn you stopped yourself never notifies, and
   // saying so only made a reader wonder what the exception was for. If you pressed Esc you know.
   assert.equal(switches[2]!.getAttribute('aria-label'), 'A session finishes');

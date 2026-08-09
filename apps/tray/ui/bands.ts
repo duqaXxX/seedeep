@@ -89,12 +89,14 @@ export interface Row {
 }
 
 /**
- * What the live surface can ask the app to do: hand a session to the browser portal, or show the
- * settings. The second is the footer's, not a row's — the footer is the only part of this surface
- * that is not a session.
+ * What the live surface can ask the app to do: hand a session to the browser portal, hand it the
+ * portal itself, or show the settings. The last two are the footer's, not a row's — the footer is
+ * the only part of this surface that is not a session.
  */
 export interface BandActions {
   open(sessionId: string): void;
+  /** Open the portal's home — from the footer's address, and from the empty state. */
+  portal(): void;
   settings(): void;
 }
 
@@ -656,6 +658,14 @@ function bandNode(band: Band, rows: readonly Row[], actions: BandActions, now: n
   return node;
 }
 
+/** The empty state's one control: the portal, whole, in the browser. */
+function openPortalButton(actions: BandActions): HTMLElement {
+  const go = el('button', 'bands-open', 'Open seedeep in the browser');
+  go.type = 'button';
+  go.onclick = () => actions.portal();
+  return go;
+}
+
 /**
  * The panel with data in it: the bands, scrolling, over the footer that names the server.
  *
@@ -696,11 +706,15 @@ export function renderLive(
     if (list?.length) bands.append(bandNode(band, list, actions, now));
   }
   if (!rows.length) {
-    bands.append(el('p', 'bands-empty', 'No session is running. The tray shows them as Claude Code starts them.'));
+    bands.append(
+      el('p', 'bands-empty', 'No session is running. The tray shows them as Claude Code starts them.'),
+      // The one screen with room for it and nothing else to do: everything this panel is for is
+      // elsewhere until Claude Code starts something, and the portal is where the sessions that
+      // already ran can still be read. The footer's address opens the same page on every screen —
+      // this is the invitation, not the only way in.
+      openPortalButton(actions),
+    );
   }
-  root.append(
-    bands,
-    renderFooter(status, () => actions.settings()),
-  );
+  root.append(bands, renderFooter(status, actions));
   return root;
 }

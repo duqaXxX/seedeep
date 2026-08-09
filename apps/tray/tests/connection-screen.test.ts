@@ -137,8 +137,10 @@ test('the footer names the server and claims nothing about the certificate', () 
   // The fingerprint is not on this surface in any form — not as a chip, and not smuggled into the
   // text. It lives in Settings, where it can be COMPARED with what the server printed.
   assert.ok(!text(pinned).includes(FP), 'the footer is not where a fingerprint is read');
-  // No `onSettings` here, so no gear either: the address is the whole of this footer.
+  // No actions here, so no gear either — and the address is inert rather than a button that would
+  // call nothing: the address is the whole of this footer.
   assert.equal(text(pinned).trim(), 'box.local:44842');
+  assert.ok(!(find(pinned, 'conn-host')[0] as { onclick?: unknown }).onclick, 'nothing to click');
 
   const plain = renderFooter({
     kind: 'connected',

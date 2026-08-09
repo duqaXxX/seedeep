@@ -317,30 +317,53 @@ export function renderConnection(
   return root;
 }
 
+/** What the footer can do, when it is drawn somewhere those actions exist. */
+export interface FooterActions {
+  settings(): void;
+  /** Open the portal's home in the browser — the whole of it, no session named. */
+  portal(): void;
+}
+
 /**
  * The server the panel is looking at — the one thing that stays on screen once data arrives — and
  * the way into the settings.
  *
  * The gear lives here because this is the only surface that is not a session: the bands are the
- * sessions, and a control among them would be one more row. `onSettings` is optional so the same
- * footer can be drawn by the settings view itself, which is already there.
+ * sessions, and a control among them would be one more row. `on` is optional so the same footer can
+ * be drawn without them.
+ *
+ * **The address is the way into the portal**, and it is here rather than only in the empty state
+ * because the footer is the one rule that survives every connected screen: an affordance offered
+ * when nothing is running, and withdrawn the moment a session starts, is the harder thing to
+ * explain. It costs no height in a 392x560 popover — the address was already on this line, inert,
+ * naming exactly the thing a click opens.
  */
-export function renderFooter(status: Extract<Status, { kind: 'connected' }>, onSettings?: () => void): HTMLElement {
+export function renderFooter(status: Extract<Status, { kind: 'connected' }>, on?: FooterActions): HTMLElement {
   const foot = el('footer', 'conn-foot');
-  foot.append(el('span', 'conn-host', hostOf(status.baseUrl)));
+  if (on) {
+    const host = el('button', 'conn-host conn-host--link', hostOf(status.baseUrl));
+    host.type = 'button';
+    // The address alone does not say it opens anything: it has read as a label for as long as the
+    // footer has existed, and the hover is what the pointer finds.
+    host.title = 'Open seedeep in the browser';
+    host.onclick = () => on.portal();
+    foot.append(host);
+  } else {
+    foot.append(el('span', 'conn-host', hostOf(status.baseUrl)));
+  }
   // A `pinned` chip used to sit here whenever a certificate was pinned. Removed: it was jargon
   // nobody had asked for, and it was static — it said the same thing for as long as the connection
   // lasted, which is the definition of something that stops being read. The fact itself is not
   // lost: Settings shows the pinned fingerprint whole, which is where it can actually be COMPARED
   // with what the server printed, and a certificate that changes still stops the connection with
   // both values on screen. Nothing is claimed about a plaintext server either way.
-  if (onSettings) {
+  if (on) {
     const gear = el('button', 'conn-gear', '⚙');
     gear.type = 'button';
     // Titled, because a lone glyph in a footer is a guess: the popover has no menu bar of its own
     // to name it.
     gear.title = 'Settings';
-    gear.onclick = () => onSettings();
+    gear.onclick = () => on.settings();
     foot.append(gear);
   }
   return foot;

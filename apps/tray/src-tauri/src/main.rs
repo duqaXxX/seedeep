@@ -306,8 +306,24 @@ async fn trust(conn: State<'_, Arc<Conn>>) -> Result<Status, String> {
 #[tauri::command]
 async fn open_session(session_id: String, app: AppHandle, conn: State<'_, Arc<Conn>>) -> Result<(), String> {
     let url = conn
-        .portal_url(&session_id)
+        .portal_url(Some(&session_id))
         .ok_or("There is no connection to open that session on.")?;
+    hand_to_browser(&app, url)
+}
+
+/// Hand the portal ITSELF to the browser — the same connection, no session named.
+///
+/// Its own command rather than `open_session` with an empty id: the two are different requests, and
+/// a blank session id is the kind of argument that silently becomes `/?session=` one refactor later.
+#[tauri::command]
+async fn open_portal(app: AppHandle, conn: State<'_, Arc<Conn>>) -> Result<(), String> {
+    let url = conn
+        .portal_url(None)
+        .ok_or("There is no connection to open the portal on.")?;
+    hand_to_browser(&app, url)
+}
+
+fn hand_to_browser(app: &AppHandle, url: String) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| format!("Could not open the portal: {e}"))
@@ -406,6 +422,7 @@ fn main() {
             connect,
             trust,
             open_session,
+            open_portal,
             start_server,
             stop_server,
             server_version,

@@ -563,10 +563,30 @@ overnight on screen, marked `ended`, for the next person to open the popover. **
 looking the panel is a mirror:** neither the retention nor the stable order means anything then, and
 both start fresh from the server's list on the next open (`fold` in `bands.ts`).
 
+### Into the portal
+
 **Clicking a session opens it in the browser portal**, at `<portal>/?session=<id>`, which the portal
 reads to open and activate that session's tab (`architecture.md`). The tray never replicates the
 portal and never approves. The URL is built and opened in Rust, because it carries the token and Rust
 is the only side that holds one.
+
+**The portal ITSELF is one click away too**, at `<portal>/?token=…` — no session named, the home the
+browser would land on. It is reachable from two places, and both call the same command:
+
+- **The footer's address**, on every connected screen, the bands and the settings alike. It is here
+  and not only in the empty state because an affordance offered while nothing is running and
+  withdrawn the moment a session starts is the harder thing to explain, and because the address was
+  already on that line, inert, naming exactly the thing a click opens — so the way in costs no
+  height in a 392×560 popover. It is not link-coloured: the quietest row in the panel does not
+  become the loudest. The hover underline is what answers *is this a button*.
+- **A button in the empty state**, *Open seedeep in the browser*. The one screen with room for an
+  invitation and nothing else to do on it: everything the panel is for is elsewhere until Claude
+  Code starts something, while the sessions that already ran can still be read in the portal.
+  Outlined, not the connect screen's filled Start — nothing is wrong here and nothing is being
+  decided.
+
+A query is only written when it has something to carry: a loopback server with no token opens at the
+bare `<portal>/`, never `<portal>/?`.
 
 ### What a broken band is, exactly
 
@@ -736,7 +756,7 @@ message is worded cannot change what the tray concludes.
 
 | State | When |
 | -- | -- |
-| **Connected** | Reachable and authorised. The footer names the host and nothing else. It used to carry a `pinned` chip whenever a certificate was pinned; that was removed as jargon — and as something static, which is the definition of a label that stops being read. The fact is not lost: Settings shows the fingerprint whole, which is where it can be COMPARED with the line the server printed, and a certificate that changes still stops the connection with both values on screen. |
+| **Connected** | Reachable and authorised. The footer names the host, and the host is the way into the portal — a click opens seedeep in the browser (see [Into the portal](#into-the-portal)). It used to carry a `pinned` chip whenever a certificate was pinned; that was removed as jargon — and as something static, which is the definition of a label that stops being read. The fact is not lost: Settings shows the fingerprint whole, which is where it can be COMPARED with the line the server printed, and a certificate that changes still stops the connection with both values on screen. |
 | **Needs a URL** | Nothing stored and nothing to adopt. Names the local-remote case when the 401 proved one. |
 | **Is this its certificate?** | A fingerprint learned and not yet confirmed. Nothing is stored in this state. |
 | **The certificate changed** | The pin refused. Shows **both** values, so the new one can be compared with what the server printed on its last start. |
@@ -1038,8 +1058,8 @@ from `capabilities/default.json`.
 
 | Trigger | Setting | Default | What the banner says |
 | -- | -- | -- | -- |
-| A session stops on the human (`waiting`, and only the two labels below) | *Notify when a session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` + the command |
-| A session's model call fails (`error` becomes non-null) | *Notify when a session breaks* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` — + the message the CLI showed |
+| A session stops on the human (`waiting`, and only the two labels below) | *A session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` + the command |
+| A session's model call fails (`error` becomes non-null) | *A session fails* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` — + the message the CLI showed |
 | A session that was `busy` becomes `idle` | *A session finishes* | **off** | `project — subject` / `Finished` + the agent's own last words |
 | The connected SERVER is behind npm (`standing`, from `/api/update`) | *A new server version is out* | **on** | `seedeep <latest> is available` / `The server is running <its version>.` |
 
@@ -1096,6 +1116,12 @@ still-broken is not news on the next tick, and only a successful call — which 
 `error` — makes the next failure announceable again. A session that breaks while it was ALSO stopped
 on the user raises **one** banner, the failure, for the same reason `busy → waiting` is not also a
 finish: one moment, one banner, and this is the more serious of the two.
+
+**The switch says *fails*, while the band says *Broken*, and that divergence is deliberate**
+(Davide's call, 2026-08-10). The band names a STATE the session is in and sits next to a red icon
+that disambiguates it; the switch is read on its own in a list of four, where *a session breaks* is
+as easily read as a session taking a break — which is exactly how it was misread once the
+explanatory prose under each switch was dropped for space. Do not harmonise the two.
 
 **The banner carries Claude Code's own words**, not a name of ours — `Not logged in · Please run
 /login`, `You've hit your session limit`, `API Error: 529 Overloaded`. A category invented on top of
@@ -1198,7 +1224,7 @@ Five things, which is the whole surface:
 | -- | -- |
 | **The server** | Its address, and what identifies it: the pinned certificate whole, all 32 bytes, through the same renderer the trust screen uses |
 | **One field** | The URL the portal's Settings → Remote access copies — the same `connect` command as the connection screen, so a server changed from here goes through the same trust and mismatch screens |
-| **Four notification switches** | Under the heading *Notify me when*, which each row completes: *A session needs you* (on), *A session breaks* (on), *A session finishes* (off), *A new server version is out* (on) — in that order: the app's own urgency, then the one switch that is not about a session — see [Notifications](#notifications) |
+| **Four notification switches** | Under the heading *Notify me when*, which each row completes: *A session needs you* (on), *A session fails* (on), *A session finishes* (off), *A new server version is out* (on) — in that order: the app's own urgency, then the one switch that is not about a session — see [Notifications](#notifications) |
 | **A test notification** | One banner, on demand |
 | **Stop seedeep** | Only when the server is on this machine and Rust can name exactly one process for it — see [A stop is aimed at the connection](#a-stop-is-aimed-at-the-connection) |
 | **About** | Both builds — `seedeep tray <version>` from `getVersion()`, and `seedeep server <version>` from `GET /api/config`, read when this view opens and never on the poll. Whichever is behind npm carries `— <latest> available` **on its own line**, so which install needs updating is never left to the reader; nothing is added when neither is |

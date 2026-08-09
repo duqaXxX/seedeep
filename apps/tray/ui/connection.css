@@ -189,6 +189,24 @@
   white-space: nowrap;
 }
 
+/* The address when it opens the portal. Deliberately NOT link-coloured and not underlined at rest:
+   it is the same line of footer it has always been, and turning it blue would make the quietest row
+   in the panel the loudest thing on it. The underline on hover is what answers "is this a button?",
+   and it is the pointer that asks. */
+.conn-host--link {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.conn-host--link:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
 /* Pushed to the far end of the footer, away from what names the server: it is the one control on
    this rule, and next to the host it would read as part of the address.
 

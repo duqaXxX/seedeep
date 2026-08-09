@@ -53,6 +53,27 @@
   line-height: 1.5;
 }
 
+/* Outlined, not filled like the connect screen's Start: nothing is wrong here and nothing is being
+   decided — the panel is simply empty, and a solid accent button would read as the thing the user
+   is expected to do. Full width because it is alone on the screen and anything narrower would sit
+   in the middle of a void with no edge to align to. */
+.bands-open {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  font: 500 13px / 1 inherit;
+  margin-top: 12px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.bands-open:hover {
+  background: #182030;
+  border-color: var(--accent);
+}
+
 /* The spacing was chosen by rendering four densities of the SAME row at 392px and looking at
    them — the row carries six kinds of line now, and at the original 5px they read as one block.
    The extra height is affordable only because the window follows its content: the

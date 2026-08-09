@@ -81,9 +81,10 @@ const live = (entries: DigestEntry[]): Row[] => entries.map((e) => ({ entry: e, 
 function mount(rows: readonly Row[], error?: string, now?: number) {
   (globalThis as { document?: unknown }).document = fakeDoc();
   const opened: string[] = [];
-  const asked = { settings: 0 };
+  const asked = { settings: 0, portal: 0 };
   const actions: BandActions = {
     open: (id) => opened.push(id),
+    portal: () => (asked.portal += 1),
     settings: () => (asked.settings += 1),
   };
   return { node: renderLive(rows, CONNECTED, actions, error, now) as unknown, opened, asked };
@@ -688,6 +689,33 @@ test('nothing live says so, over the server it asked', () => {
 
   assert.match(text(find(node, 'bands-empty')[0]), /No session is running/);
   assert.equal(text(find(node, 'conn-host')[0]), 'box.local:44842');
+});
+
+// The empty screen is the one with room for an invitation and nothing else to do on it, and the
+// portal is where the sessions that already ran can still be read.
+test('with nothing running the panel offers the portal', () => {
+  const { node, asked } = mount([]);
+  const go = find(node, 'bands-open')[0] as { onclick: () => void } | undefined;
+
+  assert.ok(go, 'the empty state offers a way into the portal');
+  go.onclick();
+  assert.equal(asked.portal, 1);
+});
+
+// Scope consistency, not reachability: the address opens the portal on EVERY connected screen, so
+// the way in does not disappear the moment a session starts. It is the same action the empty
+// state's button asks for — one command, two places, never two behaviours.
+test('the footer’s address opens the portal, sessions or not', () => {
+  for (const rows of [live([entry()]), []]) {
+    const { node, asked } = mount(rows);
+    const host = find(node, 'conn-host')[0] as { onclick?: () => void; title?: string } | undefined;
+
+    assert.ok(host?.onclick, 'the address is the way into the portal');
+    assert.match(host.title ?? '', /Open seedeep/, 'a click target the pointer can name');
+    host.onclick();
+    assert.equal(asked.portal, 1);
+    assert.equal(asked.settings, 0, 'the address is not the gear');
+  }
 });
 
 // The footer is the only part of this surface that is not a session, which is why the way into the

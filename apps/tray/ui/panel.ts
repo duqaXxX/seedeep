@@ -459,6 +459,9 @@ const bands: BandActions = {
   // between the render and the click), and a row that does nothing when clicked is the panel
   // looking broken.
   open: (sessionId) => void invoke('open_session', { sessionId }).catch((e: unknown) => show(String(e))),
+  // Same channel, same reason it is Rust that opens it: the URL carries the token and the webview
+  // never holds one.
+  portal: () => void invoke('open_portal').catch((e: unknown) => show(String(e))),
   settings: () => void openSettings(),
 };
 

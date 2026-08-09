@@ -516,21 +516,29 @@ impl Conn {
         local::port_of(&connection::load(&self.store)?.base_url)
     }
 
-    /// The portal's URL for one session — where a click on a row goes. `None` when nothing is
-    /// connected, which is also when no row can be on screen to click.
+    /// The portal's URL for one session — where a click on a row goes — or the portal's own home
+    /// when `session_id` is `None`, which is where the footer's address and the empty state go.
+    /// `None` when nothing is connected, which is also when neither can be on screen to click.
     ///
     /// The token rides in the query because that is the form the portal's own Settings panel hands
     /// out and the form its `auth.ts` consumes; a plaintext loopback server has none. Nothing is
     /// percent-encoded because nothing here needs it: a session id is a UUID and the token is 32
     /// bytes of base64url (`core/config.ts`), both entirely within the unreserved set.
-    pub fn portal_url(&self, session_id: &str) -> Option<String> {
+    pub fn portal_url(&self, session_id: Option<&str>) -> Option<String> {
         let (target, _) = self.active()?;
-        let token = target
-            .token
-            .as_ref()
-            .map(|t| format!("&token={t}"))
-            .unwrap_or_default();
-        Some(format!("{}/?session={session_id}{token}", target.base_url))
+        let mut query: Vec<String> = Vec::new();
+        if let Some(id) = session_id {
+            query.push(format!("session={id}"));
+        }
+        if let Some(token) = target.token.as_ref() {
+            query.push(format!("token={token}"));
+        }
+        let query = if query.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query.join("&"))
+        };
+        Some(format!("{}/{query}", target.base_url))
     }
 
     /// One attempt at a known target, turned into what the panel shows.
@@ -1149,9 +1157,16 @@ mod tests {
         assert!(tick.entries.as_ref().is_some_and(Value::is_array), "the digest");
         // The click a row makes, on the connection that was found without being configured.
         assert_eq!(
-            conn.portal_url("s-1").as_deref(),
+            conn.portal_url(Some("s-1")).as_deref(),
             Some("http://127.0.0.1:44842/?session=s-1"),
             "a loopback server takes no token in the portal URL"
+        );
+        // And the click the footer's address makes: no session, and here no token either, so the
+        // query has nothing to carry and must not be written as a bare `?`.
+        assert_eq!(
+            conn.portal_url(None).as_deref(),
+            Some("http://127.0.0.1:44842/"),
+            "the portal's home on a loopback server is the bare address"
         );
     }
 
@@ -1217,6 +1232,39 @@ mod tests {
     /// A local layer that knows of no server, so a test exercises the probes and not this machine.
     /// Its directory is fresh per call and never written to: `running()` on a missing `servers/` is
     /// an empty list.
+    /// Both URLs the panel can open, on a server that DOES demand a token — the case the probe
+    /// tests cannot cover without a running remote server, and the one where the query is built
+    /// rather than fixed. A home URL that dropped the token would land the browser on a 401.
+    #[test]
+    fn the_portal_url_carries_the_token_with_or_without_a_session() {
+        let conn = Conn::new(probe_dir("portal-url").join("connection.json"), no_local());
+        conn.inner.lock().unwrap().active = Some((
+            Connection {
+                base_url: "https://box.local:44842".to_string(),
+                fingerprint: None,
+                token: Some("t0ken".to_string()),
+            },
+            Client::new(),
+        ));
+
+        assert_eq!(
+            conn.portal_url(Some("s-1")).as_deref(),
+            Some("https://box.local:44842/?session=s-1&token=t0ken")
+        );
+        assert_eq!(
+            conn.portal_url(None).as_deref(),
+            Some("https://box.local:44842/?token=t0ken")
+        );
+    }
+
+    /// Nothing connected is nothing to open — the panel must get an error it can show, never a URL
+    /// pointing at a server it is not talking to.
+    #[test]
+    fn there_is_no_portal_url_without_a_connection() {
+        let conn = Conn::new(probe_dir("portal-url-none").join("connection.json"), no_local());
+        assert_eq!(conn.portal_url(None), None);
+    }
+
     fn no_local() -> Arc<LocalServer> {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         Arc::new(LocalServer::new(std::env::temp_dir().join(format!(
