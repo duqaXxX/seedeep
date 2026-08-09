@@ -343,6 +343,12 @@ and spawn in the order it happened, with each subagent's own work indented under
 the spawn that launched it, filterable, and scoped to whatever turn you have
 selected. Every row opens the same detail drawer as the rest of the app.
 
+<img src="assets/shots/expand-all.png" width="549" alt="The complete activity list: 46 activities, 19 tool calls, 24 API calls over 3m32s, with each subagent's API calls and reads indented under the Agent spawn that launched them">
+
+*Forty-six activities where the card itself holds twelve. The three `Agent` rows
+are spawns, and what each subagent did sits indented underneath — its own API
+calls and reads, tagged with the agent type, in the order they happened.*
+
 ## Trace — the whole session as one flow diagram
 
 Opened from the Live activity card: a vertical spine of turns, each expanding in
@@ -506,6 +512,13 @@ the posture changes as a whole: HTTPS on a self-signed certificate whose
 fingerprint is printed on every start and copyable from the settings panel, so a
 client that cannot click through a browser warning can pin it, and a Bearer token
 on every API route.
+
+<img src="assets/shots/settings-panel.png" width="549" alt="The settings panel: port 45999, host 127.0.0.1, the auth token redacted behind a Regen button, the access URL, and the version of the server answering">
+
+*The panel as every install starts: bound to `127.0.0.1`, so the token is inert
+and there is no certificate to pin — the TLS block appears only once you name
+another host. **Version** is the server that answered this request, not the one
+you installed.*
 
 Configuration lives in `~/.seedeep/config.json` — CLI flag over environment
 variable over file over default — and the settings panel edits it in place. No

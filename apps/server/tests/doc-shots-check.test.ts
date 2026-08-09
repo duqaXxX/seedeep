@@ -6,7 +6,13 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { type DocShotManifest, readManifest, staleShots } from '../scripts/doc-shots-check.ts';
+import {
+  type DocShot,
+  type DocShotManifest,
+  readManifest,
+  staleShots,
+  verifyVerdicts,
+} from '../scripts/doc-shots-check.ts';
 
 const manifest: DocShotManifest = {
   usedIn: 'docs/features.md',
@@ -102,12 +108,6 @@ describe('the real manifest', () => {
  */
 const SECTIONS_WITHOUT_A_FIGURE: Record<string, string> = {
   'The engine underneath': 'describes the watcher, the server and the shell — internals, with no surface to crop',
-  // The two below are PENDING, not permanent: each is tracked, and the test right after this one
-  // fails the moment either gains a figure and keeps its excuse.
-  'Nothing is hidden from you':
-    'PENDING — the Expand all crop is declared work, not a decision: it needs one capture run',
-  'Local by default, remote on purpose':
-    'PENDING — the settings drawer renders its frame before its content, so the crop came back with 1 character of text and was refused',
 };
 
 describe('docs/features.md — a figure per surface', () => {
@@ -146,6 +146,99 @@ describe('docs/features.md — a figure per surface', () => {
       else if (/!\[[^\]]*\]\(assets\/|<img src="assets\//.test(body)) dead.push(`${listed} — has a figure now`);
     }
     expect(dead).toEqual([]);
+  });
+});
+
+/**
+ * The verifier is what turns "these figures MAY be stale" into "this one changed", and until now
+ * nothing ran it. Its two real defects were both found by running it and neither by reading it: an
+ * absolute temp path joined onto the cwd, which wrote a directory of PNGs INTO the repo, and one
+ * missing bundle making it give up on the scene figures too. Both are shapes these fakes reproduce.
+ */
+describe('verifyVerdicts', () => {
+  const shot = (id: string, extra: Partial<DocShot> = {}): DocShot => ({
+    id,
+    subject: `the ${id} widget`,
+    cue: 'end',
+    selector: `.${id}`,
+    invalidatedBy: [`src/${id}.ts`],
+    ...extra,
+  });
+  const PUBLISHED = '/pub';
+  const FRESH = '/fresh';
+  /** A world made of paths and bytes: what was published, and what a re-cut would produce. */
+  const world = (published: Record<string, string>, recut: Record<string, string>, fail?: string) => {
+    const files = new Map<string, Uint8Array>();
+    for (const [id, body] of Object.entries(published)) files.set(`${PUBLISHED}/${id}.png`, Buffer.from(body));
+    const cutWith: Array<{ ids: string[]; outDir: string }> = [];
+    return {
+      cutWith,
+      deps: {
+        cut: async (ids: string[], outDir: string) => {
+          cutWith.push({ ids, outDir });
+          if (fail && ids.includes(fail)) throw new Error('no transcript lines — run `record` first');
+          for (const id of ids) {
+            const body = recut[id];
+            if (body !== undefined) files.set(`${outDir}/${id}.png`, Buffer.from(body));
+          }
+        },
+        bytes: async (path: string) => files.get(path) ?? null,
+      },
+    };
+  };
+
+  test('a figure that re-cuts to the same bytes is SAME', async () => {
+    const w = world({ alpha: 'pixels' }, { alpha: 'pixels' });
+    const { lines } = await verifyVerdicts([shot('alpha')], FRESH, PUBLISHED, w.deps);
+    expect(lines).toEqual(['SAME alpha']);
+  });
+
+  test('one byte of difference is DIFFERS — no tolerance, or a moved label hides inside it', async () => {
+    const w = world({ alpha: 'pixels' }, { alpha: 'pixelt' });
+    const { lines } = await verifyVerdicts([shot('alpha')], FRESH, PUBLISHED, w.deps);
+    expect(lines).toEqual(['DIFFERS alpha']);
+  });
+
+  test('a figure that could not be re-cut is UNCUT, never silently clean', async () => {
+    const w = world({ alpha: 'pixels' }, {});
+    const { lines } = await verifyVerdicts([shot('alpha')], FRESH, PUBLISHED, w.deps);
+    expect(lines).toEqual(['UNCUT alpha']);
+  });
+
+  test('a volatile figure is reported as such and never re-cut', async () => {
+    const w = world({ now: 'pixels' }, { now: 'pixels' });
+    const { lines } = await verifyVerdicts([shot('now', { volatile: true })], FRESH, PUBLISHED, w.deps);
+    expect(lines).toEqual(['VOLATILE now']);
+    expect(w.cutWith).toEqual([]);
+  });
+
+  test('the recorded group failing does not lose the scene figures with it', async () => {
+    // The exact shape of the missing bundle: the recorded shots cannot be cut at all, and the scene
+    // shots need nothing but the generator. One verdict each, and the failure is reported.
+    const w = world({ live: 'a', corpus: 'b' }, { corpus: 'b' }, 'live');
+    const { lines, errors } = await verifyVerdicts(
+      [shot('live'), shot('corpus', { scene: 'corpus' })],
+      FRESH,
+      PUBLISHED,
+      w.deps,
+    );
+    expect(lines).toEqual(['UNCUT live', 'SAME corpus']);
+    expect(errors).toHaveLength(1);
+    expect(w.cutWith.map((c) => c.ids)).toEqual([['live'], ['corpus']]);
+  });
+
+  test('the output directory reaches the cut exactly as given — it is absolute', async () => {
+    // An absolute temp dir joined onto the cwd wrote `<repo>/var/folders/…` and then found nothing
+    // where it looked, so every figure came back unverified. The path must travel untouched.
+    const w = world({ alpha: 'x' }, { alpha: 'x' });
+    await verifyVerdicts([shot('alpha')], FRESH, PUBLISHED, w.deps);
+    expect(w.cutWith[0]?.outDir).toBe(FRESH);
+  });
+
+  test('a figure with nothing published yet DIFFERS rather than passing', async () => {
+    const w = world({}, { alpha: 'pixels' });
+    const { lines } = await verifyVerdicts([shot('alpha')], FRESH, PUBLISHED, w.deps);
+    expect(lines).toEqual(['DIFFERS alpha']);
   });
 });
 

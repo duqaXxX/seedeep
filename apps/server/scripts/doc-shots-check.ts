@@ -37,6 +37,13 @@ export interface DocShot {
    */
   scrollTo?: string;
   /**
+   * The viewport height, in CSS px, this one shot is taken at. A fixed panel sizes itself from the
+   * window and nothing else: the settings drawer is `height: 100%`, so at the run's 1150 it was
+   * cropped with 45% of the figure empty under its last row. Only for those — everything that grows
+   * with its content is photographed at the shared height.
+   */
+  viewportHeight?: number;
+  /**
    * The synthetic scene this shot is photographed on (`scripts/doc-scenes.ts`). Absent means the
    * RECORDED session — a real one, replayed. A scene exists only for states no recording can
    * honestly produce: a failed call, a compaction, a corpus of sessions.
@@ -78,6 +85,61 @@ export function staleShots(changed: readonly string[], manifest: DocShotManifest
     if (touched.has(png)) return false; // re-cut in this same change: in sync
     return shot.invalidatedBy.some((src) => touched.has(src));
   });
+}
+
+/** What a verification run needs from the world: re-cutting figures, and reading bytes. */
+export interface VerifyDeps {
+  /** Re-cut exactly these ids into `outDir`. Throws when the whole group cannot be cut. */
+  cut: (ids: string[], outDir: string) => Promise<void>;
+  /** A file's bytes, or null when it is not there. */
+  bytes: (path: string) => Promise<Uint8Array | null>;
+}
+
+/**
+ * Decide, per shot, whether its PICTURE changed: `VOLATILE`/`SAME`/`DIFFERS`/`UNCUT`, in that order
+ * of precedence. Returns the verdict lines and the failures worth printing beside them — the
+ * printing itself belongs to the caller, which is what makes the rule testable at all.
+ *
+ * Two properties here are the whole point, and both were once broken in the real thing:
+ * a group that cannot be re-cut (the recorded bundle is gone) must not take the OTHER groups down
+ * with it, and a shot that was not re-cut is `UNCUT` — never quietly absent, which reads as clean.
+ */
+export async function verifyVerdicts(
+  shots: readonly DocShot[],
+  outDir: string,
+  publishedDir: string,
+  deps: VerifyDeps,
+): Promise<{ lines: string[]; errors: string[] }> {
+  const lines: string[] = [];
+  const errors: string[] = [];
+  const comparable = shots.filter((s) => !s.volatile);
+  for (const s of shots) if (s.volatile) lines.push(`VOLATILE ${s.id}`);
+  if (comparable.length === 0) return { lines, errors };
+
+  // By GROUP, each guarded on its own: the recorded shots need a bundle the OS may have deleted,
+  // and one missing bundle must not lose the scene shots too.
+  const groups = new Map<string, DocShot[]>();
+  for (const s of comparable) groups.set(s.scene ?? 'recorded', [...(groups.get(s.scene ?? 'recorded') ?? []), s]);
+  for (const group of groups.values()) {
+    await deps
+      .cut(
+        group.map((s) => s.id),
+        outDir,
+      )
+      .catch((e: unknown) => errors.push(e instanceof Error ? e.message : String(e)));
+  }
+
+  for (const s of comparable) {
+    const fresh = await deps.bytes(`${outDir}/${s.id}.png`);
+    if (!fresh) {
+      lines.push(`UNCUT ${s.id}`);
+      continue;
+    }
+    const published = await deps.bytes(`${publishedDir}/${s.id}.png`);
+    const same = published !== null && published.length === fresh.length && fresh.every((v, i) => v === published[i]);
+    lines.push(`${same ? 'SAME' : 'DIFFERS'} ${s.id}`);
+  }
+  return { lines, errors };
 }
 
 /** The files a git range (or the working tree, when no range is given) touches. */

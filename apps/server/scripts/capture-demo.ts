@@ -24,7 +24,7 @@ import { openProbeSession, type ProbeSession, slugFor } from '../probe/driver.ts
 import { cliRoot } from '../src/server/roots.ts';
 import { VERSION } from '../src/server/version.ts';
 import { SCENES as DOC_SCENES, writeScene } from './doc-scenes.ts';
-import { type DocShot, readManifest } from './doc-shots-check.ts';
+import { type DocShot, readManifest, verifyVerdicts } from './doc-shots-check.ts';
 
 /**
  * Where the session runs. It is the project name on screen — Claude Code slugifies the cwd and
@@ -512,9 +512,23 @@ async function serverUrl(
   const dec = new TextDecoder();
   let buf = '';
   const end = Date.now() + timeoutMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     while (Date.now() < end) {
-      const { value, done } = await reader.read();
+      // RACED against the clock, because the clock in the `while` above cannot fire on its own: a
+      // server that never writes leaves `read()` pending forever, and the loop never comes back
+      // round to notice the deadline. Measured — a run whose port was still held by the previous
+      // group's server sat here for an hour and printed nothing, which reads exactly like a slow
+      // capture and is in fact a dead one.
+      const chunk = await Promise.race([
+        reader.read(),
+        new Promise<'timeout'>((r) => {
+          timer = setTimeout(() => r('timeout'), Math.max(0, end - Date.now()));
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      if (chunk === 'timeout') break;
+      const { value, done } = chunk;
       if (done) break;
       buf += dec.decode(value, { stream: true });
       // Both postures, because both happen: a server on a NAMED host announces an https URL with a
@@ -575,6 +589,8 @@ function isAgentSpawn(obj: Record<string, unknown>): boolean {
 
 /** Directories already created during this replay — `mkdir` per line made the replay I/O-bound. */
 const madeDirs = new Set<string>();
+/** Child transcripts whose `.meta.json` has already been placed, so it is copied once each. */
+const linkedChildren = new Set<string>();
 
 /**
  * Append one replayed line, with its timestamp rewritten to NOW so the session reads as live.
@@ -582,13 +598,32 @@ const madeDirs = new Set<string>();
  * The `mkdir` is cached because it used to run for EVERY line: a 154-second session paced at 20×
  * should replay in 8 seconds and took 28, which threw off everything timed against the schedule.
  */
-async function writeLine(cfg: string, slug: string, l: TimedLine): Promise<void> {
+async function writeLine(cfg: string, slug: string, l: TimedLine, srcDir?: string): Promise<void> {
   const obj = { ...l.obj, timestamp: new Date().toISOString() };
   const dest = join(cfg, 'projects', slug, l.rel);
   const dir = join(dest, '..');
   if (!madeDirs.has(dir)) {
     await mkdir(dir, { recursive: true });
     madeDirs.add(dir);
+  }
+  // The `.meta.json` beside a child transcript is the ONLY thing linking it to the `Agent` tool_use
+  // that spawned it, and the timeline carries `.jsonl` alone — so without this the three subagents
+  // replayed as orphans: the Trace read "3 subagents · no child data yet", their tool calls counted
+  // 0, and Expand all had nothing to indent. Every figure of a fan-out was a picture of a state the
+  // recorded session never had. Placed just BEFORE the child's first line, so the link exists the
+  // moment the watcher sees the file, and never earlier than the spawn it belongs to.
+  if (srcDir && l.rel.includes('/subagents/') && !linkedChildren.has(l.rel)) {
+    linkedChildren.add(l.rel);
+    const rel = l.rel.replace(/\.jsonl$/, '.meta.json');
+    const raw = await readFile(join(srcDir, rel), 'utf8').catch(() => null);
+    // Scrubbed and leak-checked like every replayed line: this one is copied rather than parsed, so
+    // it would otherwise be the one path into the capture that nothing inspects.
+    if (raw !== null) {
+      const clean = scrub(raw);
+      const leak = leakIn(clean);
+      if (leak) throw new Error(`${rel} still carries ${leak} after scrubbing — refusing to capture`);
+      await writeFile(join(cfg, 'projects', slug, rel), clean);
+    }
   }
   await appendFile(dest, `${JSON.stringify(obj)}\n`);
 }
@@ -772,7 +807,7 @@ async function shoot(): Promise<void> {
   });
   const SEED_MAX = 6;
   const seed = stream.slice(0, Math.min(firstBoundary > 0 ? firstBoundary + 1 : SEED_MAX, SEED_MAX));
-  for (const l of seed) await writeLine(cfg, meta.slug, l);
+  for (const l of seed) await writeLine(cfg, meta.slug, l, slugDir);
   await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
   await new Promise((r) => setTimeout(r, 4_000));
 
@@ -839,7 +874,7 @@ async function shoot(): Promise<void> {
         const due = t0 + (l.at - base) / SPEED;
         const wait = due - Date.now();
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-        await writeLine(cfg, meta.slug, l);
+        await writeLine(cfg, meta.slug, l, slugDir);
         written++;
         const o = l.obj as { type?: string; subtype?: string };
         if (o.type === 'system' && o.subtype === 'turn_duration') turnEnds.push((Date.now() - t0) / 1000);
@@ -1030,6 +1065,10 @@ async function withDocPage(
   } finally {
     server.kill();
     await bounded(server.exited, 5_000, 'server exit');
+    // Still up after the polite ask: the NEXT group spawns its own server on the same port, gets
+    // nothing, and waits. The port is the shared resource here, so leaving one holder behind is
+    // worse than an abrupt exit — nothing in this process has state to flush.
+    if (server.exitCode === null) server.kill('SIGKILL');
   }
 }
 
@@ -1058,7 +1097,7 @@ function makeTake(
   outDir: string,
   cut: string[],
 ): (shot: DocShot) => Promise<void> {
-  return async (shot: DocShot): Promise<void> => {
+  const takeOne = async (shot: DocShot): Promise<void> => {
     for (const step of shot.click ?? []) {
       const target = page.locator(step).filter({ visible: true }).first();
       if (!(await target.isVisible().catch(() => false))) {
@@ -1088,12 +1127,20 @@ function makeTake(
       await page.waitForTimeout(600);
     }
     if (shot.waitFor) {
+      // LOUD when it never comes true, because the alternative is what this cost once: `Expand all`
+      // waited on subagent rows the recording contains none of, the wait quietly expired, and the
+      // figure was published showing a list without the very thing its caption promised. A `waitFor`
+      // states what the figure must contain — an unmet one is a wrong figure, not a slow one.
       await page
         .locator(shot.waitFor)
         .filter({ visible: true })
         .first()
         .waitFor({ state: 'visible', timeout: 15_000 })
-        .catch(() => {});
+        .catch(() => {
+          throw new Error(
+            `${shot.id}: waitFor ${shot.waitFor} never became visible — the state this figure claims did not happen`,
+          );
+        });
       await page.waitForTimeout(600);
     }
     // The VISIBLE match, never simply the first: the shell keeps a second copy of a session's
@@ -1139,6 +1186,19 @@ function makeTake(
     const kb = Math.round(Bun.file(path).size / 1024);
     console.log(`[doc-shots] ${shot.id}.png (${kb} KB) — ${shot.subject}`);
     cut.push(shot.id);
+  };
+
+  // A shot that declares its own height gets it for its own duration and gives it straight back:
+  // the runs take several shots against one page, and a viewport left short would silently crop the
+  // next one — the failure that looks like a widget having moved.
+  return async (shot: DocShot): Promise<void> => {
+    const shared = page.viewportSize();
+    if (shot.viewportHeight && shared) await page.setViewportSize({ ...shared, height: shot.viewportHeight });
+    try {
+      await takeOne(shot);
+    } finally {
+      if (shot.viewportHeight && shared) await page.setViewportSize(shared);
+    }
   };
 }
 
@@ -1245,40 +1305,41 @@ async function docShots(only?: string, opts: { out?: string; ids?: string[] } = 
 async function docShotsVerify(ids: string[]): Promise<void> {
   const manifest = await readManifest();
   const wanted = manifest.shots.filter((s) => ids.length === 0 || ids.includes(s.id));
-  const volatile = wanted.filter((s) => s.volatile);
-  const comparable = wanted.filter((s) => !s.volatile);
-  for (const s of volatile) console.log(`VOLATILE ${s.id}`);
-  if (comparable.length === 0) return;
   const tmp = join(tmpdir(), `seedeep-shot-verify-${process.pid}`);
   try {
-    // By GROUP, each guarded on its own: the recorded shots need a bundle the OS may have deleted,
-    // and one missing bundle must not lose the scene shots too — the mistake `--only` was added to
-    // fix in the first place, made again here and caught by running it.
-    const groups = new Map<string, DocShot[]>();
-    for (const s of comparable) groups.set(s.scene ?? 'recorded', [...(groups.get(s.scene ?? 'recorded') ?? []), s]);
-    for (const shots of groups.values()) {
-      await docShots(undefined, { out: tmp, ids: shots.map((s) => s.id) }).catch((e) =>
-        console.error(`[doc-shots-verify] ${e instanceof Error ? e.message : String(e)}`),
-      );
-    }
-    for (const s of comparable) {
-      const fresh = Bun.file(join(tmp, `${s.id}.png`));
-      if (!(await fresh.exists())) {
-        console.log(`UNCUT ${s.id}`);
-        continue;
-      }
-      const [a, b] = [await fresh.bytes(), await Bun.file(join(process.cwd(), manifest.outDir, `${s.id}.png`)).bytes()];
-      console.log(`${a.length === b.length && a.every((v, i) => v === b[i]) ? 'SAME' : 'DIFFERS'} ${s.id}`);
-    }
+    const { lines, errors } = await verifyVerdicts(wanted, tmp, join(process.cwd(), manifest.outDir), {
+      cut: (only, out) => docShots(undefined, { out, ids: only }),
+      bytes: async (path) => {
+        const f = Bun.file(path);
+        return (await f.exists()) ? await f.bytes() : null;
+      },
+    });
+    for (const line of lines) console.log(line);
+    for (const e of errors) console.error(`[doc-shots-verify] ${e}`);
   } catch (e) {
-    // The bundle is gone, the browser would not start: every shot is unverified, and saying so is
-    // the whole point — an unverifiable figure must never read as a verified one.
-    for (const s of comparable) console.log(`UNCUT ${s.id}`);
+    // Nothing could be read at all: every comparable shot is unverified, and saying so is the whole
+    // point — an unverifiable figure must never read as a verified one.
+    for (const s of wanted.filter((x) => !x.volatile)) console.log(`UNCUT ${s.id}`);
     console.error(`[doc-shots-verify] ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
 }
+
+/**
+ * The stills replay at REAL time, where the GIFs are compressed 20×, and the two reasons are both
+ * things a figure cannot get away with:
+ *
+ * Every timestamp is rewritten to the moment its line is written, so a compressed replay compresses
+ * every DURATION on screen — the same `Agent` span read "1.0s" in the activity list and "26s" in the
+ * subagent drawer, two figures of one session disagreeing by 26×. And a fan-out that really ran 9
+ * seconds passes in under half a second at 20×, which is not a window anything can be photographed
+ * in: the live monitor was always caught after it, showing "0 running".
+ *
+ * A GIF has the opposite need — nobody watches four minutes of a window filling — so `shoot` keeps
+ * its own pace. Overridable for a one-off, but the default is the honest one.
+ */
+const STILL_SPEED = Number(process.env['SEEDEEP_STILL_SPEED'] ?? 1);
 
 /** Cut the shots that come from the RECORDED session: replayed at its original pace. */
 async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): Promise<void> {
@@ -1302,7 +1363,7 @@ async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): P
 
   const SEED_MAX = 6;
   const seed = stream.slice(0, SEED_MAX);
-  for (const l of seed) await writeLine(cfg, meta.slug, l);
+  for (const l of seed) await writeLine(cfg, meta.slug, l, slugDir);
   // Left `busy` for the whole run, unlike `shoot`, which flips to idle before its Home and Search
   // frames: every figure here is of a LIVE surface, and an ended session collapses the monitor to a
   // one-line summary — the shot would show the thing the text is not describing.
@@ -1321,10 +1382,10 @@ async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): P
     const base = stream[seed.length]?.at ?? stream[0]!.at;
     const replayTask = (async () => {
       for (const l of stream.slice(seed.length)) {
-        const due = t0 + (l.at - base) / SPEED;
+        const due = t0 + (l.at - base) / STILL_SPEED;
         const wait = due - Date.now();
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-        await writeLine(cfg, meta.slug, l);
+        await writeLine(cfg, meta.slug, l, slugDir);
         written++;
         if (agentAt === null && isAgentSpawn(l.obj)) agentAt = (Date.now() - t0) / 1000;
       }

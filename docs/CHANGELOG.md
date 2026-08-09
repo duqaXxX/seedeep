@@ -4,6 +4,38 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### The figures were photographing subagents the session never had (2026-08-09)
+
+The demo bundle every recorded figure is cut from had been deleted by the OS, and re-making it
+surfaced three faults that had been shipping quietly in the pictures themselves.
+
+**A replayed subagent was an orphan.** The replay streams `.jsonl` and nothing else, but the file
+that links a child transcript to the `Agent` tool_use that spawned it is a `.meta.json` beside it.
+Without it the Trace read `3 subagents · no child data yet`, their tool calls counted 0, and
+`Expand all` had nothing to indent — every figure of a fan-out showed a state the recorded session
+never had. The meta is now placed just before its child's first line, scrubbed and leak-checked
+like every replayed line.
+
+**The stills replayed 20× too fast, so every duration on screen was 20× too small.** Each line's
+timestamp is rewritten to the moment it is written, so compressing the pace compresses the
+intervals: one `Agent` span read `1.0s` in the activity list and `26s` in the subagent drawer, two
+figures of one session disagreeing by a factor of 26. Stills now replay at real time; the GIFs keep
+their own pace, because nobody watches four minutes of a window filling.
+
+**A `waitFor` that never came true passed in silence.** It is the field that states what a figure
+must contain, and its failure was caught and discarded — four of the twenty were waiting on states
+that never happened, including a live monitor that only ever looked live because the replay could
+not tell the subagents had finished. An unmet `waitFor` now fails the run.
+
+Two sections of `docs/features.md` gained the figure they were missing — the settings panel and
+`Expand all` — and no section is now without one except *The engine underneath*, which has no
+surface to crop. A shot can declare its own `viewportHeight`: a drawer is `height: 100%`, so the
+settings panel was cropped with 45% of the figure empty under its last row.
+
+The verdict rule behind `doc-shots:check --verify` moved next to the staleness rule it belongs
+with, and is tested: `SAME` / `DIFFERS` / `UNCUT` / `VOLATILE`, and a group that cannot be re-cut no
+longer takes the other groups down with it.
+
 ### The brand says which version is answering (2026-08-09)
 
 The portal now prints the running server's version beside the wordmark, on every install:

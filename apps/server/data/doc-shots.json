@@ -104,6 +104,22 @@
       "waitFor": ".drawer.on .blabel:has-text(\"returned to main\")"
     },
     {
+      "id": "expand-all",
+      "subject": "Expand all: the complete list of the turn, with each subagent's work indented under its spawn",
+      "cue": "end",
+      "click": [
+        ".livecard .xbtn:has-text(\"Expand all\")"
+      ],
+      "selector": ".drawer.on",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/drawer.css",
+        "apps/server/public/css/timeline.css"
+      ],
+      "waitFor": ".drawer.on .ttrow .tn:has-text(\"Agent\")",
+      "viewportHeight": 1500
+    },
+    {
       "id": "trace-chapters",
       "subject": "The Trace with its rounds folded into chapters, landmarks left visible",
       "cue": "trace",
@@ -117,7 +133,7 @@
         "apps/server/src/core/span-store.ts",
         "apps/server/public/css/trace.css"
       ],
-      "waitFor": ".trace-canvas .lane-strip"
+      "waitFor": ".trace-canvas .snode.spawn"
     },
     {
       "id": "waiting-on-you",
@@ -177,7 +193,7 @@
         "apps/server/public/css/layout.css",
         "apps/server/scripts/doc-scenes.ts"
       ],
-      "waitFor": ".card:has(.wtitle:has-text(\"Skills used\")) .chip, .card:has(.wtitle:has-text(\"Skills used\")) .schip"
+      "waitFor": ".card:has(.wtitle:has-text(\"Skills used\")) .tchip"
     },
     {
       "id": "failed-tool",
@@ -266,6 +282,23 @@
         "apps/server/scripts/doc-scenes.ts"
       ],
       "waitFor": ".sr-row mark"
+    },
+    {
+      "id": "settings-panel",
+      "subject": "The settings panel: the posture the server is running with, and the version answering",
+      "cue": "end",
+      "scene": "commands",
+      "click": [
+        ".settings-btn"
+      ],
+      "selector": ".drawer.on:has(#s-version)",
+      "waitFor": "#s-version:not(:text-is(\"—\"))",
+      "viewportHeight": 620,
+      "invalidatedBy": [
+        "apps/server/src/client/settings.ts",
+        "apps/server/public/css/settings.css",
+        "apps/server/public/css/drawer.css"
+      ]
     }
   ]
 }
