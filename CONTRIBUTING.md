@@ -255,14 +255,17 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   you add its assertions, or the figure can go empty with nothing to catch it. Each
   figure is declared in `apps/server/data/doc-shots.json` alongside the source files
   that invalidate it —
-  so `bun run doc-shots:check` can say which figure a change may have made false.
-  Nothing else can: no test looks at a PNG. The map is coarse (every figure depends
-  on `client/graph.ts`), so `--verify` — what the pre-push hook runs — **re-cuts the
-  suspects into a temp directory and compares the pixels**, reporting only the ones
-  that really changed, that could not be re-cut, or that carry something which moves
-  on its own (a relative age). If you change a widget that a figure shows, say so in
-  the PR — re-cutting needs the recorded bundle, which is not in the repo, so a
-  maintainer does it.
+  so `bun run doc-shots:check` can name the figures a change touched. Nothing else
+  can: no test looks at a PNG. What it names are **candidates, not verdicts** — the
+  map is per-file and `client/graph.ts` draws every widget, so a three-line change to
+  one panel named 15 figures of 20, and re-cutting them produced 18 byte-identical
+  files. The pre-push hook prints that list and stops there, WARN-only: deciding
+  whether a figure went false is a judgement — did what it *shows* change? —
+  not something a file-level map can make for you. `--verify` settles it by
+  **re-cutting the suspects into a temp directory and comparing the pixels**, but it
+  costs minutes, so it belongs to a release rather than to every push. If you change
+  a widget that a figure shows, say so in the PR — re-cutting needs the recorded
+  bundle, which is not in the repo, so a maintainer does it.
 - **A shot must declare `waitFor`** — a selector for something its own subject
   renders, and the run FAILS when it never appears. It is the only place a figure
   states what it must contain in a form the capture can check: while an unmet wait
