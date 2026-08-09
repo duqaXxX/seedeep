@@ -2,7 +2,7 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
-## Unreleased
+## 0.13.0 (2026-08-09)
 
 ### A figure is the same picture every time it is cut (2026-08-09)
 
