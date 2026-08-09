@@ -64,8 +64,11 @@ test('the commands section of install.md names every subcommand and flag', () =>
   }
   // The other direction, which is the one a rename breaks: a table row for a word the parser would
   // reject sends the reader to `unknown command`.
+  // Widened to `string` on purpose: the word comes from the DOC, so the question is whether an
+  // arbitrary word is a subcommand — typing it as one would assume the answer.
+  const accepted: readonly string[] = SUBCOMMANDS;
   for (const [, word] of commands.matchAll(/`seedeep ([a-z][a-z-]*)`/g)) {
-    assert.ok(SUBCOMMANDS.includes(word!), `install.md documents "seedeep ${word}", which is not a subcommand`);
+    assert.ok(accepted.includes(word!), `install.md documents "seedeep ${word}", which is not a subcommand`);
   }
 });
 
