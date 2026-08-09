@@ -2,6 +2,62 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
+## Unreleased
+
+### Re-cutting a figure is a judgement, not an automatism (2026-08-09)
+
+`doc-shots:check` said "may be stale" about figures that were fine. The map is per-FILE, and
+`client/graph.ts` draws every widget there is, so a three-line change to the NOW panel named **15
+figures of 20** — and re-cutting all of them produced **18 byte-identical files**. A warning that is
+wrong nine times in ten is one you learn to scroll past, which is worse than no warning: it spends
+minutes of browser runs to say nothing.
+
+So the check names **candidates, not verdicts**, and says so. Whether a figure went false is the
+author's call — did what it *shows* change? — and `bun run doc-shots` re-cuts it. The pre-push hook
+no longer runs `--verify`: the pixel comparison is still the only true verdict, and it still exists,
+but it costs minutes and belongs to a **release**, which re-cuts everything anyway — the Settings
+figure prints the version, and it is the only figure that does.
+
+### An answer made only of code showed as `""` (2026-08-09)
+
+The NOW panel drew two quote marks around nothing. `stripMarkdown` replaced a fenced block with a
+space — every other rule in that function removes the MARKERS and keeps the text, and this one
+alone threw the block away — so an answer whose every character lives inside one fence stripped to
+the empty string, and the panel's decorative `“`/`”` were the only thing left on screen.
+
+Measured across 515 sessions and 11,362 assistant text blocks: 2 strip to nothing, and both are
+answers made of a single fence. The raw rate says "rare" and is misleading — the `/seedeep` command
+file asks for `status` and `report` to be pasted **as they are, already formatted**, which is one
+fenced block. seedeep was blinding itself on its own command, reproducibly, and the shape it hid is
+exactly the one a user pastes because it matters.
+
+A fence now keeps its content (its info string, ```` ```ts ````, is a marker and still goes).
+Length was never this function's problem: the panel clamps to two lines and `more` opens the real
+markdown, rendered. The other two callers gain the same way — the digest's NOW line, which is what
+the tray reads, and a Trace span's detail.
+
+**Code is quoted verbatim, and that is the whole design**: the text is split on its fences first,
+and only what lies OUTSIDE one goes through the marker rules. Running code through them (the first
+attempt at this fix, caught in review) makes the glance lie — a `diff` block came out as
+`const a = 1; + const b = 2;`, the `-` of the deleted line gone and the `+` of the added one kept,
+so a removed line read as a present one; `**kwargs` was unwrapped as bold; a shell `# comment` lost
+its hash. Two more consequences of splitting first: ```` ```x``` ```` on a single line is a code
+span, not a fence, and unwraps to `x` instead of stripping to nothing; and an unclosed fence runs to
+the end of the text, as CommonMark says. That last one also removed a quadratic scan — 100KB on one
+unclosed line took 2.3 seconds, re-entered every second by the panel's own ticker, and now takes
+0.4ms.
+
+The stylesheet already had `.nowtext.empty`, which drops the quote marks when there is nothing to
+quote. No code ever added that class; it does now, for what markers-only markdown still leaves
+behind (an empty fence, a lone bullet) — and the panel then says `(no text)`, **the Trace's own
+words for the same nothing**, rather than showing an empty box. The Trace reached that state by a
+second route and drew a blank line: it tested the raw detail for emptiness, and markers-only
+markdown is a detail that is not empty but leaves nothing to show. It now tests what it is about to
+draw.
+
+The unit test that covered fences asserted `'```\ncode\n```after'` → `'after'` — with prose after
+the fence, so the case where nothing remains could never fail it.
+
 ## 0.13.0 (2026-08-09)
 
 ### A figure is the same picture every time it is cut (2026-08-09)

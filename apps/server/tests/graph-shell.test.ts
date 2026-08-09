@@ -4333,6 +4333,37 @@ test('waiting: a turn the user selected is not hijacked by a live prompt', async
   g.document = prevDoc;
 });
 
+test('now panel: an answer that is only a fence keeps its text; markers-only says (no text)', async () => {
+  // The bug this covers reached the screen: a pasted `/seedeep status` — one fence, nothing else —
+  // left the panel drawing its two quote marks around an empty string.
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([
+    makeTurn(1, { state: 'done', result: '```\nseedeep 0.13.0\nServer  running\n```', lastNarration: null }),
+    makeTurn(2, { state: 'done', result: '```\n\n```', lastNarration: null }),
+  ]);
+  const view = createGraph(container, drivableState(snap));
+  view.goLive();
+  const nowtext = () => findByClass(container, 'nowtext')[0];
+
+  // The strip is opened ONCE — Explore toggles it, so a second call would close it again.
+  selectTurnViaStrip(container, 0);
+  await repaint();
+  assert.equal(textOf(nowtext()), 'seedeep 0.13.0 Server running');
+  assert.equal(nowtext().classList.contains('empty'), false, 'there is something to quote');
+
+  // An EMPTY fence really has nothing in it — the panel names that instead of showing a blank box,
+  // and `.empty` is what takes the quote marks away.
+  clickBar(container, 1);
+  await repaint();
+  assert.equal(textOf(nowtext()), '(no text)');
+  assert.ok(nowtext().classList.contains('empty'), 'the class the stylesheet keeps for it');
+  view.destroy();
+  g.document = prevDoc;
+});
+
 // ─── the post-turn verdict announce ─────────────────────────────────────
 // A crit turn is announced when it CLOSES. Two ways that used to go wrong: the announce
 // read "the last non-live WORK turn" instead of the turn that just ended, and nothing

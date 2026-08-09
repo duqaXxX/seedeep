@@ -196,12 +196,18 @@ if (import.meta.main) {
   const stale = staleShots(await changedFiles(args.find((a) => a !== '--verify')), manifest);
   if (stale.length === 0) process.exit(0);
 
-  // Without --verify: the sources say these MAY be stale, which is all the scan can know.
+  // Without --verify these are CANDIDATES, not stale figures, and the wording says so: the map is
+  // per-FILE, and `client/graph.ts` draws every widget there is, so one edit anywhere in it names
+  // 15 of the 20. Measured on the change that prompted this wording: 20 re-cut, 18 byte-identical.
+  // A warning that is wrong nine times in ten is one you learn to scroll past, so it asks for the
+  // judgement it actually needs — did what this figure SHOWS change? — instead of announcing a
+  // staleness it cannot know.
   if (!wantVerify) {
     console.error('');
-    console.error(`⚠️  ${stale.length} doc shot(s) may be stale — the code they show changed:`);
+    console.error(`ℹ️  ${stale.length} doc figure(s) depend on files this change touched — candidates, not verdicts:`);
     for (const shot of stale) console.error(`    ${manifest.outDir}/${shot.id}.png — ${shot.subject}`);
-    console.error('    → re-cut them with `bun run doc-shots` (replays the saved bundle, costs no tokens)');
+    console.error('    → if what one of them SHOWS changed, re-cut with `bun run doc-shots` (no tokens).');
+    console.error('    → the pixels decide: `bun run doc-shots:check --verify` re-cuts and compares (minutes).');
     console.error('');
     process.exit(0);
   }

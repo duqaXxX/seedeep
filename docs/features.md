@@ -20,11 +20,14 @@ The README is the short version. The design behind these surfaces is in
 >
 > Each figure is declared in `apps/server/data/doc-shots.json` with the source files
 > that invalidate it, so `bun run doc-shots:check` can name the ones a change may
-> have made false. Nothing else can: no test looks at a PNG. That map is coarse on
-> purpose — every figure depends on `client/graph.ts`, so touching it names all
-> fourteen — which is why `--verify` (what the pre-push hook runs) then **re-cuts the
-> suspects and compares the pixels**, and reports only the figures that actually
-> changed, could not be re-cut, or carry something that moves on its own.
+> have made false. Nothing else can: no test looks at a PNG. What it names are
+> **candidates, not verdicts**: the map is per-file and `client/graph.ts` draws every
+> widget, so a single edit there names 15 of the 20 (measured: 20 re-cut, 18
+> byte-identical). Whether a figure really went false is the author's call — did what
+> it *shows* change? — and `bun run doc-shots` re-cuts it. `--verify` settles it by
+> re-cutting the suspects and **comparing the pixels**, but it costs minutes, so it
+> belongs to a release rather than to every push. A release re-cuts everything anyway:
+> the Settings figure prints the version, and it is the only one that does.
 
 ## The live session view
 

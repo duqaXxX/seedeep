@@ -379,8 +379,11 @@ a horizontal scroll.
 
 The end cap now labels a **full-width final-result block**: the turn id, and the
 answer's first line stripped to plain (like the NOW panel's inline line — this
-block renders prose, not a step label, so raw `**` and backticks read as noise).
-Clicking it opens the same drawer as that turn's `done` block.
+block renders prose, not a step label, so raw `**` and backticks read as noise;
+code inside a fence is quoted as it is, since there the markers are the code).
+Clicking it opens the same drawer as that turn's `done` block. An answer that
+strips to nothing at all — markers and no words — reads `(no text)`, the same
+words the NOW panel uses for the same nothing.
 
 - **It reads the LAST `result` span of the last turn that holds one**, and reuses
   that span's `turn-text` handle — so the block and the `done` block can never

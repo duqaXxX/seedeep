@@ -2353,7 +2353,9 @@ export function createGraph(
     // this panel's own business: a user who scoped the view to an older turn asked to look at that
     // turn, and the tab badge still says the session is blocked.
     const blocked = waiting && !ended && selectedTurn === null ? waiting : null;
-    nowText.classList.remove('plain');
+    // Both live on the quoted-agent path below; every other branch speaks in seedeep's own voice
+    // and re-adds `plain`. Cleared here so neither survives into the panel that comes next.
+    nowText.classList.remove('plain', 'empty');
     const list = lastSnap?.turnList ?? [];
     const panelTurn =
       selectedTurn !== null
@@ -2435,7 +2437,15 @@ export function createGraph(
     // Inline is a glance surface that renders text, so the markdown is stripped to plain — the
     // raw `**`/backticks would read as literal noise. The modal (via `more`) keeps `state.text`,
     // the untouched markdown, rendered.
-    nowText.textContent = stripMarkdown(state.text);
+    const glance = stripMarkdown(state.text);
+    // Markdown that is ALL markers — an empty fence, a lone bullet — leaves nothing to quote, and
+    // the decorative quote marks would stand alone as `""`, text the agent never wrote. It says
+    // `(no text)` in the Trace's own words (see `trace.ts`), because one product describing the
+    // same nothing two ways is how a user learns to distrust both. `.empty` drops the quote marks
+    // and dims it — the class the stylesheet had always kept for this, and nothing ever added.
+    const empty = glance === '';
+    nowText.textContent = empty ? '(no text)' : glance;
+    nowText.classList.toggle('empty', empty);
 
     // Clamped to two lines: when the text overflows, `more` opens the full text (rendered) in the
     // output modal. Overflow can only be read once layout settles — measuring here, mid-render,

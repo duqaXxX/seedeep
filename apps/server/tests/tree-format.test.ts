@@ -176,8 +176,48 @@ test('stripMarkdown: unwraps bold/code/links and collapses whitespace for the gl
     'Heading one two',
     'heading/list MARKERS gone (text kept), newlines collapsed',
   );
-  assert.equal(stripMarkdown('```\ncode\n```after'), 'after', 'a fenced block is dropped');
+  assert.equal(stripMarkdown('```\ncode\n```after'), 'code after', 'a fence loses its markers, not its text');
   assert.equal(stripMarkdown('line one\n\n\nline two'), 'line one line two');
+});
+
+test('stripMarkdown: code inside a fence is quoted verbatim, not read as markers', () => {
+  // Every one of these was mangled while the fence content flowed through the prose rules: the
+  // glance showed a deleted line as if it were present, ate `**kwargs`, and unhashed a comment.
+  assert.equal(
+    stripMarkdown('```diff\n- const a = 1;\n+ const b = 2;\n```'),
+    '- const a = 1; + const b = 2;',
+    'a diff keeps BOTH markers — dropping the `-` inverts what the line says',
+  );
+  assert.equal(stripMarkdown('```py\ndef f(**kw):\n    g(**kw)\n```'), 'def f(**kw): g(**kw)');
+  assert.equal(stripMarkdown('```bash\n# install deps\nbun install\n```'), '# install deps bun install');
+  assert.equal(stripMarkdown('```\n- item one\n- item two\n```'), '- item one - item two');
+  // Outside the fence the same characters ARE markers, and still go.
+  assert.equal(stripMarkdown('# Title\n```\n# code\n```\n- bullet'), 'Title # code bullet');
+});
+
+test('stripMarkdown: a one-line ```x``` is a code span, and an unclosed fence runs to the end', () => {
+  assert.equal(stripMarkdown('```code```'), 'code', 'no newline after the opener → not a fence');
+  assert.equal(stripMarkdown('use ``a `b` c`` here'), 'use a `b` c here', 'a longer run wins over the inner one');
+  assert.equal(stripMarkdown('```ts\nconst a = 1;'), 'const a = 1;', 'CommonMark: EOF closes an open fence');
+});
+
+test('stripMarkdown: an unclosed fence on a huge single line stays cheap', () => {
+  // The panel re-renders from a 1s ticker on the SAME text, so a quadratic scan freezes the tab.
+  // Measured on the version this replaced: 2.3s here, against ~0.1ms now — the budget is loose on
+  // purpose, since only the order of magnitude is the claim.
+  const started = performance.now();
+  stripMarkdown('```' + 'x'.repeat(100_000));
+  assert.ok(performance.now() - started < 250, 'a 100KB unclosed fence must not backtrack');
+});
+
+test('stripMarkdown: an answer that is ONLY a fenced block still has text', () => {
+  // The answer that drew an empty NOW panel: a pasted `/seedeep status`, whose every character
+  // lives inside one fence. Replacing the fence with a space left '', and the panel rendered its
+  // decorative quote marks around nothing — the only thing on screen was `""`.
+  assert.equal(stripMarkdown('```\nseedeep 0.13.0\nServer  running\n```'), 'seedeep 0.13.0 Server running');
+  assert.equal(stripMarkdown('```ts\nconst a = 1;\n```'), 'const a = 1;', 'the info string is a marker, not text');
+  assert.equal(stripMarkdown('before\n```\ncode\n```\nafter'), 'before code after', 'no words glued together');
+  assert.equal(stripMarkdown('```\n\n```'), '', 'an EMPTY fence still strips to nothing — the panel must handle it');
 });
 
 test('stripMarkdown: leaves code-ish text untouched (no false emphasis)', () => {

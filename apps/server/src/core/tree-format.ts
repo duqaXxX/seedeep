@@ -126,17 +126,47 @@ export function formatLaunchTime(iso: string | null): string {
  * backticks would read as literal characters. Deliberately conservative: only the unambiguous
  * `**bold**` is unwrapped (not `_`/single-`*` emphasis) so `snake_case`, `a*b`, and file globs
  * survive untouched. The full markdown stays available, rendered, in the output modal.
+ *
+ * A fence loses its MARKERS and keeps its text, like every other rule here. Dropping the block
+ * whole erased an answer made of nothing else — a pasted `/seedeep status`, which the `/seedeep`
+ * command asks for verbatim — and the panel drew its quote marks around an empty string. Length is
+ * not this function's problem: the panel clamps to two lines and `more` opens the real markdown.
+ *
+ * Code inside a fence is quoted VERBATIM, never run through the prose rules: those rules read
+ * markers, and code is made of the same characters meaning something else. A `diff` block lost the
+ * `-` of a deleted line and kept the `+` of an added one (the glance then showed a line that was
+ * removed as if it were there), `**kwargs` was unwrapped as bold, and a shell `# comment` lost its
+ * hash. Splitting the text first is what makes each rule apply where it is true.
  */
 export function stripMarkdown(s: string): string {
-  return s
-    .replace(/```[\s\S]*?```/g, ' ') // fenced code block → space
-    .replace(/`([^`]+)`/g, '$1') // inline code
-    .replace(/\*\*([^*]+?)\*\*/g, '$1') // bold
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links → their text
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // headings
-    .replace(/^\s{0,3}[-*>]\s+/gm, '') // list / quote markers
-    .replace(/\s+/g, ' ') // collapse newlines + runs of space
-    .trim();
+  // A fence opens with its info string alone on the line, so ```` ```x``` ```` on ONE line is not a
+  // fence at all — it is a code span with a triple delimiter, left to the inline rule. An unclosed
+  // fence runs to the end of the text, as CommonMark says, which is also what makes this scan
+  // linear: no optional newline for the engine to backtrack over (measured before: 2.3s on a 100KB
+  // unclosed one-line fence, re-entered every second by the panel's ticker).
+  const fence = /```[^\n]*\n([\s\S]*?)(?:```|$)/g;
+  const parts: string[] = [];
+  let last = 0;
+  for (let m: RegExpExecArray | null; (m = fence.exec(s)) !== null; ) {
+    parts.push(stripProse(s.slice(last, m.index)), m[1] ?? '');
+    last = fence.lastIndex;
+  }
+  parts.push(stripProse(s.slice(last)));
+  // Joined with a space so a fence never glues itself to the prose on either side.
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/** The marker rules, for the text OUTSIDE any fence — where a marker really is a marker. */
+function stripProse(s: string): string {
+  return (
+    s
+      // Any run of backticks, so a triple-delimited span unwraps like a single one.
+      .replace(/(`+)([^\n]+?)\1/g, '$2')
+      .replace(/\*\*([^*]+?)\*\*/g, '$1') // bold
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links → their text
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '') // headings
+      .replace(/^\s{0,3}[-*>]\s+/gm, '') // list / quote markers
+  );
 }
 
 /** Aggregate main tools into a count + per-name breakdown, sorted by frequency desc then name asc. */

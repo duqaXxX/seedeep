@@ -1090,7 +1090,18 @@ function formatLaunchTime(iso) {
   return `${p.month} ${p.day} ${p.hour}:${p.minute}:${p.second}`;
 }
 function stripMarkdown(s) {
-  return s.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]+)`/g, "$1").replace(/\*\*([^*]+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/^\s{0,3}[-*>]\s+/gm, "").replace(/\s+/g, " ").trim();
+  const fence = /```[^\n]*\n([\s\S]*?)(?:```|$)/g;
+  const parts = [];
+  let last = 0;
+  for (let m;(m = fence.exec(s)) !== null; ) {
+    parts.push(stripProse(s.slice(last, m.index)), m[1] ?? "");
+    last = fence.lastIndex;
+  }
+  parts.push(stripProse(s.slice(last)));
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+function stripProse(s) {
+  return s.replace(/(`+)([^\n]+?)\1/g, "$2").replace(/\*\*([^*]+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/^\s{0,3}[-*>]\s+/gm, "");
 }
 function summarizeTools(tools) {
   const counts = new Map;
@@ -5798,7 +5809,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     id.textContent = "T" + turn.index;
     const txt = document.createElement("div");
     txt.className = "fntext";
-    txt.textContent = span.detail ? stripMarkdown(span.detail) : "(no text)";
+    txt.textContent = (span.detail ? stripMarkdown(span.detail) : "") || "(no text)";
     fin.append(id, txt);
     const h = span.handle;
     if (h != null)
@@ -7927,7 +7938,7 @@ function createGraph(container, state, opts = {}) {
   function renderNowPanel() {
     dropNowCounters();
     const blocked = waiting && !ended2 && selectedTurn === null ? waiting : null;
-    nowText.classList.remove("plain");
+    nowText.classList.remove("plain", "empty");
     const list = lastSnap?.turnList ?? [];
     const panelTurn = selectedTurn !== null ? list.find((t) => t.index === selectedTurn) ?? null : list.find((t) => t.state === "live") ?? list[list.length - 1] ?? null;
     const isLive2 = working2(panelTurn);
@@ -7984,7 +7995,10 @@ function createGraph(container, state, opts = {}) {
     nowPanel.classList.remove("hidden");
     const showingResult = state2.kind === "output";
     nowLbl.textContent = state2.label;
-    nowText.textContent = stripMarkdown(state2.text);
+    const glance = stripMarkdown(state2.text);
+    const empty = glance === "";
+    nowText.textContent = empty ? "(no text)" : glance;
+    nowText.classList.toggle("empty", empty);
     scheduleNowMeasure();
     nowMore.onclick = () => openOutput(showingResult ? "Output" : "Intent", entryTitle(lastSnap, panelTurn) || "", state2.text);
     nowAge.textContent = "";

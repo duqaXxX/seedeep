@@ -810,7 +810,9 @@ export function createTrace(container: HTMLElement, opts: TraceOpts = {}) {
     // The span's own first line, exactly what the `done` block shows; the rest is in the drawer.
     // Stripped to plain, like the NOW panel's inline line: this block RENDERS prose rather than
     // labelling a step, so the raw `**` and backticks would reach the eye as literal noise.
-    txt.textContent = span.detail ? stripMarkdown(span.detail) : '(no text)';
+    // The emptiness that matters is the STRIPPED text, not the raw detail: markers-only markdown is
+    // a non-empty detail that leaves nothing to show, and testing the raw one drew a blank line.
+    txt.textContent = (span.detail ? stripMarkdown(span.detail) : '') || '(no text)';
 
     fin.append(id, txt);
     const h = span.handle;
