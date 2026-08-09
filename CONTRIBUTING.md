@@ -263,6 +263,17 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   on its own (a relative age). If you change a widget that a figure shows, say so in
   the PR — re-cutting needs the recorded bundle, which is not in the repo, so a
   maintainer does it.
+- **A shot must declare `waitFor`** — a selector for something its own subject
+  renders, and the run FAILS when it never appears. It is the only place a figure
+  states what it must contain in a form the capture can check: while an unmet wait
+  was merely ignored, four of twenty figures were photographing a state that never
+  happened (subagents that had finished but rendered as running, a Trace with no
+  child data, a list with nothing indented) and nothing in the suite could see it.
+  A test enforces that every shot has one.
+- A shot may declare `viewportHeight` when the widget takes its size from the
+  window rather than from its content — a drawer is `height: 100%`, so at the run's
+  shared height the settings panel was cropped with 45% of the figure empty under
+  its last row. Everything that grows with its content leaves it out.
 
 ## Sending a change
 
