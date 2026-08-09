@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { parseArgs, SUBCOMMANDS } from '../src/server/args.ts';
 import { usage, versionLine } from '../src/server/help.ts';
@@ -36,6 +38,35 @@ test('the help text names every subcommand the parser accepts', () => {
   }
   // `claude-code` is deliberately absent: it exists for the command file, not for a person.
   assert.doesNotMatch(text, /seedeep claude-code/);
+});
+
+// `--help` is only found by someone who already has the program running. The public docs are what
+// the other reader has, so the same list lives in `install.md` — and a second copy is worth having
+// only if something notices when it stops matching the first.
+const INSTALL_DOC = join(import.meta.dirname, '..', '..', '..', 'docs', 'install.md');
+
+/** The body of one `## `-level section of a markdown file, heading excluded. */
+function section(markdown: string, heading: string): string {
+  const start = markdown.indexOf(`\n## ${heading}\n`);
+  assert.notEqual(start, -1, `install.md has no "## ${heading}" section`);
+  const rest = markdown.slice(start + heading.length + 5);
+  const end = rest.indexOf('\n## ');
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+test('the commands section of install.md names every subcommand and flag', () => {
+  const commands = section(readFileSync(INSTALL_DOC, 'utf8'), 'The commands');
+  for (const command of SUBCOMMANDS.filter((c) => !UNDOCUMENTED.has(c))) {
+    assert.match(commands, new RegExp(`\`seedeep ${command}\``), `"${command}" is missing from install.md`);
+  }
+  for (const flag of ['--port', '--host', '--no-open', '--session', '--full', '--offline', '--force']) {
+    assert.match(commands, new RegExp(`\`${flag}`), `"${flag}" is missing from install.md`);
+  }
+  // The other direction, which is the one a rename breaks: a table row for a word the parser would
+  // reject sends the reader to `unknown command`.
+  for (const [, word] of commands.matchAll(/`seedeep ([a-z][a-z-]*)`/g)) {
+    assert.ok(SUBCOMMANDS.includes(word!), `install.md documents "seedeep ${word}", which is not a subcommand`);
+  }
 });
 
 test('--version prints the number and nothing else, so a script can read it', () => {

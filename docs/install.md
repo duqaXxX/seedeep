@@ -73,13 +73,51 @@ bun start -- --port 9000  # serve on a specific port (default 44842)
 bun start -- --no-open    # do not open the browser automatically
 ```
 
-The flags are the same however it was installed (`seedeep --port 9000 --no-open`,
-`./seedeep-server_… --no-open`), and `seedeep --help` lists every command and flag
-in one place — `--version` prints the number alone, for a script to read.
+## The commands
+
+`seedeep --help` prints the same two tables, and `--version` the number alone, for a
+script to read. Everything below works however it was installed — `seedeep open`,
+`bun start -- --port 9000`, `./seedeep-server_… --no-open` are the same program.
+
+| | |
+|---|---|
+| `seedeep` | watch, serve, and open the browser — stays in the foreground, ends with Ctrl-C |
+| `seedeep open` | open the GUI, starting the server first if it is down |
+| `seedeep start` | start the server detached, without opening a browser |
+| `seedeep stop` | stop the running server — SIGTERM, so it closes down rather than dying |
+| `seedeep restart` | replace the running server with a fresh one |
+| `seedeep status` | what state this machine is in ([below](#seedeep-status)) |
+| `seedeep report` | what a session cost and where its tokens went ([below](#seedeep-report)) |
+| `seedeep update` | say how *this* installation updates — prints the command, never runs it |
+| `seedeep self-update` | run that command, then restart the server ([below](#seedeep-self-update)) |
+| `seedeep install-command` | write the `/seedeep` slash command into Claude Code |
+
+| Flag | Commands | |
+|---|---|---|
+| `--port <n>` | serve, open, start, stop, restart, status, self-update | the port (default 44842) |
+| `--host <addr>` | serve | the bind address — anything but loopback turns on TLS and a token ([Remote access](#remote-access)) |
+| `--no-open` | serve | do not open the browser |
+| `--session <id>` | report | a session other than this directory's newest |
+| `--full` | report | one line per turn as well |
+| `--offline` | update | skip the version check, the one network call seedeep makes |
+| `--force` | install-command | replace a command file you edited |
+
+*serve* in that middle column is the bare `seedeep` — the foreground server of the
+first row, which is what you get when you name no command at all.
 
 With a server already running on a different port than your config's, `seedeep
 open` prints what is running rather than picking one — `seedeep open --port <port>`
 says which.
+
+### `seedeep status`
+
+The one command that acts on nothing: it answers *what state is this machine in* —
+the server (up or down, on which port, and **which version it is actually serving**,
+which is not the version you installed until you restart it), whether `/seedeep`
+exists and whose it is, and whether a newer release is out. That last line comes from
+the cache the server already keeps, so `status` needs no network and never waits on
+one. A server that is down is a state, not a failure: the exit code is 0 whatever it
+finds.
 
 ## `/seedeep` inside Claude Code
 
@@ -100,13 +138,13 @@ After that, any Claude Code session has these:
 | `/seedeep start` | starts the server without opening a browser — the counterpart of `stop` |
 | `/seedeep stop` | ends the running server, the way Ctrl-C in its terminal would |
 | `/seedeep restart` | replaces the running server with a fresh one |
+| `/seedeep status` | the state of this machine — server, served version, `/seedeep`, update |
 | `/seedeep report` | what this session cost and where its tokens went; `report full` adds a line per turn |
 | `/seedeep update` | says how *this* installation is updated — it prints the command, and never runs it |
 | `/seedeep self-update` | installs that version and restarts the server, without leaving the session (macOS and Linux) |
 
-The same words exist on the console — `seedeep open`, `seedeep start`,
-`seedeep stop`, `seedeep restart`, `seedeep report`, `seedeep update`,
-`seedeep self-update`. A server
+Every one of those words exists on the console too, spelled the same
+([The commands](#the-commands)). A server
 started this way keeps running when the session ends, because it is started
 detached, exactly like one you launched yourself; `stop` is what ends it, and it
 asks with SIGTERM rather than killing, so the server closes down properly.
@@ -208,9 +246,9 @@ local network — is in [`tray.md`](tray.md#the-one-permission-the-tray-asks-for
 
 Session data flows one way: the server pushes to the browser (Server-Sent Events)
 and the browser never sends any of it back — nothing seedeep reads is ever written.
-The browser does POST three things, and all three are seedeep's own state, never
-yours: the settings and a restart. (The share card's PNG is drawn by the page
-itself — it never leaves your browser.)
+The browser does POST two things, and both are seedeep's own state, never yours: the
+settings, and a restart. (The share card's PNG is drawn by the page itself — it
+never leaves your browser.)
 
 ## Remote access
 
