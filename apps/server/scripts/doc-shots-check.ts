@@ -50,6 +50,15 @@ export interface DocShot {
    */
   scene?: string;
   /**
+   * The posture the SERVER is photographed in. Absent means the default — loopback, no TLS, no
+   * token — which is how every install starts and what every other figure shows. Naming a host is
+   * the only way to photograph the other half of the settings panel: the TLS block and the
+   * fingerprint come from the running process, so no click on the form can produce them. The
+   * common name is what the throwaway certificate is issued for, and it is the host the panel
+   * then prints in its access URL — so it must be SYNTHETIC, never the machine's own name.
+   */
+  server?: { host: string; commonName: string };
+  /**
    * This figure's content moves on its own, so two cuts of the SAME code differ and no comparison
    * can decide it. Only the NOW panel's relative age does this today (`4444m ago` became
    * `4775m ago` between two runs), and marking it is what keeps `--verify` from needing a

@@ -22,12 +22,13 @@ The README is the short version. The design behind these surfaces is in
 > that invalidate it, so `bun run doc-shots:check` can name the ones a change may
 > have made false. Nothing else can: no test looks at a PNG. What it names are
 > **candidates, not verdicts**: the map is per-file and `client/graph.ts` draws every
-> widget, so a single edit there names 15 of the 20 (measured: 20 re-cut, 18
-> byte-identical). Whether a figure really went false is the author's call — did what
-> it *shows* change? — and `bun run doc-shots` re-cuts it. `--verify` settles it by
-> re-cutting the suspects and **comparing the pixels**, but it costs minutes, so it
-> belongs to a release rather than to every push. A release re-cuts everything anyway:
-> the Settings figure prints the version, and it is the only one that does.
+> widget, so a single edit there names most of them at once (measured on a
+> three-line change: 15 named, 20 re-cut, 18 byte-identical). Whether a figure really
+> went false is the author's call — did what it *shows* change? — and
+> `bun run doc-shots` re-cuts it. `--verify` settles it by re-cutting the suspects and
+> **comparing the pixels**, but it costs minutes, so it belongs to a release rather
+> than to every push. A release re-cuts everything anyway: the two Settings figures
+> print the version, and they are the only ones that do.
 
 ## The live session view
 
@@ -297,6 +298,32 @@ cost, and what went well.
 files and changed nothing, the next pulled a **7.8k-character** subagent report into
 the main context. Both are lower bounds — a check says only what it can prove.*
 
+### One turn, as a card you can post
+
+**⇪ Share** — on every row of the lens, and on the banner of a turn you have scoped
+into — renders that turn as a PNG: what it spent, that figure against the p50, p90
+and p95 of its own bucket, every finding with its price, what it did right, and a
+strip of what the turn actually DID (API calls, tool calls, subagents, tokens
+re-read from cache, the model and its effort). A verdict with no activity behind it
+is unreadable to anyone who was not in the session. With too few turns to have a
+baseline, the card says exactly that instead of inventing a multiple.
+
+<img src="assets/shots/share-card.png" width="620" alt="The share card of one turn: 2.7k tokens spent, one critical finding about a subagent that returned 7.8k characters, and a strip of turn, duration, API calls, tool calls, subagents, cache reads and model">
+
+*The card of the turn the lens flagged, in the preview that opens first: **⬇ Download**
+is a separate click, so a card you did not mean to make never reaches your disk. The
+button belongs to the turn it sits on, never to whatever the view is scoped into —
+the turn you are reading is always the turn the card describes.*
+
+**Nothing in the card can name your work**, and it says so along its own foot: no
+prompt, no file path, no project or session name — the only word that comes from
+your setup is the *type* of a subagent a finding quotes (`general-purpose` above).
+That is what makes it postable without a review pass over it first.
+
+The page draws its own PNG, from the data it is already showing: no server, no second
+browser, nothing sent anywhere — which is also why it works from the compiled
+executable, where a headless Chrome could never be bundled.
+
 ## When a session is waiting for YOU
 
 A session stopped at an approval dialog (or an `AskUserQuestion`) is normally
@@ -531,6 +558,24 @@ on every API route.
 and there is no certificate to pin — the TLS block appears only once you name
 another host. **Version** is the server that answered this request, not the one
 you installed.*
+
+<img src="assets/shots/settings-remote.png" width="549" alt="The same panel on a server bound to a LAN address: a banner announcing remote access, the TLS block with its common name and the certificate's SHA-256 fingerprint, and an https access URL carrying the token">
+
+*The same panel with the host named — the whole second posture in one picture. The
+banner is the warning that the browser will meet a self-signed certificate; the
+**Common name** is what that certificate is issued for and is required before Save
+will accept the host; the **Fingerprint** is what a client that cannot click a
+warning away has to pin. It is the RUNNING server's certificate, so it fills in only
+after the restart, and the access URL turns `https` and carries the token. Turning it
+on: [`install.md`](install.md#remote-access).*
+
+That version is beside the wordmark too, on every portal — it is the number a bug
+report quotes, and it says which of two seedeeps you are looking at. A portal served
+from a **checkout** says so as well, with a `dev` chip and a browser tab reading
+`seedeep dev`: both watch the same sessions (the transcripts belong to Claude Code,
+not to seedeep), so a dev portal and an installed one show identical content, and the
+tab you are about to change a setting in would otherwise be a coin toss. A released
+build carries no chip — a badge present on every install is a badge nobody reads.
 
 Configuration lives in `~/.seedeep/config.json` — CLI flag over environment
 variable over file over default — and the settings panel edits it in place. No

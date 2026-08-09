@@ -299,6 +299,48 @@
         "apps/server/public/css/settings.css",
         "apps/server/public/css/drawer.css"
       ]
+    },
+    {
+      "id": "settings-remote",
+      "subject": "The settings panel on a server bound beyond loopback: the banner, the certificate and the token",
+      "cue": "end",
+      "scene": "commands",
+      "server": {
+        "host": "0.0.0.0",
+        "commonName": "workstation.local"
+      },
+      "click": [
+        ".settings-btn"
+      ],
+      "selector": ".drawer.on:has(#s-version)",
+      "waitFor": "#s-fp:not([value=\"\"])",
+      "viewportHeight": 900,
+      "invalidatedBy": [
+        "apps/server/src/client/settings.ts",
+        "apps/server/src/server/tls.ts",
+        "apps/server/public/css/settings.css",
+        "apps/server/public/css/drawer.css"
+      ]
+    },
+    {
+      "id": "share-card",
+      "subject": "One turn's verdict as the PNG the page draws of it",
+      "cue": "end",
+      "scene": "busy-day",
+      "click": [
+        ".scope-banner",
+        ".fchip.waste",
+        ".wlist .wrow.crit .sbout-share"
+      ],
+      "selector": ".spbox",
+      "waitFor": ".spmodal.on img[src^=\"blob:\"]",
+      "invalidatedBy": [
+        "apps/server/src/core/share-card.ts",
+        "apps/server/src/client/share-card-png.ts",
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/core/verdict.ts",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
     }
   ]
 }

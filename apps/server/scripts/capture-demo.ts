@@ -1029,10 +1029,18 @@ async function shoot(): Promise<void> {
  * both what makes a settings figure publishable and what keeps a doc build off the developer's own
  * state.
  */
-function spawnDocServer(cfg: string) {
+function spawnDocServer(cfg: string, posture?: DocShot['server']) {
   const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
-  return Bun.spawn([bin, 'serve', '--no-open', '--port', String(PORT)], {
-    env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, SEEDEEP_HOME: join(OUT, 'seedeep-home') },
+  // A posture gets its OWN home: the remote one writes a certificate and turns the token on, and
+  // sharing that state with the loopback figures would change what they show.
+  const home = join(OUT, posture ? `seedeep-home-${posture.commonName}` : 'seedeep-home');
+  return Bun.spawn([bin, 'serve', '--no-open', '--port', String(PORT), ...(posture ? ['--host', posture.host] : [])], {
+    env: {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: cfg,
+      SEEDEEP_HOME: home,
+      ...(posture ? { SEEDEEP_TLS_CN: posture.commonName } : {}),
+    },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -1042,11 +1050,12 @@ function spawnDocServer(cfg: string) {
 async function withDocPage(
   cfg: string,
   body: (page: import('playwright-core').Page, url: string) => Promise<void>,
+  posture?: DocShot['server'],
 ): Promise<void> {
   const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
   if (!(await Bun.file(bin).exists()))
     throw new Error(`missing ${bin} — run \`bun run build:server\` first, or the figures carry the DEV badge`);
-  const server = spawnDocServer(cfg);
+  const server = spawnDocServer(cfg, posture);
   try {
     const url = await serverUrl(server as { stdout: ReadableStream<Uint8Array> }, PORT);
     const { chromium } = await import('playwright-core');
@@ -1234,7 +1243,13 @@ function makeTake(
  * the session, take the crops. No pacing — every state a scene exists for is a settled one, so the
  * whole transcript lands at once and the page is photographed after it.
  */
-async function shootScene(sceneId: string, shots: DocShot[], outDir: string, cut: string[]): Promise<void> {
+async function shootScene(
+  sceneId: string,
+  shots: DocShot[],
+  outDir: string,
+  cut: string[],
+  posture?: DocShot['server'],
+): Promise<void> {
   const build = DOC_SCENES[sceneId];
   if (!build) throw new Error(`unknown scene '${sceneId}' — add it to scripts/doc-scenes.ts`);
   const scene = build();
@@ -1243,29 +1258,33 @@ async function shootScene(sceneId: string, shots: DocShot[], outDir: string, cut
   const leak = scene.lines.map(leakIn).find(Boolean);
   if (leak) throw new Error(`scene ${sceneId} carries ${leak} — refusing to capture`);
 
-  const cfg = join(OUT, `cfg-${sceneId}`);
+  const cfg = join(OUT, `cfg-${sceneId}${posture ? `-${posture.commonName}` : ''}`);
   await rm(cfg, { recursive: true, force: true });
   await mkdir(cfg, { recursive: true });
   const { sessionId, cwd } = await writeScene(cfg, scene, { mkdir, writeFile }, join);
   if (scene.status) await writeOpenRecord(cfg, sessionId, cwd, scene.status);
   console.log(`[doc-shots] scene ${sceneId}: ${scene.lines.length} lines, ${shots.length} shot(s)`);
 
-  await withDocPage(cfg, async (page, url) => {
-    await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(5_000);
-    const take = makeTake(page, outDir, cut);
-    for (const [i, shot] of shots.entries()) {
-      // Every shot starts from a RELOADED page, not from whatever the previous one left behind.
-      // Escape was not enough: the timeline strip stays open, so the next shot's click on the same
-      // control TOGGLED it shut and its chips were "not on the page" — a skip that looked like a
-      // renamed widget. A shot must not depend on the order it happens to sit in.
-      if (i > 0) {
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(4_000);
+  await withDocPage(
+    cfg,
+    async (page, url) => {
+      await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(5_000);
+      const take = makeTake(page, outDir, cut);
+      for (const [i, shot] of shots.entries()) {
+        // Every shot starts from a RELOADED page, not from whatever the previous one left behind.
+        // Escape was not enough: the timeline strip stays open, so the next shot's click on the same
+        // control TOGGLED it shut and its chips were "not on the page" — a skip that looked like a
+        // renamed widget. A shot must not depend on the order it happens to sit in.
+        if (i > 0) {
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(4_000);
+        }
+        await take(shot);
       }
-      await take(shot);
-    }
-  });
+    },
+    posture,
+  );
 }
 
 /**
@@ -1295,18 +1314,29 @@ async function docShots(only?: string, opts: { out?: string; ids?: string[] } = 
       : manifest.shots;
   if (only && wanted.length === 0) throw new Error(`--only ${only}: no shot or scene by that name in the manifest`);
   if (opts.ids && wanted.length === 0) throw new Error(`--ids: none of those ids are in the manifest`);
-  const scenes = new Map<string, DocShot[]>();
+  // The recorded half replays one bundle through one server, so a posture there would apply to
+  // every figure in it. Loud rather than silently ignored — a shot photographed in the wrong
+  // posture is a picture that lies about what the product is doing.
+  const strayPosture = wanted.find((s) => !s.scene && s.server);
+  if (strayPosture) throw new Error(`${strayPosture.id}: a "server" posture needs a scene of its own`);
+  // Grouped by scene AND posture: a group is one server and one page, so two shots of the same
+  // scene that need the server bound differently cannot share it.
+  const groups = new Map<string, DocShot[]>();
   for (const shot of wanted) {
-    const key = shot.scene ?? 'recorded';
-    scenes.set(key, [...(scenes.get(key) ?? []), shot]);
+    const key = `${shot.scene ?? 'recorded'} ${shot.server ? `${shot.server.host}|${shot.server.commonName}` : ''}`;
+    groups.set(key, [...(groups.get(key) ?? []), shot]);
   }
-  if (scenes.has('recorded'))
+  if (wanted.some((s) => !s.scene))
     await shootRecorded(
       wanted.filter((s) => !s.scene),
       outDirAll,
       cutAll,
     );
-  for (const [id, shots] of scenes) if (id !== 'recorded') await shootScene(id, shots, outDirAll, cutAll);
+  for (const [key, shots] of groups) {
+    const [id] = key.split(' ');
+    if (id === 'recorded') continue;
+    await shootScene(id!, shots, outDirAll, cutAll, shots[0]!.server);
+  }
 
   const missing = wanted.filter((s) => !cutAll.includes(s.id)).map((s) => s.id);
   console.log(`[doc-shots] ${cutAll.length}/${wanted.length} cut → ${manifest.outDir}`);

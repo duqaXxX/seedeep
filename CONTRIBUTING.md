@@ -254,7 +254,11 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   the real parser and reducer to assert the state its figure claims — add a scene and
   you add its assertions, or the figure can go empty with nothing to catch it. Each
   figure is declared in `apps/server/data/doc-shots.json` alongside the source files
-  that invalidate it —
+  that invalidate it — plus, for the one figure that needs it, the `server` posture to
+  photograph it in: naming a host binds the capture's own throwaway server beyond
+  loopback, which is the only way to picture the TLS block and a fingerprint that come
+  from the running process rather than from the form. The common name there is
+  synthetic, and is what the panel then prints in its access URL —
   so `bun run doc-shots:check` can name the figures a change touched. Nothing else
   can: no test looks at a PNG. What it names are **candidates, not verdicts** — the
   map is per-file and `client/graph.ts` draws every widget, so a three-line change to

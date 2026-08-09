@@ -4,6 +4,29 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### The three things the docs never said (2026-08-09)
+
+An audit of the public docs against the code found three surfaces the reader had no way to reach,
+and each is now written down where a reader would look for it.
+
+- **The commands had no list.** `install.md` explained `report`, `update` and `self-update` in
+  prose, mentioned four more in passing, and named `seedeep status` nowhere at all — the only
+  complete account of the CLI was `--help`, which you have to already be running the program to
+  read. `install.md` now carries the same two tables (`## The commands`), `status` has the paragraph
+  its own subcommand deserves, and the `/seedeep` table gained the row it was missing. A test reads
+  the section and asserts it against `SUBCOMMANDS`, in both directions: a subcommand the parser
+  accepts and the docs omit fails, and so does a table row for a word the parser would reject.
+- **The share card was undocumented.** `⇪ Share` renders a turn's verdict as a PNG in the page
+  itself, and no doc mentioned it existed. `features.md` now shows the card, what it carries, and
+  the reason it is safe to post: nothing in it can name your work, which the card states along its
+  own foot.
+- **Only half the settings panel had ever been photographed.** The figure showed the loopback
+  posture and its caption pointed at a TLS block no figure contained. A shot can now declare the
+  `server` posture it is photographed in — naming a host binds the capture's own throwaway server
+  beyond loopback, which is the only way to picture a certificate and a fingerprint that come from
+  the running process rather than from the form. The common name is synthetic and asserted to be,
+  since it is what the panel prints in its access URL.
+
 ### `seedeep self-update` — the update runs where you asked for it (2026-08-09)
 
 `seedeep update` printed a command and stopped, so updating meant leaving the session for a terminal.

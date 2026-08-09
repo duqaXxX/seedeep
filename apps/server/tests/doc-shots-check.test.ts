@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import { hostname } from 'node:os';
 import {
   type DocShot,
   type DocShotManifest,
@@ -98,6 +99,19 @@ describe('the real manifest', () => {
     // Not one of them was visible to the suite; only to a person looking at the picture.
     const real = await readManifest();
     expect(real.shots.filter((s) => !s.waitFor).map((s) => s.id)).toEqual([]);
+  });
+
+  test('a posture is synthetic and has a scene of its own', async () => {
+    // Two ways this one goes wrong, and neither is visible in the picture it produces. A posture on
+    // a RECORDED shot would apply to every figure of that bundle, because they share one server —
+    // the run throws, but only after the build. And the common name is what the panel PRINTS in its
+    // access URL, so the machine's own name would be published by a figure nobody re-reads.
+    const real = await readManifest();
+    for (const shot of real.shots.filter((s) => s.server)) {
+      expect(shot.scene, `${shot.id}: a posture needs a scene`).toBeString();
+      expect(shot.server!.commonName).toMatch(/^[a-z0-9-]+\.local$/);
+      expect(shot.server!.commonName.toLowerCase()).not.toBe(hostname().toLowerCase());
+    }
   });
 
   test('ids are unique and file-safe, since each one names a PNG', async () => {
