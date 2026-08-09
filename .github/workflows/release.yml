@@ -65,9 +65,18 @@ jobs:
           no Gatekeeper quarantine flag — so it is also the way past the macOS refusal described
           under the tray.
 
-          **Without a JS runtime**, download the file for your platform (`seedeep-server_…`), make
-          it executable and run it — it carries its own runtime and installs nothing. On macOS the
-          first launch is refused; the way past it is the same gesture as below.
+          **Without a JS runtime**, download the file for your platform (`seedeep-server_…`) — it
+          carries its own runtime and installs nothing. It is a command-line program run from a
+          terminal, and a downloaded file never arrives executable, so it takes one `chmod` first:
+
+          ```sh
+          chmod +x seedeep-server_*     # macOS and Linux
+          ./seedeep-server_*            # watch, serve, and open the browser
+          ```
+
+          Double-clicking it instead says *"There is no application set to open the document"* —
+          that is the missing execute bit, not a broken download. On macOS the first launch is
+          refused too; the way past it is the same gesture as below.
 
           ### The tray (optional)
 

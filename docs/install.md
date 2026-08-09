@@ -38,6 +38,11 @@ chmod +x seedeep-server_*            # macOS and Linux
 ./seedeep-server_*                   # watch, serve, and open the browser
 ```
 
+The `chmod` is not a formality: a downloaded file never arrives executable, and without it the
+Finder has no way to tell a program from a document — a double-click answers *"There is no
+application set to open the document"*, which is the missing execute bit and not a broken
+download. It is a command-line program either way, so the terminal is where it is run.
+
 **That file is not an installer — it is the program.** It installs nothing,
 registers nothing, and puts nothing on your PATH: it carries its own runtime and the
 whole GUI inside, so downloading it is the entire step. Running it leaves
