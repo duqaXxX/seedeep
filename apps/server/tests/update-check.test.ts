@@ -133,6 +133,56 @@ test('offline never touches the network, and still reports what is known', async
   });
 });
 
+// Regression, from the release that produced the rule: 0.15.0 was published 33 minutes after the
+// cache last answered `0.14.0`, and `self-update` — typed by a user who knew about the release —
+// reported "you are current" from inside the TTL. A verb the user types asks npm.
+test('force asks npm however fresh the cache is', async () => {
+  await withCache(async (file) => {
+    const before = registry('1.0.0');
+    const cached = await updateStatus({ file, version: '1.0.0', fetchImpl: before.impl, now: T0 });
+    assert.equal(cached.standing, 'current');
+
+    // Published one minute later, well inside the hour the cache would otherwise answer for.
+    const after = registry('1.1.0');
+    const forced = await updateStatus({
+      file,
+      version: '1.0.0',
+      fetchImpl: after.impl,
+      now: T0 + 60_000,
+      force: true,
+    });
+    assert.equal(after.calls(), 1, 'the TTL did not stop it');
+    assert.equal(forced.standing, 'behind');
+    assert.equal(forced.latest, '1.1.0');
+    assert.equal(forced.checkedAt, new Date(T0 + 60_000).toISOString());
+
+    // And the fresh answer REPLACES the cache, so the surfaces that do respect the TTL — the tray,
+    // the portal, the notice after `open` — are not left telling the older story.
+    const next = registry('9.9.9');
+    const polled = await updateStatus({ file, version: '1.0.0', fetchImpl: next.impl, now: T0 + 61_000 });
+    assert.equal(next.calls(), 0, 'the forced answer is what the TTL now runs from');
+    assert.equal(polled.latest, '1.1.0');
+  });
+});
+
+// The two flags are not symmetrical: one says "do not go to the network", the other "go now". A
+// caller that must not reach the registry must not be sent there because a second flag said to.
+test('offline beats force', async () => {
+  await withCache(async (file) => {
+    const npm = registry('1.2.0');
+    const status = await updateStatus({
+      file,
+      version: '1.0.0',
+      fetchImpl: npm.impl,
+      now: T0,
+      offline: true,
+      force: true,
+    });
+    assert.equal(npm.calls(), 0);
+    assert.equal(status.standing, 'unknown');
+  });
+});
+
 test('a corrupt or missing cache costs a request, never an error', async () => {
   await withCache(async (file) => {
     await writeFile(file, 'not json at all');

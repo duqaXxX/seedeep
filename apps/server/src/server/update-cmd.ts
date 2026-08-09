@@ -212,7 +212,10 @@ export async function runUpdate(
   execPath = process.execPath,
 ): Promise<number> {
   const real = ownExecPath(execPath);
-  const status = await updateStatus({ offline: opts.offline });
+  // `force` for the same reason `self-update` does it: this verb exists to answer "is there a newer
+  // one", and an hour-old cache can answer it wrong. `offline` still wins — it is the flag that says
+  // do not go to the network at all.
+  const status = await updateStatus({ offline: opts.offline, force: true });
   out.log(updateAdvice(detectChannel(real), real, status, opts.offline ?? false));
   return 0;
 }

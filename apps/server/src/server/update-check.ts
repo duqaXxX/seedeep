@@ -8,6 +8,15 @@
  * timer would have to be created, cleared at shutdown, and would keep fetching for a portal that
  * was closed a week ago — while ten clients in one hour still cost exactly one request this way.
  *
+ * **A question the user TYPED asks npm** (`force`, Davide's call 2026-08-10). The TTL is the right
+ * cadence for a surface that polls and a notice printed after `open`; it is the wrong answer to a
+ * human who just typed `seedeep update` or `self-update`, because the reason to type either is
+ * having heard there is a new version. Measured that day: 0.15.0 was published at 23:20Z, the cache
+ * had answered `0.14.0` at 22:47Z, and `self-update` told its user they were current — from a
+ * reading taken thirty minutes before the release existed. `force` skips the freshness test only;
+ * the answer is still written to the cache and still shares the in-flight de-duplication, so
+ * nothing else on the machine re-asks after it.
+ *
  * **Only `latest` and its timestamp are stored.** The STANDING is derived on every read against the
  * version doing the reading, because the cache outlives the binary that wrote it: a file saying
  * `behind` from yesterday would still say it to the executable that has since been updated. It also
@@ -181,7 +190,9 @@ async function refresh(file: string, fetchImpl: typeof fetch, nowIso: string): P
  * The current update status, from cache when it is fresh and from npm when it is not. Never throws:
  * an unreachable registry is a `standing: 'unknown'`, because no surface should break over it.
  *
- * `offline` returns what is already known without touching the network at all.
+ * `offline` returns what is already known without touching the network at all. `force` does the
+ * opposite — it asks npm however fresh the cache is — and `offline` wins if both are set: a caller
+ * that must not reach the network must not reach it because a second flag said to.
  */
 export async function updateStatus(
   opts: {
@@ -190,6 +201,8 @@ export async function updateStatus(
     fetchImpl?: typeof fetch;
     now?: number;
     offline?: boolean;
+    /** Ignore the TTL and ask the registry. For a verb the user typed — see the module note. */
+    force?: boolean;
     file?: string;
   } = {},
 ): Promise<UpdateStatus> {
@@ -199,11 +212,12 @@ export async function updateStatus(
     fetchImpl = fetch,
     now = Date.now(),
     offline = false,
+    force = false,
     file = updateCheckFile(home),
   } = opts;
 
   let cache = await read(file);
-  if (!offline && !isFresh(cache, now)) {
+  if (!offline && (force || !isFresh(cache, now))) {
     let pending = inFlight.get(file);
     if (!pending) {
       pending = refresh(file, fetchImpl, new Date(now).toISOString()).finally(() => inFlight.delete(file));

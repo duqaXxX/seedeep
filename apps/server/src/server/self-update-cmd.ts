@@ -161,7 +161,9 @@ export async function runSelfUpdatePreview(
   platform: NodeJS.Platform = process.platform,
 ): Promise<number> {
   const exe = ownExecPath();
-  const status = await updateStatus();
+  // Typed by a user, so it asks npm rather than the hour-old cache: this preview is what decides
+  // whether the turn ends with "nothing to run".
+  const status = await updateStatus({ force: true });
   out.log(selfUpdatePreview(planSelfUpdate(detectChannel(exe), platform), status, exe));
   return 0;
 }
@@ -203,7 +205,7 @@ export async function selfUpdateCommand(port: number, config: SeedDeepConfig): P
   return runSelfUpdate(port, {
     channel: detectChannel(ownExecPath()),
     platform: process.platform,
-    status: () => updateStatus(),
+    status: () => updateStatus({ force: true }),
     install: runToCompletion,
     installedVersion: askInstalledVersion,
     servers: () => runningServers(),

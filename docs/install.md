@@ -182,11 +182,19 @@ current, reads where this executable actually lives — a package manager's
 `node_modules`, or a file you downloaded — and prints the one command that updates
 *that*. It never runs it — that is what `seedeep self-update` below is for.
 
-That version check is **the only outbound request seedeep ever makes**, and it
-happens **at most once an hour**: the answer is cached, so the command, the portal's
-Settings panel and the tray all read one check rather than three.
-`seedeep update --offline` skips it entirely, and a registry that cannot be reached
-never withholds the advice — you are still told how this install would update.
+That version check is **the only outbound request seedeep ever makes**, and for the
+surfaces that poll — the portal's Settings panel, the tray, the line after
+`seedeep open` — it happens **at most once an hour**: the answer is cached, so the
+three read one check rather than three.
+
+**The commands you type ask npm anyway.** `seedeep update` and `seedeep self-update`
+ignore that cache and go to the registry, because the reason to type either is
+usually having just heard there is a new version — and an answer from earlier in the
+hour would tell you that you are current when you are not. The fresh answer replaces
+the cache, so nothing else on the machine re-asks after it.
+`seedeep update --offline` skips the network entirely (and wins over the rule above),
+and a registry that cannot be reached never withholds the advice — you are still told
+how this install would update.
 
 When a newer version exists you are told once per release: a notification from the
 tray (switchable off in its Settings, with the other three), a line in the portal's

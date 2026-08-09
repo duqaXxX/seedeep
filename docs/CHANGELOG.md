@@ -2,6 +2,18 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
+## 0.16.0 (2026-08-10)
+
+### A version check you typed asks npm, not the cache (2026-08-10)
+
+`seedeep update` and `seedeep self-update` now force the registry check instead of reading the
+hour-old cache. The cache is right for the surfaces that poll — the portal, the tray, the notice
+after `open` — and wrong for a human who typed the command, because the reason to type it is usually
+having just heard about a release. Measured the day it was written: 0.15.0 was published at 23:20Z,
+the cache had answered `0.14.0` at 22:47Z, and `self-update` told its user they were current from a
+reading taken before the release existed. `--offline` still wins over the force, and the fresh
+answer replaces the cache, so nothing else on the machine re-asks after it.
+
 ## 0.15.0 (2026-08-10)
 
 ### The tray can open the portal itself, not only a session (2026-08-10)
