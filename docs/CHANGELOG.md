@@ -2,7 +2,15 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
-## Unreleased
+## 0.14.0 (2026-08-10)
+
+### A release is not a reason to re-cut a figure (2026-08-10)
+
+Two docs said a release re-cuts every figure, since the Settings figures print the version. They now
+say the opposite, which was the rule all along: a figure documents the surface it photographs, not
+the version that was running, so a stale number in it makes nothing it claims false. Only a change
+to what a figure SHOWS invalidates it — and `bun run doc-shots --ids <shot>` cuts one rather than all
+twenty.
 
 ### A bun install is recognised by bun's layout, not by the prefix's name (2026-08-09)
 

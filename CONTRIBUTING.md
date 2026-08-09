@@ -267,9 +267,12 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   whether a figure went false is a judgement — did what it *shows* change? —
   not something a file-level map can make for you. `--verify` settles it by
   **re-cutting the suspects into a temp directory and comparing the pixels**, but it
-  costs minutes, so it belongs to a release rather than to every push. If you change
-  a widget that a figure shows, say so in the PR — re-cutting needs the recorded
-  bundle, which is not in the repo, so a maintainer does it.
+  costs minutes, so it belongs to a release rather than to every push. A release is not
+  itself a reason to re-cut: the Settings figures print the server's version, but a
+  figure documents the surface it photographs, not the version that was running, and a
+  stale number there makes nothing it claims false. If you change a widget that a figure
+  shows, say so in the PR — re-cutting needs the recorded bundle, which is not in the
+  repo, so a maintainer does it.
 - **A shot must declare `waitFor`** — a selector for something its own subject
   renders, and the run FAILS when it never appears. It is the only place a figure
   states what it must contain in a form the capture can check: while an unmet wait

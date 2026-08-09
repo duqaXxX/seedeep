@@ -25,10 +25,15 @@ The README is the short version. The design behind these surfaces is in
 > widget, so a single edit there names most of them at once (measured on a
 > three-line change: 15 named, 20 re-cut, 18 byte-identical). Whether a figure really
 > went false is the author's call — did what it *shows* change? — and
-> `bun run doc-shots` re-cuts it. `--verify` settles it by re-cutting the suspects and
-> **comparing the pixels**, but it costs minutes, so it belongs to a release rather
-> than to every push. A release re-cuts everything anyway: the two Settings figures
-> print the version, and they are the only ones that do.
+> `bun run doc-shots` re-cuts it — `--ids <shot>` for one figure, nothing for all.
+> `--verify` settles it by re-cutting the suspects and **comparing the pixels**, but it
+> costs minutes, so it belongs to a release rather than to every push.
+>
+> **A release is not a reason to re-cut anything.** The two Settings figures print the
+> server's version, so a release does date them — but a figure documents the surface it
+> photographs, not the version that happened to be running, and a stale number in it
+> makes nothing it claims false. The only thing that invalidates a figure is a change to
+> what it SHOWS.
 
 ## The live session view
 
