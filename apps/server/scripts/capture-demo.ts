@@ -598,8 +598,14 @@ const linkedChildren = new Set<string>();
  * The `mkdir` is cached because it used to run for EVERY line: a 154-second session paced at 20×
  * should replay in 8 seconds and took 28, which threw off everything timed against the schedule.
  */
-async function writeLine(cfg: string, slug: string, l: TimedLine, srcDir?: string): Promise<void> {
-  const obj = { ...l.obj, timestamp: new Date().toISOString() };
+async function writeLine(cfg: string, slug: string, l: TimedLine, srcDir?: string, stampAt?: number): Promise<void> {
+  // `stampAt` is the session's OWN interval, moved to now — and where it is given, two cuts of the
+  // same code produce the same pixels. Reading the wall clock instead stamps every line with the
+  // scheduler's jitter, so every duration on screen (an API call's latency, a subagent's runtime)
+  // came out a few milliseconds different each run: four figures differed between two identical
+  // cuts, and the pre-push comparison reported a change nobody had made. The GIFs keep the clock:
+  // their pace is deliberately not the session's, and nothing compares them.
+  const obj = { ...l.obj, timestamp: new Date(stampAt ?? Date.now()).toISOString() };
   const dest = join(cfg, 'projects', slug, l.rel);
   const dir = join(dest, '..');
   if (!madeDirs.has(dir)) {
@@ -1182,7 +1188,11 @@ function makeTake(
           ` Give the shot a \`waitFor\` for something its content renders.`,
       );
     const path = join(outDir, `${shot.id}.png`);
-    await el.screenshot({ path });
+    // Animations FROZEN at their first frame: a live surface pulses (the LIVE dot, the running
+    // spinner), and a screenshot otherwise catches whatever phase it happened to be in — two cuts
+    // of the same code differed by a handful of pixels nobody can see and every byte comparison
+    // can. It also makes the figure show the state, not a moment of its animation.
+    await el.screenshot({ path, animations: 'disabled' });
     const kb = Math.round(Bun.file(path).size / 1024);
     console.log(`[doc-shots] ${shot.id}.png (${kb} KB) — ${shot.subject}`);
     cut.push(shot.id);
@@ -1344,19 +1354,29 @@ async function docShotsVerify(ids: string[]): Promise<void> {
 }
 
 /**
- * The stills replay at REAL time, where the GIFs are compressed 20×, and the two reasons are both
- * things a figure cannot get away with:
+ * The stills replay at REAL time, where the GIFs are compressed 20×.
  *
- * Every timestamp is rewritten to the moment its line is written, so a compressed replay compresses
- * every DURATION on screen — the same `Agent` span read "1.0s" in the activity list and "26s" in the
- * subagent drawer, two figures of one session disagreeing by 26×. And a fan-out that really ran 9
- * seconds passes in under half a second at 20×, which is not a window anything can be photographed
- * in: the live monitor was always caught after it, showing "0 running".
+ * Not for the durations — those are stamped from the session's own intervals now, so they are right
+ * at any pace. For the LIVE states: a fan-out that ran 9 seconds passes in under half a second at
+ * 20×, and that is not a window anything can be photographed inside. The live monitor was caught
+ * after it every time, showing "0 running" for three subagents that had just been spawned.
  *
  * A GIF has the opposite need — nobody watches four minutes of a window filling — so `shoot` keeps
  * its own pace. Overridable for a one-off, but the default is the honest one.
  */
 const STILL_SPEED = Number(process.env['SEEDEEP_STILL_SPEED'] ?? 1);
+
+/**
+ * The wall-clock instant the replayed session is pinned to for STILLS — a constant, so a figure cut
+ * today and the same figure cut in a year hold the same pixels.
+ *
+ * Two cards print an absolute launch time (`Aug 09 17:54:12`), so anchoring the session to `now`
+ * puts the clock inside the PNG: two cuts minutes apart differ, and the pre-push comparison reports
+ * a change nobody made. Nothing else in a still is relative to today — the live surfaces take
+ * liveness from the open-session record, which this replay writes with the real pid and the real
+ * clock, so the session still reads as working.
+ */
+const STILL_ANCHOR: number | null = Date.parse('2026-08-09T09:00:00Z');
 
 /** Cut the shots that come from the RECORDED session: replayed at its original pace. */
 async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): Promise<void> {
@@ -1380,7 +1400,16 @@ async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): P
 
   const SEED_MAX = 6;
   const seed = stream.slice(0, SEED_MAX);
-  for (const l of seed) await writeLine(cfg, meta.slug, l, slugDir);
+  // ONE anchor for the whole replay, fixed before the first line and never re-read: it is what makes
+  // two cuts of the same code identical. Everything is stamped `anchor + (line - base)`, so the
+  // session's intervals survive exactly and nothing carries a clock reading. Fixed HERE rather than
+  // at the replay's t0 so no line is ever stamped in the future — the seed is written some seconds
+  // earlier, and the whole session simply sits that much behind the wall clock, which costs a
+  // relative age and no duration at all.
+  const base = stream[seed.length]?.at ?? stream[0]!.at;
+  const anchor = STILL_ANCHOR ?? Date.now();
+  const stampOf = (l: TimedLine): number => anchor + (l.at - base);
+  for (const l of seed) await writeLine(cfg, meta.slug, l, slugDir, stampOf(l));
   // Left `busy` for the whole run, unlike `shoot`, which flips to idle before its Home and Search
   // frames: every figure here is of a LIVE surface, and an ended session collapses the monitor to a
   // one-line summary — the shot would show the thing the text is not describing.
@@ -1396,13 +1425,12 @@ async function shootRecorded(shots: DocShot[], outDir: string, cut: string[]): P
     const t0 = Date.now();
     let agentAt: number | null = null;
     let written = 0;
-    const base = stream[seed.length]?.at ?? stream[0]!.at;
     const replayTask = (async () => {
       for (const l of stream.slice(seed.length)) {
         const due = t0 + (l.at - base) / STILL_SPEED;
         const wait = due - Date.now();
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-        await writeLine(cfg, meta.slug, l, slugDir);
+        await writeLine(cfg, meta.slug, l, slugDir, stampOf(l));
         written++;
         if (agentAt === null && isAgentSpawn(l.obj)) agentAt = (Date.now() - t0) / 1000;
       }

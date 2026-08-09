@@ -4,6 +4,28 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+### A figure is the same picture every time it is cut (2026-08-09)
+
+The pixel comparison behind `doc-shots:check --verify` promises an exact answer, and four figures
+could never give one: two cuts of unchanged code differed, so the gate reported a change nobody had
+made — the noise it exists to remove. Three sources, all in the capture, none in the product:
+
+- **The scheduler's jitter was inside every duration.** A replayed line was stamped with the instant
+  it was written, so an API call's latency and a subagent's runtime came out a few milliseconds
+  different each run. Lines now carry the session's own interval, moved to the anchor — which makes
+  the durations stable *and* exact.
+- **The wall clock was inside two figures.** The subagent cards print an absolute launch time, so a
+  session pinned to "now" put the hour of the run into the PNG. Stills are pinned to a constant
+  instant instead; liveness comes from the open-session record, which still carries the real pid and
+  the real clock, so the surfaces still read as working.
+- **A screenshot caught whatever phase an animation was in** — the pulsing LIVE dot moves a handful
+  of pixels nobody can see and every byte comparison can. Crops are taken with animations frozen at
+  their first frame, which is also the more honest picture: the state, not a moment of it.
+
+Verified by cutting twice and comparing: byte-identical, where the same two figures had never once
+matched. No figure was marked `volatile` to get there — that would have changed the wording of the
+warning, not removed it.
+
 ### The figures were photographing subagents the session never had (2026-08-09)
 
 The demo bundle every recorded figure is cut from had been deleted by the OS, and re-making it
