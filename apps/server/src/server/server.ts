@@ -15,8 +15,9 @@ import { ClientRegistry, type SseSink } from './clients.ts';
 import { createProber, type PendingCommand, type Vanished } from './command-liveness.ts';
 import { buildComparison } from './compare.ts';
 import { defaultConfig, type NotifyConfig, type SeedDeepConfig, writeConfig } from './config.ts';
-import { digestEntry } from './digest.ts';
+import { type DigestEntry, digestEntry } from './digest.ts';
 import { createLiveTrees } from './live-trees.ts';
+import { createNotifyEngine } from './notify-engine.ts';
 import { streamReplay } from './replay.ts';
 import { buildSearchRows, createSearchIndex, defaultIndexFile } from './search-index.ts';
 import { cardsForSession } from './session-cards.ts';
@@ -135,6 +136,15 @@ export const HEARTBEAT_MS = 15_000;
  * 40 minutes it used to keep counting.
  */
 export const LIVENESS_MS = 15_000;
+
+/**
+ * How long the notification engine waits after a transcript event before reading the digest.
+ *
+ * A turn appends many lines in a burst — a thinking block, a text block, then each tool call — and
+ * the digest is the same answer for all of them. Coalescing spends one reading instead of a dozen.
+ * It is far below the tray's own 1s open / 5s closed poll, so nothing here is the slower of the two.
+ */
+const NOTIFY_COALESCE_MS = 300;
 
 const encoder = new TextEncoder();
 
@@ -360,8 +370,72 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   // for a session nobody is watching, which is what keeps an idle process idle.
   const liveTrees = createLiveTrees({ watcher: deps.watcher });
 
-  const onEvent = (e: NormalizedEvent) => registry.broadcast(e.type, e);
-  const onAdded = (id: string) => registry.broadcast('session-added', id);
+  /**
+   * Every live session's digest entry — what `/api/digest` answers with, and what the notification
+   * engine reads. One session's failure must not answer for the others: a seed that throws would
+   * otherwise reject the whole response, and a polling client would see the digest 500 until that
+   * one file recovers.
+   */
+  const buildDigest = async (): Promise<DigestEntry[]> => {
+    const live = (await deps.discover()).filter(isLive);
+    liveTrees.retain(live.map((s) => s.sessionId));
+    const built = await Promise.all(
+      live.map(async (s) => {
+        try {
+          const snap = (await liveTrees.ensure(s)).snapshot();
+          // After `ensure`: the sighting is stamped by the seed, so reading it first would report
+          // "never seen" for every session the server has not held a tree for yet.
+          return digestEntry(s, snap, { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(s.sessionId) });
+        } catch (err) {
+          console.error(`seedeep: digest skipped ${s.sessionId} —`, err);
+          return null;
+        }
+      }),
+    );
+    return built.filter((e) => e !== null);
+  };
+
+  /**
+   * Who decides an event is worth interrupting the user for, and on which channel.
+   *
+   * `hasListeners` is what keeps an unwatched process idle: the tray is worth evaluating only while
+   * a client is subscribed — a closed tray has nobody to deliver to, and an open one is already
+   * asking for the digest on its own clock. A configured webhook always is, because its destination
+   * is not on this machine.
+   */
+  const notify = createNotifyEngine({
+    config: () => currentConfig.notifications,
+    deliver: (a, channel) => {
+      if (channel === 'tray') registry.broadcast('notification', a);
+    },
+    hasListeners: () => registry.size() > 0,
+  });
+
+  // Coalesced: a turn appends many lines in a burst and the digest is the same answer for all of
+  // them. The delay is what a notification can afford to be late by and is far below the tray's
+  // own 1s open / 5s closed poll, so this is never the slower of the two.
+  let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  const evaluate = () => {
+    if (notifyTimer !== null || !notify.wanted()) return;
+    notifyTimer = setTimeout(() => {
+      notifyTimer = null;
+      // A reading that could not be made re-seeds rather than announcing a stale transition.
+      buildDigest().then(
+        (entries) => notify.feed(entries),
+        () => notify.feed(null),
+      );
+    }, NOTIFY_COALESCE_MS);
+    (notifyTimer as { unref?: () => void }).unref?.();
+  };
+
+  const onEvent = (e: NormalizedEvent) => {
+    registry.broadcast(e.type, e);
+    evaluate();
+  };
+  const onAdded = (id: string) => {
+    registry.broadcast('session-added', id);
+    evaluate();
+  };
   deps.watcher.on('event', onEvent);
   deps.watcher.on('session-added', onAdded);
 
@@ -612,10 +686,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       // the first ask — nothing polls, and `retain` drops what the same discovery just said is
       // no longer live, so a tree never outlives its session.
       if (pathname === '/api/digest') {
-        const live = (await deps.discover()).filter(isLive);
-        liveTrees.retain(live.map((s) => s.sessionId));
         const one = new URL(req.url).searchParams.get('sessionId');
         if (one !== null) {
+          const live = (await deps.discover()).filter(isLive);
+          liveTrees.retain(live.map((s) => s.sessionId));
           const rec = live.find((s) => s.sessionId === one);
           // 404 also covers a session that has ENDED: the digest serves live sessions, and a
           // client holding a stale entry is the one that knows it was watching it.
@@ -626,27 +700,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             digestEntry(rec, tree.snapshot(), { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(rec.sessionId) }),
           );
         }
-        // One session's failure must not answer for the others: a seed that throws (an
-        // unreadable transcript, a permission error) would otherwise reject the whole response
-        // and a polling client would see the entire digest 500 until that one file recovers.
-        // The failed entry is already dropped by `ensure`, so the next poll retries it.
-        const built = await Promise.all(
-          live.map(async (s) => {
-            try {
-              const snap = (await liveTrees.ensure(s)).snapshot();
-              // After `ensure`: the sighting is stamped by the seed, so reading it first would
-              // report "never seen" for every session the server has not held a tree for yet.
-              return digestEntry(s, snap, { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(s.sessionId) });
-            } catch (err) {
-              console.error(`seedeep: digest skipped ${s.sessionId} —`, err);
-              return null;
-            }
-          }),
-        );
-        return json(
-          req,
-          built.filter((e) => e !== null),
-        );
+        // The same builder the notification engine reads, so the two can never disagree about what
+        // a session is doing. The failed entry is already dropped by `ensure`, so the next poll
+        // retries it.
+        return json(req, await buildDigest());
       }
 
       // Per-session turn count and total tokens from the aggregate cache — used by the session
