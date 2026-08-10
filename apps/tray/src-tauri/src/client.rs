@@ -26,6 +26,15 @@ use crate::pin::pinned_tls;
 /// (`docs/tray.md`).
 const DIGEST_PATH: &str = "/api/digest";
 
+/// The server's event stream. The tray subscribes to it for notifications ONLY — the bands still
+/// come from the digest poll, which is a snapshot and not a sequence of events.
+const STREAM_PATH: &str = "/api/stream";
+
+/// How much of a partial SSE frame is held before giving up on the stream. A frame is a line of
+/// JSON; anything approaching this is a server that stopped writing blank lines, and growing the
+/// buffer for it would trade a dropped stream for unbounded memory.
+const SSE_BUFFER_MAX: usize = 1 << 20;
+
 /// The endpoint that names the server's own release, read only when the settings view is opened.
 /// Never on the poll: it is a value that cannot change while a process lives, and a second request
 /// a second would buy nothing.
@@ -368,6 +377,55 @@ impl Conn {
     /// the happy path: an active connection costs one request, and a connection that has stopped
     /// answering is dropped and the whole discovery re-run, which is what makes a restarted server
     /// heal on the next tick instead of on the next time somebody reopens the panel.
+    /// Subscribe to the server's event stream and hand every notification to `on`.
+    ///
+    /// Returns when the stream ends or the connection drops — reconnecting is the caller's, on the
+    /// backoff the poll already has. A reconnect replays nothing: the server RE-SEEDS when a
+    /// subscriber arrives, exactly as the tray used to re-seed on its own first reading.
+    ///
+    /// Its own client, because the polling one is built with a 5 s request timeout that would cut a
+    /// stream every five seconds. Same pin, same `no_proxy`, same redirect policy: a stream is the
+    /// one long-lived connection this tray keeps, and it must be as narrowly scoped as the others.
+    pub async fn stream_notifications(&self, mut on: impl FnMut(Announcement)) -> Result<(), String> {
+        let Some((target, _)) = self.active() else {
+            return Err("no active connection".to_string());
+        };
+        let (tls, _seen) = pinned_tls(target.fingerprint.clone()).map_err(|e| format!("TLS: {e}"))?;
+        let client = Client::builder()
+            .tls_backend_preconfigured(tls)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(CONNECT_TIMEOUT)
+            .build()
+            .map_err(|e| format!("client: {e}"))?;
+        let mut req = client.get(format!("{}{STREAM_PATH}", target.base_url));
+        if let Some(token) = &target.token {
+            req = req.bearer_auth(token);
+        }
+        let mut res = req.send().await.map_err(|e| describe(&e))?;
+        if !res.status().is_success() {
+            return Err(format!("stream refused: HTTP {}", res.status()));
+        }
+        // Frames arrive split across chunks at arbitrary boundaries, so the tail of a partial frame
+        // has to survive into the next read. Bounded by SSE_BUFFER_MAX: a server that never sends a
+        // blank line must not grow this without limit.
+        let mut buf = String::new();
+        while let Some(chunk) = res.chunk().await.map_err(|e| describe(&e))? {
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            if buf.len() > SSE_BUFFER_MAX {
+                return Err("stream frame exceeded the buffer".to_string());
+            }
+            while let Some(end) = buf.find("\n\n") {
+                let frame = buf[..end].to_string();
+                buf.drain(..end + 2);
+                if let Some(a) = parse_notification(&frame) {
+                    on(a);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn read(&self) -> Reading {
         if let Some((target, client)) = self.active() {
             match self.fetch(&client, &target).await {
@@ -1311,5 +1369,72 @@ mod tests {
             other => panic!("expected Offline, got {other:?}"),
         }
         assert_eq!(connection::load(&store).as_ref(), Some(&target), "a failure must not forget");
+    }
+}
+
+/// What one notification says, exactly as the server renders it.
+///
+/// The tray composes none of this any more: the wording lives beside the panel's own, server-side,
+/// so a banner and the row it belongs to cannot word the same event differently.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Announcement {
+    /// `needsYou`, `fails` or `finishes` — which switch this answers to. The SERVER has already
+    /// applied that switch; this rides along so a log can say what was shown and why.
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// Pull one `notification` out of an SSE frame, or `None` for every other event.
+///
+/// Deliberately tolerant of field order and of the comment lines the heartbeat writes: this parses
+/// what the wire carries, not what we would have written.
+fn parse_notification(frame: &str) -> Option<Announcement> {
+    let mut is_notification = false;
+    let mut data: Option<&str> = None;
+    for line in frame.lines() {
+        if let Some(rest) = line.strip_prefix("event:") {
+            is_notification = rest.trim() == "notification";
+        } else if let Some(rest) = line.strip_prefix("data:") {
+            data = Some(rest.trim());
+        }
+    }
+    if !is_notification {
+        return None;
+    }
+    serde_json::from_str(data?).ok()
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_notification_frame() {
+        let a = parse_notification("event: notification\ndata: {\"kind\":\"needsYou\",\"title\":\"atlas — a subject\",\"body\":\"Waiting for your approval — Bash\"}").unwrap();
+        assert_eq!(a.kind, "needsYou");
+        assert_eq!(a.title, "atlas — a subject");
+        assert_eq!(a.body, "Waiting for your approval — Bash");
+    }
+
+    #[test]
+    fn ignores_every_other_event() {
+        // The stream carries the whole reducer's traffic; a tray that showed a banner per frame
+        // would notify on every line the transcript grows by.
+        assert!(parse_notification("event: tool-start\ndata: {\"name\":\"Bash\"}").is_none());
+        assert!(parse_notification("id: 7\ndata: {\"kind\":\"needsYou\"}").is_none());
+    }
+
+    #[test]
+    fn survives_a_heartbeat_comment_and_field_order() {
+        assert!(parse_notification(": keepalive").is_none());
+        let a = parse_notification("id: 3\ndata: {\"kind\":\"finishes\",\"title\":\"t\",\"body\":\"Back to you\"}\nevent: notification");
+        assert_eq!(a.unwrap().body, "Back to you");
+    }
+
+    #[test]
+    fn a_frame_that_is_not_json_is_dropped_rather_than_panicking() {
+        assert!(parse_notification("event: notification\ndata: not json").is_none());
+        assert!(parse_notification("event: notification").is_none());
     }
 }
