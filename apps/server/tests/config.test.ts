@@ -247,3 +247,34 @@ test('resolveConfig: SEEDEEP_TLS_CN sets tls.commonName', async () => {
   const cfg = await resolveConfig({}, { SEEDEEP_TLS_CN: 'my.server.local' }, fileConfig);
   assert.equal(cfg.tls.commonName, 'my.server.local');
 });
+
+test('defaultConfig ships notifications with the webhook off', () => {
+  const c = defaultConfig(tmpHome());
+  // These mirror what the tray shipped when the switches were local state. Changing a default
+  // changes what the user sees, which is not this change's to make.
+  assert.deepEqual(c.notifications.tray, { needsYou: true, fails: true, finishes: false, updates: true });
+  assert.equal(c.notifications.webhook.url, '');
+  assert.deepEqual(c.notifications.webhook.headers, {});
+});
+
+test('readConfig fills notifications when the file predates them', async () => {
+  const home = tmpHome();
+  const path = join(home, 'config.json');
+  writeFileSync(path, JSON.stringify({ port: 4571, host: '127.0.0.1' }));
+  const c = await readConfig(path, home);
+  assert.equal(c.notifications.tray.needsYou, true);
+  assert.equal(c.notifications.webhook.url, '');
+});
+
+test('readConfig merges notifications per key, so a partial file keeps the other defaults', async () => {
+  const home = tmpHome();
+  const path = join(home, 'config.json');
+  // A user who set only the webhook URL must not lose their tray switches — the failure the
+  // whole-object replace would cause, and the reason `auth` and `tls` are merged the same way.
+  writeFileSync(path, JSON.stringify({ notifications: { webhook: { url: 'https://example.test/hook' } } }));
+  const c = await readConfig(path, home);
+  assert.equal(c.notifications.webhook.url, 'https://example.test/hook');
+  assert.equal(c.notifications.webhook.needsYou, true, 'a webhook switch kept its default');
+  assert.equal(c.notifications.tray.needsYou, true, 'the tray channel survived a webhook-only file');
+  assert.deepEqual(c.notifications.webhook.headers, {});
+});

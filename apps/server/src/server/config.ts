@@ -3,6 +3,33 @@ import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+/** Which events a single delivery channel is allowed to interrupt the user for. */
+export interface NotifyChannelSwitches {
+  needsYou: boolean;
+  fails: boolean;
+  finishes: boolean;
+  updates: boolean;
+}
+
+/** The webhook channel: the same switches, plus where and how to POST. */
+export interface NotifyWebhook extends NotifyChannelSwitches {
+  /** Empty means the channel is off — no URL, no delivery, nothing leaves the machine. */
+  url: string;
+  /** Sent verbatim on every POST. Where a service's auth token goes. */
+  headers: Record<string, string>;
+  /** Placeholders: `{{title}}` `{{body}}` `{{project}}` `{{subject}}` `{{kind}}`. */
+  template: string;
+}
+
+/**
+ * Per-CHANNEL switches, never one shared set: the same event can be worth a banner on the machine
+ * you are sitting at and not worth a push to your phone, and a single set cannot express that.
+ */
+export interface NotifyConfig {
+  tray: NotifyChannelSwitches;
+  webhook: NotifyWebhook;
+}
+
 export interface SeedDeepConfig {
   port: number;
   host: string;
@@ -11,6 +38,7 @@ export interface SeedDeepConfig {
     /** 32-byte base64url token; applied only when `host` is not a loopback address. */
     token: string;
   };
+  notifications: NotifyConfig;
   tls: {
     /** Certificate CN. Required when `host` is not loopback; has no built-in default. */
     commonName?: string;
@@ -54,6 +82,32 @@ export function defaultConfig(home = homedir()): SeedDeepConfig {
     open: true,
     auth: { token: '' },
     tls: { cert: join(dir, 'cert.pem'), key: join(dir, 'key.pem') },
+    notifications: {
+      // The tray's defaults are what it shipped while the switches were its own local state:
+      // changing one changes what the user sees, and moving where a setting LIVES may not also
+      // change what it says. The webhook ships off — nothing leaves the machine unasked.
+      tray: { needsYou: true, fails: true, finishes: false, updates: true },
+      webhook: { needsYou: true, fails: true, finishes: false, updates: false, url: '', headers: {}, template: '' },
+    },
+  };
+}
+
+/** An object from the parsed file, or `{}` when the key is absent or not an object. */
+function asObject(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/**
+ * Merge a config file's `notifications` onto the defaults, one channel at a time.
+ *
+ * Per key rather than per object, at both levels: a file written before a switch existed, or one
+ * that sets a single field, must come back with every other default intact.
+ */
+function mergeNotifications(defs: NotifyConfig, raw: unknown): NotifyConfig {
+  const given = asObject(raw);
+  return {
+    tray: { ...defs.tray, ...asObject(given['tray']) } as NotifyChannelSwitches,
+    webhook: { ...defs.webhook, ...asObject(given['webhook']) } as NotifyWebhook,
   };
 }
 
@@ -92,6 +146,9 @@ export async function readConfig(path?: string, home = homedir()): Promise<SeedD
         ...(parsed['auth'] && typeof parsed['auth'] === 'object' ? (parsed['auth'] as object) : {}),
       },
       tls: { ...defs.tls, ...(parsed['tls'] && typeof parsed['tls'] === 'object' ? (parsed['tls'] as object) : {}) },
+      // One level deeper than `auth` and `tls`, because the channels are objects too: a file that
+      // sets only `webhook.url` must keep every switch it never mentioned, on BOTH channels.
+      notifications: mergeNotifications(defs.notifications, parsed['notifications']),
     };
   } catch {
     console.warn(`seedeep: config has invalid JSON — using defaults`);

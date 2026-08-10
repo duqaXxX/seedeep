@@ -14,7 +14,7 @@ import { createCardsIndex, defaultCardsIndexFile } from './cards-index.ts';
 import { ClientRegistry, type SseSink } from './clients.ts';
 import { createProber, type PendingCommand, type Vanished } from './command-liveness.ts';
 import { buildComparison } from './compare.ts';
-import { defaultConfig, type SeedDeepConfig, writeConfig } from './config.ts';
+import { defaultConfig, type NotifyConfig, type SeedDeepConfig, writeConfig } from './config.ts';
 import { digestEntry } from './digest.ts';
 import { createLiveTrees } from './live-trees.ts';
 import { streamReplay } from './replay.ts';
@@ -220,6 +220,9 @@ export function parseMarks(raw: string | null): Map<string, number> | undefined 
  * something about the operator's machine they could not already know (host and port are what they
  * used to arrive). The portal reads this through `authFetch`, so the mark works in both modes.
  */
+/** What a secret reads as on the wire. One constant, so redaction and its inverse cannot drift. */
+const REDACTED = '***';
+
 function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: boolean): object {
   const { tls, auth, ...rest } = cfg;
   const { cert: _c, key: _k, ...tlsRest } = tls;
@@ -232,6 +235,43 @@ function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: b
     ...(authed ? { dev: FROM_SOURCE } : {}),
     auth: { token: '***' },
     tls: fingerprint === null ? tlsRest : { ...tlsRest, fingerprint },
+    // A header value is where every notification service puts its token, and this endpoint answers
+    // without auth. The panel is told a header EXISTS and never what it says — the same bargain
+    // `auth.token` already makes, and `POST` puts the stored value back when it sees `***`.
+    notifications: {
+      ...rest.notifications,
+      webhook: {
+        ...rest.notifications.webhook,
+        headers: Object.fromEntries(Object.keys(rest.notifications.webhook.headers).map((k) => [k, REDACTED])),
+      },
+    },
+  };
+}
+
+/**
+ * Merge a `POST /api/config` body's `notifications` onto the stored one, channel by channel.
+ *
+ * A header whose incoming value is exactly {@link REDACTED} keeps the value already stored: the
+ * panel reads `***` and posts the whole object back, so taking it literally would erase the token
+ * on the first save the user made for any other reason. A header the body omits is DELETED — that
+ * is how the panel removes one, and it is why this is not a blanket merge.
+ */
+function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unknown>): NotifyConfig {
+  const obj = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const hook = obj(given['webhook']);
+  const headers =
+    hook['headers'] === undefined
+      ? stored.webhook.headers
+      : Object.fromEntries(
+          Object.entries(obj(hook['headers'])).map(([k, v]) => [
+            k,
+            v === REDACTED ? (stored.webhook.headers[k] ?? '') : String(v),
+          ]),
+        );
+  return {
+    tray: { ...stored.tray, ...obj(given['tray']) } as NotifyConfig['tray'],
+    webhook: { ...stored.webhook, ...hook, headers } as NotifyConfig['webhook'],
   };
 }
 
@@ -489,6 +529,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             ...currentConfig.tls,
             ...(body['tls'] as Record<string, unknown>),
           } as SeedDeepConfig['tls'];
+        }
+        if (body['notifications'] && typeof body['notifications'] === 'object') {
+          currentConfig.notifications = mergeNotificationsPost(
+            currentConfig.notifications,
+            body['notifications'] as Record<string, unknown>,
+          );
         }
         try {
           await writeConfig(currentConfig, deps.configPath);
