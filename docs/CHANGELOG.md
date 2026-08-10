@@ -4,6 +4,32 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### Both Expand-all lists are grouped by turn, and a tool call is numbered (2026-08-10)
+
+The complete lists behind **Expand all** were flat, which stops working at the size real sessions
+reach: measured on one, 4228 activities and 1849 tool calls in a single list. Both now arrive as
+**collapsible per-turn groups** — a header saying which turn and how much is inside (calls and
+total output for the tools list), with only the most recent turn open. A collapsed group builds no
+rows at all, so the drawer's cost follows what is open rather than what the session did, and
+typing in the filter opens every group that has a match. Scoped to a single turn there is nothing
+to group by and the list stays flat, exactly where the old turn separators were suppressed.
+
+Which groups are open is remembered from the first header you click, because opening a row REBUILDS
+the drawer: taking the default again would have closed the group you had just opened, and on a
+session with 78 of them that means finding it by hand. Until that first click there is nothing to
+remember, so the default keeps being recomputed — the newest turn stays the open one as the session
+grows, and opening the list while scoped to a turn (where no groups are drawn at all) cannot record
+a choice nobody made. A group force-opened by the filter is not remembered either: collapsing it is
+about the filtered list, not the one underneath.
+
+Verified live — open, drill in, back by the crumb, still open — and each of the five rules has a
+test that flips red when its rule is removed.
+
+The tools list gained the `#N` the activity list already had: a dense number fixed in the order the
+calls were made, so it stays put when the ranking is re-sorted by size or by time. It is
+deliberately not the activity list's number, which counts API calls and spawns too — a ranking
+reads better numbered 1..N.
+
 ### A note reaches the complete history, not just the feed (2026-08-10)
 
 The feed keeps thirteen rows per turn, so a security review's findings — a row nobody can anchor to

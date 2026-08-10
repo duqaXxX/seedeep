@@ -141,6 +141,13 @@ own empty state instead.
   shows the tool name, the turn it ran in, a proportional bar, and the value
   (chars or ms).
 
+  The full list is **grouped by turn**, each group collapsed behind a header
+  stating how many calls it holds and how much output they cost — so the question
+  "which turn ate the window" is answered before you open anything. The size
+  ranking lives INSIDE the group, which is what keeps the ranking and the
+  chronology from having to fight over one list. Every row carries a `#N` fixed in
+  the order the calls were made, so it does not move when you re-sort.
+
   ![Main tools: four Read calls of 23k characters each at the top, then the tool types as counts](assets/shots/main-tools.png)
 
   *Four reads of the same file, 23k characters each, are most of what filled the
@@ -469,6 +476,15 @@ more. **Expand all** opens the complete list: every prompt, API call, tool, skil
 and spawn in the order it happened, with each subagent's own work indented under
 the spawn that launched it, filterable, and scoped to whatever turn you have
 selected. Every row opens the same detail drawer as the rest of the app.
+
+Across the whole session that list is thousands of rows, so it arrives **grouped
+by turn**: one collapsible header per turn saying how much is inside, and only the
+most recent one open. Nothing is hidden — a group builds its rows the moment you
+open it, and typing in the filter opens every group that has a match. What you
+opened stays open: following a row into its detail and coming back by the crumb
+returns you to the list as you left it — and until you open one yourself, the
+newest turn is the one that greets you, however far the session has moved on.
+Scoped to a single turn there is nothing to group by, and the list stays flat.
 
 <img src="assets/shots/expand-all.png" width="549" alt="The complete activity list: 46 activities, 19 tool calls, 24 API calls over 3m32s, with each subagent's API calls and reads indented under the Agent spawn that launched them">
 

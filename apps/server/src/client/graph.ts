@@ -253,6 +253,48 @@ function unlockPageScroll() {
 }
 
 /**
+ * One collapsible turn group for an Expand-all drawer: a header stating WHICH turn and how much
+ * is inside, over a body that holds the rows. Both drawers list a whole session, which on a real
+ * one is hundreds of rows — the group is what makes that readable, so the header is the turn
+ * separator AND the control.
+ *
+ * `rows` is a factory, not an array: a collapsed group builds nothing, and closing one throws its
+ * rows away again. That is what keeps the drawer's cost proportional to what is OPEN rather than
+ * to the session. `onToggle` reports the new state so the caller can remember it across a
+ * re-render (filtering and re-sorting rebuild the whole list).
+ */
+function turnGroup(
+  label: string,
+  meta: string,
+  rows: () => HTMLElement[],
+  open: boolean,
+  onToggle: (open: boolean) => void,
+): HTMLElement {
+  const g = E('div', 'tgroup' + (open ? ' open' : ''));
+  const head = E('button', 'tghead');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', String(open));
+  head.append(E('span', 'tgarrow', '▸'), E('span', 'tglabel', label), E('span', 'tgmeta', meta));
+  const body = E('div', 'tgbody');
+  // Appended one by one, never `append(...rows())`: a single turn can hold thousands of rows and
+  // spreading an array that long into a call is what blows the argument limit.
+  const fill = () => {
+    for (const r of rows()) body.append(r);
+  };
+  if (open) fill();
+  head.onclick = () => {
+    const nowOpen = !g.classList.contains('open');
+    g.classList.toggle('open', nowOpen);
+    head.setAttribute('aria-expanded', String(nowOpen));
+    if (nowOpen) fill();
+    else body.replaceChildren();
+    onToggle(nowOpen);
+  };
+  g.append(head, body);
+  return g;
+}
+
+/**
  * Mount the bento Graph view into `container`, driven by a session-tree `state`
  * ({@link createSessionTree}: snapshot() + onChange() + onEvent()). Appends the
  * widget tree AND the fixed-position overlays (scrim/drawer/output-modal/toasts)
@@ -572,6 +614,12 @@ export function createGraph(
   // moves on its own — say, to the commands because one failed — leaves the reader unable to
   // predict what they are looking at, which costs more than the click it saves.
   let bottomTab: 'subs' | 'bg' = 'subs';
+  // Which turn groups the reader has open in each Expand-all drawer. HERE rather than inside the
+  // two open* functions because those REBUILD the drawer — a drill-down and its crumb back both
+  // call them — and a state rebuilt from the default closes the group the reader had opened. Null
+  // until the first list with rows, which is what applies the "only the latest turn" default once.
+  let openActivityTurns: Set<number> | null = null;
+  let openToolTurns: Set<number> | null = null;
   // Last snapshot rendered — the feed (driven by events, not by snapshots) needs the
   // selected turn's state to decide whether it is still live.
   let lastSnap: TreeSnapshot | null = null;
@@ -3711,35 +3759,97 @@ export function createGraph(
 
     const backToAll: BackEntry = { label: 'all tools', open: () => openAllTools(s) };
 
+    // A dense chronological number, assigned BEFORE any sort — `mainTools` is in the order the
+    // calls appeared — so #N never moves when the list is re-sorted or filtered. Deliberately not
+    // the all-activity list's number, which counts API calls, prompts and spawns too and would be
+    // full of holes here: this list ranks tools, and a ranking reads better numbered 1..N.
+    const callNumber = new Map(s.mainTools.map((t, i) => [t.id, i + 1]));
+
+    // A call whose turn was never established (one landing before the session's first prompt)
+    // still has to live somewhere: it groups under its own key, ahead of turn 1.
+    const NO_TURN = -1;
+    const turnKey = (t: ToolNode) => t.turnIndex ?? NO_TURN;
+    const turnsPresent = [...new Set(s.mainTools.map(turnKey))].sort((a, b) => a - b);
+    const turnLabel = (idx: number): string => {
+      if (idx === NO_TURN) return 'Before the first entry';
+      const turn = s.turnList.find((t) => t.index === idx);
+      return (turn && (entryTitle(s, turn) || entryLabel(turn))) || 'Entry ' + idx;
+    };
+    // Only the most recent turn starts open — expanding every group would rebuild exactly the
+    // flat, hundreds-of-rows list the grouping exists to break up. That default is RECOMPUTED on
+    // every open until the reader touches a header: `openToolTurns` stays null until then, so a
+    // live session's newest turn keeps being the open one, and an open made while scoped to a
+    // single turn (which renders no groups at all) cannot seed a choice nobody made. From the
+    // first toggle on, the set is the reader's and survives the rebuild that a drill-down and its
+    // crumb back cause — taking the default there would close the group they had just opened,
+    // one of 74 on a real session.
+    const latestTurn = turnsPresent.length ? turnsPresent[turnsPresent.length - 1]! : null;
+    const expanded = openToolTurns ?? new Set<number>(latestTurn === null ? [] : [latestTurn]);
+    const remember = (idx: number, open: boolean) => {
+      openToolTurns = expanded;
+      if (open) expanded.add(idx);
+      else expanded.delete(idx);
+    };
+
+    const toolRow = (t: ToolNode): HTMLElement => {
+      const r = E('div', 'ttrow' + (t.error ? ' err' : ''));
+      r.onclick = () => openTool(t, 'main session', backToAll);
+      const nm = E('div', 'tn');
+      nm.append(E('span', 'tnum', '#' + (callNumber.get(t.id) ?? 0)));
+      nm.append(document.createTextNode(t.name + '  '));
+      if (t.error) nm.append(E('span', 'terr', 'error'));
+      const arg = E('span', 'targ');
+      arg.textContent = t.arg || '';
+      nm.append(arg);
+      r.append(
+        nm,
+        E('div', 'tv', t.ms != null ? formatToolMs(t.ms) : '—'),
+        E('div', 'tv', typeof t.ctx === 'number' ? kc(t.ctx) + 'ch' : '—'),
+      );
+      return r;
+    };
+
     const renderRows = () => {
       const q = filterInput.value.toLowerCase();
-      const source = sortByTime
-        ? [...s.mainTools].sort((a, b) => (b.ms ?? -1) - (a.ms ?? -1))
-        : [...s.mainTools].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0));
+      // Sorting happens INSIDE a group, never across the whole list: the ranking is what this
+      // drawer is for, and it stays true of each turn on its own.
+      const sorted = (list: ToolNode[]) =>
+        sortByTime
+          ? [...list].sort((a, b) => (b.ms ?? -1) - (a.ms ?? -1))
+          : [...list].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0));
       const filtered = q
-        ? source.filter((t) => t.name.toLowerCase().includes(q) || (t.arg || '').toLowerCase().includes(q))
-        : source;
-      countEl.textContent = q ? `${filtered.length} of ${source.length} calls` : `${source.length} calls`;
+        ? s.mainTools.filter((t) => t.name.toLowerCase().includes(q) || (t.arg || '').toLowerCase().includes(q))
+        : s.mainTools;
+      countEl.textContent = q ? `${filtered.length} of ${s.mainTools.length} calls` : `${s.mainTools.length} calls`;
       box.replaceChildren();
       if (!filtered.length) {
         box.append(E('div', 'wdesc', q ? 'No tools match the filter.' : 'No tool output available yet.'));
-      } else {
-        for (const t of filtered) {
-          const r = E('div', 'ttrow' + (t.error ? ' err' : ''));
-          r.onclick = () => openTool(t, 'main session', backToAll);
-          const nm = E('div', 'tn');
-          nm.append(document.createTextNode(t.name + '  '));
-          if (t.error) nm.append(E('span', 'terr', 'error'));
-          const arg = E('span', 'targ');
-          arg.textContent = t.arg || '';
-          nm.append(arg);
-          r.append(
-            nm,
-            E('div', 'tv', t.ms != null ? formatToolMs(t.ms) : '—'),
-            E('div', 'tv', typeof t.ctx === 'number' ? kc(t.ctx) + 'ch' : '—'),
-          );
-          box.append(r);
-        }
+        return;
+      }
+      // Scoped to one turn there is nothing to group BY: a single group holding everything is
+      // furniture with no information, and one more click between the reader and the rows.
+      if (selectedTurn !== null) {
+        for (const t of sorted(filtered)) box.append(toolRow(t));
+        return;
+      }
+      for (const idx of turnsPresent) {
+        const group = filtered.filter((t) => turnKey(t) === idx);
+        if (!group.length) continue;
+        const ctx = group.reduce((n, t) => n + (t.ctx ?? 0), 0);
+        const meta = `${group.length} call${group.length === 1 ? '' : 's'} · ${kc(ctx)}ch`;
+        // A filter that matched inside a collapsed group would look like no match at all, so
+        // filtering opens every group that has something to show. That forced state is NOT
+        // remembered: collapsing one to cut the noise while filtering is about the filtered list,
+        // and writing it through would leave a group closed that the reader never closed.
+        box.append(
+          turnGroup(
+            turnLabel(idx),
+            meta,
+            () => sorted(group).map(toolRow),
+            q ? true : expanded.has(idx),
+            q ? () => {} : (open) => remember(idx, open),
+          ),
+        );
       }
     };
 
@@ -3937,7 +4047,7 @@ export function createGraph(
     // never changes when the user re-sorts or filters — "activity #42" stays #42.
     const activityIndex = new Map(rows.map((r, i) => [r.id, i + 1]));
 
-    // Build turn label map for the turn separators. Prefer the TreeSnapshot's formatted label
+    // Build turn label map for the turn groups. Prefer the TreeSnapshot's formatted label
     // ("Turn 7", "/compact") because it uses the correct work-ordinal; fall back to the span
     // store's title string for any turn not yet in the TreeSnapshot.
     const turnLabelMap = new Map<number, string>();
@@ -3972,6 +4082,54 @@ export function createGraph(
 
     const backToList: BackEntry = { label: 'all activity', open: () => openAllActivity() };
 
+    // Only the most recent turn starts open, and — exactly as in the tools drawer — that default
+    // is recomputed until the reader touches a header, after which the set is theirs and survives
+    // the rebuild a drill-down and its crumb back cause. See `openToolTurns` for the whole reason.
+    // Reduced, not `Math.max(...rows)`: this list has no cap by design — a real session reached
+    // 4228 rows — and spreading an array that long into a call is what blows the argument limit.
+    const latestTurn = rows.length
+      ? rows.reduce((max, r) => (r.turnIndex > max ? r.turnIndex : max), rows[0]!.turnIndex)
+      : null;
+    const expandedTurns = openActivityTurns ?? new Set<number>(latestTurn === null ? [] : [latestTurn]);
+    const remember = (idx: number, open: boolean) => {
+      openActivityTurns = expandedTurns;
+      if (open) expandedTurns.add(idx);
+      else expandedTurns.delete(idx);
+    };
+
+    const activityRow = (r: ActivityRow, t0: number): HTMLElement => {
+      const row = E('div', `ttrow t-${r.type}` + (r.lane > 0 ? ' lane' : '') + (r.status === 'error' ? ' err' : ''));
+      const nm = E('div', 'tn');
+      nm.append(E('span', 'tnum', '#' + (activityIndex.get(r.id) ?? 0)));
+      nm.append(document.createTextNode(r.name));
+      if (r.status === 'error') nm.append(E('span', 'terr', 'error'));
+      // The same mark the Trace block carries. Without it this list — the COMPLETE history —
+      // was the one surface that showed a warned call as an ordinary one.
+      if (r.flagged) nm.append(E('span', 'tflag', '⚑'));
+      if (r.agent) nm.append(E('span', 'aagent', r.agent));
+      if (r.detail) nm.append(E('span', 'targ', r.detail));
+      // 'running…' is reserved for spans that ARE running. A span closed within the same
+      // millisecond it opened has no duration to report and shows '—' instead: rendering
+      // that as running is a lie the fixtures never showed, carrying only timed tool spans.
+      const dur = E('div', 'tv');
+      const durText = r.status === 'running' ? toolDuration(null, ended) : r.ms != null ? formatToolMs(r.ms) : '—';
+      dur.append(E('span', r.status === 'running' ? 'run' : null, durText));
+      row.append(nm, dur, E('div', 'tv', formatOffset(r.t0 - t0)));
+      // Same router the Trace uses, so a row here opens exactly the drawer its span does.
+      // Unlike the Trace, this list IS the drawer and is replaced by the drill-down, so it
+      // hands over a way back — otherwise the user has to reopen it and re-find their place.
+      if (r.handle) {
+        const h = r.handle;
+        row.onclick = () => openBlock(h, backToList);
+      } else if (r.type === 'note') {
+        // A note has no span to open, and its row shows one ellipsized line — so the click has
+        // to lead somewhere, exactly as it does from the feed.
+        const text = r.detail ?? '';
+        row.onclick = () => openNote(text);
+      }
+      return row;
+    };
+
     const renderRows = () => {
       const q = filterInput.value.toLowerCase();
       const ordered = oldestFirst ? rows : [...rows].reverse();
@@ -3983,45 +4141,43 @@ export function createGraph(
         return;
       }
       const t0 = rows.length ? rows[0]!.t0 : 0;
-      // Turn separators: track the last seen turnIndex and emit a divider on change.
-      // Skipped when scoped to one turn (all rows share the same index, so no boundary fires).
-      let lastTurnIdx: number | null = null;
+      // Scoped to one turn every row shares the turn, so there is nothing to group by — the flat
+      // chronology is the answer, exactly as the separators it replaces were suppressed there.
+      if (selectedTurn !== null) {
+        for (const r of filtered) box.append(activityRow(r, t0));
+        return;
+      }
+      // ONE group per turn over the whole list, ordered by first appearance so that newest-first
+      // yields newest-first groups. Deliberately not consecutive runs: rows are ordered by `t0`
+      // while a row's turn is the one that OWNS it, so a subagent lane outliving its turn
+      // interleaves with the next turn's rows — and a turn rendered twice would be two groups
+      // sharing one open/closed state, where collapsing the second closes the first.
+      const order: number[] = [];
+      const byTurn = new Map<number, ActivityRow[]>();
       for (const r of filtered) {
-        if (selectedTurn === null && r.turnIndex !== lastTurnIdx) {
-          lastTurnIdx = r.turnIndex;
-          const label = turnLabelMap.get(r.turnIndex) ?? 'Entry ' + r.turnIndex;
-          box.append(E('div', 'turn-sep', label));
+        let bucket = byTurn.get(r.turnIndex);
+        if (!bucket) {
+          bucket = [];
+          byTurn.set(r.turnIndex, bucket);
+          order.push(r.turnIndex);
         }
-        const row = E('div', `ttrow t-${r.type}` + (r.lane > 0 ? ' lane' : '') + (r.status === 'error' ? ' err' : ''));
-        const nm = E('div', 'tn');
-        nm.append(E('span', 'tnum', '#' + (activityIndex.get(r.id) ?? 0)));
-        nm.append(document.createTextNode(r.name));
-        if (r.status === 'error') nm.append(E('span', 'terr', 'error'));
-        // The same mark the Trace block carries. Without it this list — the COMPLETE history —
-        // was the one surface that showed a warned call as an ordinary one.
-        if (r.flagged) nm.append(E('span', 'tflag', '⚑'));
-        if (r.agent) nm.append(E('span', 'aagent', r.agent));
-        if (r.detail) nm.append(E('span', 'targ', r.detail));
-        // 'running…' is reserved for spans that ARE running. A span closed within the same
-        // millisecond it opened has no duration to report and shows '—' instead: rendering
-        // that as running is a lie the fixtures never showed, carrying only timed tool spans.
-        const dur = E('div', 'tv');
-        const durText = r.status === 'running' ? toolDuration(null, ended) : r.ms != null ? formatToolMs(r.ms) : '—';
-        dur.append(E('span', r.status === 'running' ? 'run' : null, durText));
-        row.append(nm, dur, E('div', 'tv', formatOffset(r.t0 - t0)));
-        // Same router the Trace uses, so a row here opens exactly the drawer its span does.
-        // Unlike the Trace, this list IS the drawer and is replaced by the drill-down, so it
-        // hands over a way back — otherwise the user has to reopen it and re-find their place.
-        if (r.handle) {
-          const h = r.handle;
-          row.onclick = () => openBlock(h, backToList);
-        } else if (r.type === 'note') {
-          // A note has no span to open, and its row shows one ellipsized line — so the click has
-          // to lead somewhere, exactly as it does from the feed.
-          const text = r.detail ?? '';
-          row.onclick = () => openNote(text);
-        }
-        box.append(row);
+        bucket.push(r);
+      }
+      for (const idx of order) {
+        const group = byTurn.get(idx)!;
+        const meta = `${group.length} activit${group.length === 1 ? 'y' : 'ies'}`;
+        // A filter that matched inside a collapsed group would look like no match at all, so
+        // filtering opens every group that has something to show — and, as in the tools drawer,
+        // that forced state is not remembered.
+        box.append(
+          turnGroup(
+            turnLabelMap.get(idx) ?? 'Entry ' + idx,
+            meta,
+            () => group.map((r) => activityRow(r, t0)),
+            q ? true : expandedTurns.has(idx),
+            q ? () => {} : (open) => remember(idx, open),
+          ),
+        );
       }
     };
 

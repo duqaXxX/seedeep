@@ -6620,6 +6620,32 @@ function unlockPageScroll() {
     document.body.style.overflow = "";
   }
 }
+function turnGroup(label, meta, rows, open, onToggle) {
+  const g = E("div", "tgroup" + (open ? " open" : ""));
+  const head = E("button", "tghead");
+  head.type = "button";
+  head.setAttribute("aria-expanded", String(open));
+  head.append(E("span", "tgarrow", "▸"), E("span", "tglabel", label), E("span", "tgmeta", meta));
+  const body = E("div", "tgbody");
+  const fill = () => {
+    for (const r of rows())
+      body.append(r);
+  };
+  if (open)
+    fill();
+  head.onclick = () => {
+    const nowOpen = !g.classList.contains("open");
+    g.classList.toggle("open", nowOpen);
+    head.setAttribute("aria-expanded", String(nowOpen));
+    if (nowOpen)
+      fill();
+    else
+      body.replaceChildren();
+    onToggle(nowOpen);
+  };
+  g.append(head, body);
+  return g;
+}
 function createGraph(container, state, opts = {}) {
   const root = E("div", "graph-root");
   let ended2 = opts.ended ?? false;
@@ -6804,6 +6830,8 @@ function createGraph(container, state, opts = {}) {
   let traceRafPending = false;
   let selectedTurn = null, stripOpen = false, activeFilter = "all";
   let bottomTab = "subs";
+  let openActivityTurns = null;
+  let openToolTurns = null;
   let lastSnap = null;
   let verdicts = new Map;
   const announced = new Set;
@@ -8885,28 +8913,61 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const countEl = E("div", "tcount2", "");
     const box = E("div");
     const backToAll = { label: "all tools", open: () => openAllTools(s) };
+    const callNumber = new Map(s.mainTools.map((t, i) => [t.id, i + 1]));
+    const NO_TURN = -1;
+    const turnKey = (t) => t.turnIndex ?? NO_TURN;
+    const turnsPresent = [...new Set(s.mainTools.map(turnKey))].sort((a, b) => a - b);
+    const turnLabel = (idx) => {
+      if (idx === NO_TURN)
+        return "Before the first entry";
+      const turn = s.turnList.find((t) => t.index === idx);
+      return turn && (entryTitle(s, turn) || entryLabel(turn)) || "Entry " + idx;
+    };
+    const latestTurn = turnsPresent.length ? turnsPresent[turnsPresent.length - 1] : null;
+    const expanded = openToolTurns ?? new Set(latestTurn === null ? [] : [latestTurn]);
+    const remember = (idx, open) => {
+      openToolTurns = expanded;
+      if (open)
+        expanded.add(idx);
+      else
+        expanded.delete(idx);
+    };
+    const toolRow = (t) => {
+      const r = E("div", "ttrow" + (t.error ? " err" : ""));
+      r.onclick = () => openTool(t, "main session", backToAll);
+      const nm = E("div", "tn");
+      nm.append(E("span", "tnum", "#" + (callNumber.get(t.id) ?? 0)));
+      nm.append(document.createTextNode(t.name + "  "));
+      if (t.error)
+        nm.append(E("span", "terr", "error"));
+      const arg = E("span", "targ");
+      arg.textContent = t.arg || "";
+      nm.append(arg);
+      r.append(nm, E("div", "tv", t.ms != null ? formatToolMs(t.ms) : "—"), E("div", "tv", typeof t.ctx === "number" ? kc(t.ctx) + "ch" : "—"));
+      return r;
+    };
     const renderRows = () => {
       const q = filterInput.value.toLowerCase();
-      const source = sortByTime ? [...s.mainTools].sort((a, b) => (b.ms ?? -1) - (a.ms ?? -1)) : [...s.mainTools].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0));
-      const filtered = q ? source.filter((t) => t.name.toLowerCase().includes(q) || (t.arg || "").toLowerCase().includes(q)) : source;
-      countEl.textContent = q ? `${filtered.length} of ${source.length} calls` : `${source.length} calls`;
+      const sorted = (list) => sortByTime ? [...list].sort((a, b) => (b.ms ?? -1) - (a.ms ?? -1)) : [...list].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0));
+      const filtered = q ? s.mainTools.filter((t) => t.name.toLowerCase().includes(q) || (t.arg || "").toLowerCase().includes(q)) : s.mainTools;
+      countEl.textContent = q ? `${filtered.length} of ${s.mainTools.length} calls` : `${s.mainTools.length} calls`;
       box.replaceChildren();
       if (!filtered.length) {
         box.append(E("div", "wdesc", q ? "No tools match the filter." : "No tool output available yet."));
-      } else {
-        for (const t of filtered) {
-          const r = E("div", "ttrow" + (t.error ? " err" : ""));
-          r.onclick = () => openTool(t, "main session", backToAll);
-          const nm = E("div", "tn");
-          nm.append(document.createTextNode(t.name + "  "));
-          if (t.error)
-            nm.append(E("span", "terr", "error"));
-          const arg = E("span", "targ");
-          arg.textContent = t.arg || "";
-          nm.append(arg);
-          r.append(nm, E("div", "tv", t.ms != null ? formatToolMs(t.ms) : "—"), E("div", "tv", typeof t.ctx === "number" ? kc(t.ctx) + "ch" : "—"));
-          box.append(r);
-        }
+        return;
+      }
+      if (selectedTurn !== null) {
+        for (const t of sorted(filtered))
+          box.append(toolRow(t));
+        return;
+      }
+      for (const idx of turnsPresent) {
+        const group = filtered.filter((t) => turnKey(t) === idx);
+        if (!group.length)
+          continue;
+        const ctx = group.reduce((n, t) => n + (t.ctx ?? 0), 0);
+        const meta = `${group.length} call${group.length === 1 ? "" : "s"} · ${kc(ctx)}ch`;
+        box.append(turnGroup(turnLabel(idx), meta, () => sorted(group).map(toolRow), q ? true : expanded.has(idx), q ? () => {} : (open) => remember(idx, open)));
       }
     };
     filterInput.oninput = renderRows;
@@ -9060,6 +9121,41 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const countEl = E("div", "tcount2", "");
     const box = E("div");
     const backToList = { label: "all activity", open: () => openAllActivity() };
+    const latestTurn = rows.length ? rows.reduce((max, r) => r.turnIndex > max ? r.turnIndex : max, rows[0].turnIndex) : null;
+    const expandedTurns = openActivityTurns ?? new Set(latestTurn === null ? [] : [latestTurn]);
+    const remember = (idx, open) => {
+      openActivityTurns = expandedTurns;
+      if (open)
+        expandedTurns.add(idx);
+      else
+        expandedTurns.delete(idx);
+    };
+    const activityRow = (r, t0) => {
+      const row = E("div", `ttrow t-${r.type}` + (r.lane > 0 ? " lane" : "") + (r.status === "error" ? " err" : ""));
+      const nm = E("div", "tn");
+      nm.append(E("span", "tnum", "#" + (activityIndex.get(r.id) ?? 0)));
+      nm.append(document.createTextNode(r.name));
+      if (r.status === "error")
+        nm.append(E("span", "terr", "error"));
+      if (r.flagged)
+        nm.append(E("span", "tflag", "⚑"));
+      if (r.agent)
+        nm.append(E("span", "aagent", r.agent));
+      if (r.detail)
+        nm.append(E("span", "targ", r.detail));
+      const dur2 = E("div", "tv");
+      const durText = r.status === "running" ? toolDuration(null, ended2) : r.ms != null ? formatToolMs(r.ms) : "—";
+      dur2.append(E("span", r.status === "running" ? "run" : null, durText));
+      row.append(nm, dur2, E("div", "tv", formatOffset(r.t0 - t0)));
+      if (r.handle) {
+        const h = r.handle;
+        row.onclick = () => openBlock(h, backToList);
+      } else if (r.type === "note") {
+        const text = r.detail ?? "";
+        row.onclick = () => openNote(text);
+      }
+      return row;
+    };
     const renderRows = () => {
       const q = filterInput.value.toLowerCase();
       const ordered = oldestFirst ? rows : [...rows].reverse();
@@ -9071,37 +9167,26 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         return;
       }
       const t0 = rows.length ? rows[0].t0 : 0;
-      let lastTurnIdx = null;
+      if (selectedTurn !== null) {
+        for (const r of filtered)
+          box.append(activityRow(r, t0));
+        return;
+      }
+      const order = [];
+      const byTurn = new Map;
       for (const r of filtered) {
-        if (selectedTurn === null && r.turnIndex !== lastTurnIdx) {
-          lastTurnIdx = r.turnIndex;
-          const label = turnLabelMap.get(r.turnIndex) ?? "Entry " + r.turnIndex;
-          box.append(E("div", "turn-sep", label));
+        let bucket = byTurn.get(r.turnIndex);
+        if (!bucket) {
+          bucket = [];
+          byTurn.set(r.turnIndex, bucket);
+          order.push(r.turnIndex);
         }
-        const row = E("div", `ttrow t-${r.type}` + (r.lane > 0 ? " lane" : "") + (r.status === "error" ? " err" : ""));
-        const nm = E("div", "tn");
-        nm.append(E("span", "tnum", "#" + (activityIndex.get(r.id) ?? 0)));
-        nm.append(document.createTextNode(r.name));
-        if (r.status === "error")
-          nm.append(E("span", "terr", "error"));
-        if (r.flagged)
-          nm.append(E("span", "tflag", "⚑"));
-        if (r.agent)
-          nm.append(E("span", "aagent", r.agent));
-        if (r.detail)
-          nm.append(E("span", "targ", r.detail));
-        const dur2 = E("div", "tv");
-        const durText = r.status === "running" ? toolDuration(null, ended2) : r.ms != null ? formatToolMs(r.ms) : "—";
-        dur2.append(E("span", r.status === "running" ? "run" : null, durText));
-        row.append(nm, dur2, E("div", "tv", formatOffset(r.t0 - t0)));
-        if (r.handle) {
-          const h = r.handle;
-          row.onclick = () => openBlock(h, backToList);
-        } else if (r.type === "note") {
-          const text = r.detail ?? "";
-          row.onclick = () => openNote(text);
-        }
-        box.append(row);
+        bucket.push(r);
+      }
+      for (const idx of order) {
+        const group = byTurn.get(idx);
+        const meta = `${group.length} activit${group.length === 1 ? "y" : "ies"}`;
+        box.append(turnGroup(turnLabelMap.get(idx) ?? "Entry " + idx, meta, () => group.map((r) => activityRow(r, t0)), q ? true : expandedTurns.has(idx), q ? () => {} : (open) => remember(idx, open)));
       }
     };
     filterInput.oninput = renderRows;

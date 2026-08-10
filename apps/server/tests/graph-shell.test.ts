@@ -3562,6 +3562,16 @@ const activityNames = (container: any) =>
   findByClass(findByClass(container, 'drawer')[0], 'ttrow').map((r: any) =>
     textOf(findByClass(r, 'tn')[0]).replace(/^#\d+/, '').trim(),
   );
+// The turn groups of an Expand-all drawer (both of them build the same furniture). `rows` counts
+// what is RENDERED inside: a collapsed group builds none, which is what keeps the drawer readable.
+const turnGroupsOf = (container: any) =>
+  findByClass(findByClass(container, 'drawer')[0], 'tgroup').map((g: any) => ({
+    label: textOf(findByClass(g, 'tglabel')[0]),
+    meta: textOf(findByClass(g, 'tgmeta')[0]),
+    open: g.className.split(' ').includes('open'),
+    rows: findByClass(g, 'ttrow').length,
+    toggle: () => findByClass(g, 'tghead')[0].onclick(),
+  }));
 
 test('all-activity drawer: shows the activities the 13-row feed ring had to drop', () => {
   const g = globalThis as any;
@@ -3897,6 +3907,131 @@ test('Main tools Expand all: a failed tool row is badged', () => {
   g.document = prevDoc;
 });
 
+// The tools card's own Expand all (its xbtn), not the Live activity one.
+const toolsExpandBtn = (container: any) => {
+  const card = findByClass(container, 'card').find((c: any) =>
+    findByClass(c, 'wtitle').some((t: any) => t.textContent === 'Main tools'),
+  );
+  return findByClass(card, 'xbtn')[0];
+};
+
+test('Main tools Expand all: rows carry a dense #N fixed in call order, not the sort order', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1)]);
+  // Appearance order, deliberately NOT size order: a number taken after the sort would read 1,2,3
+  // top-down whatever the list did, which is exactly the bug that cannot be caught by a fixture
+  // where the two orders agree.
+  snap.mainTools = [
+    { id: 'toolu_1', name: 'Read', ms: 90, arg: 'a.ts', ctx: 100, turnIndex: 1 },
+    { id: 'toolu_2', name: 'Grep', ms: 10, arg: 'b.ts', ctx: 9000, turnIndex: 1 },
+    { id: 'toolu_3', name: 'Bash', ms: 50, arg: 'bun test', ctx: 500, turnIndex: 1 },
+  ];
+  const view = createGraph(container, drivableState(snap));
+  toolsExpandBtn(container).onclick();
+
+  const drawer = findByClass(container, 'drawer')[0];
+  const named = () =>
+    findByClass(drawer, 'ttrow').map((r: any) => [
+      textOf(findByClass(r, 'tnum')[0]),
+      textOf(findByClass(r, 'tn')[0]).replace(/^#\d+/, '').trim().split(' ')[0],
+    ]);
+
+  // Default sort is by size: Grep (9000) first, but it is still the SECOND call made.
+  assert.deepEqual(
+    named(),
+    [
+      ['#2', 'Grep'],
+      ['#3', 'Bash'],
+      ['#1', 'Read'],
+    ],
+    'numbers follow the order the calls happened, the rows follow the size ranking',
+  );
+
+  // Re-sorting by time reorders the rows and moves no number.
+  findByClass(drawer, 'tsort')[0].onclick();
+  assert.deepEqual(
+    named(),
+    [
+      ['#1', 'Read'],
+      ['#3', 'Bash'],
+      ['#2', 'Grep'],
+    ],
+    'time ↓ reorders the rows; #N is unchanged',
+  );
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+test('Main tools Expand all: turn groups keep the size ranking inside, and total the turn', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1), makeTurn(2)]);
+  snap.mainTools = [
+    { id: 'toolu_1', name: 'Read', ms: 90, arg: 'a.ts', ctx: 1000, turnIndex: 1 },
+    { id: 'toolu_2', name: 'Grep', ms: 10, arg: 'b.ts', ctx: 3000, turnIndex: 1 },
+    { id: 'toolu_3', name: 'Bash', ms: 50, arg: 'bun test', ctx: 500, turnIndex: 2 },
+  ];
+  const view = createGraph(container, drivableState(snap));
+  toolsExpandBtn(container).onclick();
+  const drawer = findByClass(container, 'drawer')[0];
+
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.meta, x.open, x.rows]),
+    [
+      ['Turn 1', '2 calls · 4kch', false, 0],
+      ['Turn 2', '1 call · 500ch', true, 1],
+    ],
+    'a group per turn, each carrying its own call count and output total',
+  );
+
+  // Inside the group the ranking survives — that is what this drawer is for.
+  turnGroupsOf(container)[0]!.toggle();
+  const firstGroup = findByClass(drawer, 'tgroup')[0];
+  assert.deepEqual(
+    findByClass(firstGroup, 'ttrow').map(
+      (r: any) => textOf(findByClass(r, 'tn')[0]).replace(/^#\d+/, '').trim().split(' ')[0],
+    ),
+    ['Grep', 'Read'],
+    'biggest first within the turn',
+  );
+
+  // A tool call the transcript could not attribute to a turn still has to be reachable.
+  view.destroy();
+  g.document = prevDoc;
+});
+
+test('Main tools Expand all: a call with no turn groups on its own, ahead of turn 1', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1)]);
+  snap.mainTools = [
+    { id: 'toolu_0', name: 'Read', ms: 5, arg: 'early.ts', ctx: 10, turnIndex: null },
+    { id: 'toolu_1', name: 'Bash', ms: 90, arg: 'bun test', ctx: 200, turnIndex: 1 },
+  ];
+  const view = createGraph(container, drivableState(snap));
+  toolsExpandBtn(container).onclick();
+
+  const groups = turnGroupsOf(container);
+  assert.deepEqual(
+    groups.map((x: any) => x.label),
+    ['Before the first entry', 'Turn 1'],
+    'the unattributed call gets its own group, before the first turn',
+  );
+  groups[0]!.toggle();
+  assert.equal(findByClass(findByClass(container, 'drawer')[0], 'tgroup')[0].children.length, 2, 'its row is built');
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
 test('all-activity drawer: the filter narrows the list and reports the count', () => {
   const g = globalThis as any;
   const prevDoc = g.document;
@@ -4000,6 +4135,9 @@ test('all-activity drawer: selecting a turn scopes the list to that turn', () =>
   state.emit(toolStart('t3', 'Grep', '2026-07-14T10:01:02Z'), 2);
 
   liveExpandBtn(container).onclick();
+  // Unscoped the list is grouped by turn and only the latest group is open, so turn 1's tool has
+  // to be expanded before it can be counted.
+  turnGroupsOf(container)[0]!.toggle();
   assert.equal(activityNames(container).length, 3, "unscoped: both turns' tools, no prompt rows");
   findByClass(container, 'close')[0].onclick();
 
@@ -4078,7 +4216,7 @@ test('all-activity drawer: each row shows a chronological #N number, stable acro
   g.document = prevDoc;
 });
 
-test('all-activity drawer: turn separators group activities, none when scoped to one turn', () => {
+test('all-activity drawer: one collapsible group per turn, only the latest open, none when scoped', () => {
   const g = globalThis as any;
   const prevDoc = g.document;
   g.document = fakeDoc();
@@ -4097,17 +4235,294 @@ test('all-activity drawer: turn separators group activities, none when scoped to
   );
   state.emit(toolStart('t2', 'Bash', '2026-07-14T10:01:01Z'), 2);
 
-  // Unscoped: two turns → two separators.
+  // Unscoped: two turns → two groups, labelled by work ordinal, each stating what it holds.
   liveExpandBtn(container).onclick();
   const drawer = findByClass(container, 'drawer')[0];
-  const seps = () => findByClass(drawer, 'turn-sep').map((s: any) => s.textContent);
-  assert.deepEqual(seps(), ['Turn 1', 'Turn 2'], 'one separator per turn, labelled by work ordinal');
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.meta, x.open, x.rows]),
+    [
+      ['Turn 1', '1 activity', false, 0],
+      ['Turn 2', '1 activity', true, 1],
+    ],
+    'one group per turn; only the most recent starts open, and a collapsed one renders no rows',
+  );
 
-  // Close and scope to turn 2 — no separator should appear.
+  // Toggling is what the header is FOR: it must both open a collapsed group and close an open one.
+  turnGroupsOf(container)[0]!.toggle();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => x.rows),
+    [1, 1],
+    'expanding turn 1 builds its row',
+  );
+  turnGroupsOf(container)[1]!.toggle();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.open, x.rows]),
+    [
+      [true, 1],
+      [false, 0],
+    ],
+    'collapsing turn 2 throws its rows away again',
+  );
+
+  // Close and scope to turn 2 — a single group holding everything says nothing, so: no groups.
   findByClass(container, 'close')[0].onclick();
   selectTurnViaStrip(container, 1); // turn 2
   liveExpandBtn(container).onclick();
-  assert.equal(findByClass(drawer, 'turn-sep').length, 0, 'no separator when scoped to a single turn');
+  assert.equal(findByClass(drawer, 'tgroup').length, 0, 'no groups when scoped to a single turn');
+  assert.deepEqual(activityNames(container), ['Bash'], 'the scoped list is flat');
+
+  g.document = prevDoc;
+});
+
+// Two turns, one tool each, and a third row back in turn 1 — so `t0` order is 1,2,1 and the naive
+// "consecutive runs" grouping renders turn 1 twice. A subagent lane outliving its turn does this.
+function twoTurnsInterleaved(container: any) {
+  const state = drivableState(snapWithTurns([makeTurn(1), makeTurn(2)]));
+  createGraph(container, state);
+  state.emit(
+    { type: 'user-turn', prompt: 'first ask', command: null, timestamp: '2026-07-14T10:00:00Z', agentId: null },
+    1,
+  );
+  state.emit(toolStart('t1', 'Read', '2026-07-14T10:00:01Z'), 1);
+  state.emit(
+    { type: 'user-turn', prompt: 'second ask', command: null, timestamp: '2026-07-14T10:01:00Z', agentId: null },
+    2,
+  );
+  state.emit(toolStart('t2', 'Bash', '2026-07-14T10:01:01Z'), 2);
+  state.emit(toolStart('t3', 'Grep', '2026-07-14T10:02:00Z'), 1);
+  return state;
+}
+
+test('all-activity drawer: a turn interleaved in time is ONE group, not two sharing a state', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  twoTurnsInterleaved(container);
+
+  liveExpandBtn(container).onclick();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.meta]),
+    [
+      ['Turn 1', '2 activities'],
+      ['Turn 2', '1 activity'],
+    ],
+    "turn 1's two rows land in one group, ordered by where the turn first appears",
+  );
+
+  // The bug this guards: two groups keyed by the same turn, where collapsing the second closes
+  // the first on the next rebuild.
+  turnGroupsOf(container)[0]!.toggle();
+  findByClass(findByClass(container, 'drawer')[0], 'tsort')[0].onclick();
+  // Newest-first leads with turn 1, whose Grep is the most recent row of all — the groups follow
+  // the list's order, which is the whole point of ordering them by first appearance.
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 1', true],
+      ['Turn 2', true],
+    ],
+    'both stay open across the re-sort — one key, one group',
+  );
+
+  g.document = prevDoc;
+});
+
+test('all-activity drawer: opening while scoped to a turn does not seed the reader’s choice', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  twoTurnsInterleaved(container);
+
+  // The drawer's FIRST open happens while scoped — the case that could seed the state with a turn
+  // the reader never chose. Explore TOGGLES the strip, so it is opened once and the two selections
+  // click a bar directly.
+  openStrip(container);
+
+  // Scope to turn 1 and open: the list is flat, so the reader has expressed nothing.
+  clickBar(container, 0);
+  liveExpandBtn(container).onclick();
+  assert.equal(findByClass(findByClass(container, 'drawer')[0], 'tgroup').length, 0, 'scoped: no groups');
+  findByClass(container, 'close')[0].onclick();
+
+  // Back to the whole session: the default must still be "the most recent turn", not turn 1.
+  clickBar(container, 0); // clicking the selected turn again clears the scope
+  liveExpandBtn(container).onclick();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 1', false],
+      ['Turn 2', true],
+    ],
+    'the scoped open left no trace: the latest turn is the open one',
+  );
+
+  g.document = prevDoc;
+});
+
+test('all-activity drawer: the default follows the latest turn until the reader touches a header', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const state = twoTurnsInterleaved(container);
+
+  liveExpandBtn(container).onclick();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => x.open),
+    [false, true],
+    'turn 2 is the open one',
+  );
+  findByClass(container, 'close')[0].onclick();
+
+  // The session grows. Nobody has touched a header, so the newest turn must be the open one —
+  // a default frozen at the first open would leave the live turn collapsed forever.
+  state.emit(
+    { type: 'user-turn', prompt: 'third ask', command: null, timestamp: '2026-07-14T10:03:00Z', agentId: null },
+    3,
+  );
+  state.emit(toolStart('t4', 'Edit', '2026-07-14T10:03:01Z'), 3);
+  liveExpandBtn(container).onclick();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 1', false],
+      ['Turn 2', false],
+      ['Entry 3', true],
+    ],
+    'the newest turn is open, the previously-open one is not',
+  );
+
+  g.document = prevDoc;
+});
+
+test('all-activity drawer: collapsing a group while filtering is not remembered', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  twoTurnsInterleaved(container);
+
+  liveExpandBtn(container).onclick();
+  const drawer = findByClass(container, 'drawer')[0];
+  const filter = findByClass(drawer, 'tfilter')[0];
+
+  // Filtering force-opens every group that matches; collapsing one there is about the filtered
+  // list, not about the list underneath.
+  filter.value = 'a'; // Read (turn 1) and Bash (turn 2), one match in each group
+  filter.oninput();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => x.open),
+    [true, true],
+    'a filter opens every matching group',
+  );
+  turnGroupsOf(container)[1]!.toggle(); // collapse turn 2 while filtering
+
+  filter.value = '';
+  filter.oninput();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 1', false],
+      ['Turn 2', true],
+    ],
+    'clearing the filter restores the state the reader actually chose',
+  );
+
+  g.document = prevDoc;
+});
+
+test('all-activity drawer: a group the reader opened survives the drill-down and the crumb back', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const state = drivableState(snapWithTurns([makeTurn(1), makeTurn(2)]));
+  createGraph(container, state);
+
+  state.emit(
+    { type: 'user-turn', prompt: 'first ask', command: null, timestamp: '2026-07-14T10:00:00Z', agentId: null },
+    1,
+  );
+  state.emit(toolStart('t1', 'Read', '2026-07-14T10:00:01Z'), 1);
+  state.emit(
+    { type: 'user-turn', prompt: 'second ask', command: null, timestamp: '2026-07-14T10:01:00Z', agentId: null },
+    2,
+  );
+  state.emit(toolStart('t2', 'Bash', '2026-07-14T10:01:01Z'), 2);
+
+  liveExpandBtn(container).onclick();
+  // Open turn 1, which is NOT the one open by default.
+  turnGroupsOf(container)[0]!.toggle();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => x.open),
+    [true, true],
+    'both groups are open before the drill-down',
+  );
+
+  // Drill into the row, then come back the way the drawer offers: the crumb.
+  findByClass(findByClass(container, 'drawer')[0], 'ttrow')[0].onclick();
+  const crumb = findByClass(container, 'crumb-link')[0];
+  assert.equal(textOf(crumb), 'all activity', 'the drill-down offers the way back');
+  crumb.onclick();
+
+  // Rebuilding the list must not close what the reader opened — on a real session that means
+  // hunting for the group again among dozens.
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 1', true],
+      ['Turn 2', true],
+    ],
+    'the expansion survives the round trip',
+  );
+
+  g.document = prevDoc;
+});
+
+test('all-activity drawer: the group states survive a re-sort, and filtering opens every match', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const state = drivableState(snapWithTurns([makeTurn(1), makeTurn(2)]));
+  createGraph(container, state);
+
+  state.emit(
+    { type: 'user-turn', prompt: 'first ask', command: null, timestamp: '2026-07-14T10:00:00Z', agentId: null },
+    1,
+  );
+  state.emit(toolStart('t1', 'Read', '2026-07-14T10:00:01Z'), 1);
+  state.emit(
+    { type: 'user-turn', prompt: 'second ask', command: null, timestamp: '2026-07-14T10:01:00Z', agentId: null },
+    2,
+  );
+  state.emit(toolStart('t2', 'Bash', '2026-07-14T10:01:01Z'), 2);
+
+  liveExpandBtn(container).onclick();
+  const drawer = findByClass(container, 'drawer')[0];
+
+  // Re-sorting rebuilds the list: the groups must follow the new ORDER and keep who was open.
+  findByClass(drawer, 'tsort')[0].onclick();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open]),
+    [
+      ['Turn 2', true],
+      ['Turn 1', false],
+    ],
+    'newest-first puts the latest turn first and keeps its open state',
+  );
+
+  // A match inside a collapsed group would read as no match at all.
+  const filter = findByClass(drawer, 'tfilter')[0];
+  filter.value = 'read';
+  filter.oninput();
+  assert.deepEqual(
+    turnGroupsOf(container).map((x: any) => [x.label, x.open, x.rows]),
+    [['Turn 1', true, 1]],
+    'only the matching turn survives the filter, and it is open',
+  );
 
   g.document = prevDoc;
 });

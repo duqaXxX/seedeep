@@ -239,21 +239,64 @@
   margin-right: 0.3rem;
   white-space: nowrap;
 }
-/* Turn separator — a labelled rule that groups activities by the turn that produced
-   them. The first child never needs a top rule (nothing above it to separate). */
-.turn-sep {
-  padding: 0.5rem 0.5rem 0.1rem;
+/* Turn group — the unit both Expand-all drawers are built from: a header that says which
+   turn and how much is inside, over the rows. It IS the turn separator (a labelled rule)
+   and the control, so the header keeps the separator's quiet uppercase weight rather than
+   looking like a button. The first child needs no top rule — nothing above it to separate. */
+.tgroup {
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+.tgroup:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+.tghead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.5rem 0.5rem 0.35rem;
+  background: none;
+  border: 0;
+  border-radius: 6px;
   font: 0.6rem / 1 var(--mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--lo);
-  border-top: 1px solid var(--border);
-  margin-top: 0.25rem;
+  cursor: pointer;
+  text-align: left;
 }
-.turn-sep:first-child {
-  border-top: none;
-  margin-top: 0;
-  padding-top: 0.1rem;
+.tghead:hover {
+  background: rgba(125, 211, 252, 0.07);
+  color: var(--cache);
+}
+.tgarrow {
+  flex: none;
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+.tgroup.open .tgarrow {
+  transform: rotate(90deg);
+}
+.tglabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* The measurement sits at the far end, dimmer than the label: it answers "is this the turn
+   I want?" without competing with the turn's own name. */
+.tgmeta {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.75;
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+.tgbody {
+  padding-bottom: 0.25rem;
 }
 
 /* Turn strip (opens ABOVE toprow when Explore is clicked) */
