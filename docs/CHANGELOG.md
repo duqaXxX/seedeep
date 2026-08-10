@@ -2,6 +2,21 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
+## 0.17.0 (2026-08-10)
+
+### The broken tray icon is a cross, not waiting's eye in red (2026-08-10)
+
+*Broken* had been *Needs you*'s geometry in a different colour since the state shipped — the one pair
+in the menu bar a user had to tell apart by hue, on the state that matters most, and red-against-amber
+is the pair a red-green deficiency handles worst. Every other state already differed by shape. It now
+carries **a cross where the iris goes**. Four marks were drawn by the real renderer and looked at at
+18 pt before this one was picked: a broken rim and a fractured iris both read as a rendering fault
+rather than as information, and an exclamation — the most legible of the four — lost on meaning
+rather than on render, because *!* says *look at me*, which is what the amber already says. The eye's
+height, the outline and the badge rule are untouched. The test that used to assert the two states
+shared a geometry now asserts they do not: it compares alpha only, so the colour cannot satisfy it,
+and it demands the difference be a large fraction of the ink rather than merely non-zero.
+
 ## 0.16.0 (2026-08-10)
 
 ### A version check you typed asks npm, not the cache (2026-08-10)

@@ -8,9 +8,9 @@
 //! Two facts fix the numbers below. macOS scales the tray image to **18 points tall** whatever
 //! the buffer contains (tray-icon `platform_impl/macos`), so the buffer's HEIGHT is the mark's
 //! entire size budget and every empty row shrinks it. And the states are told apart by SHAPE
-//! wherever they can be — a slash, a hollow iris, a filled one — rather than by colour alone.
-//! The one pair that shares a shape is working-vs-waiting, and it is blue against amber: the
-//! pair that survives the common colour-vision deficiencies best.
+//! wherever they can be — a slash, a hollow iris, a filled one, a cross — rather than by colour
+//! alone. The one pair that shares a shape is working-vs-waiting, and it is blue against amber:
+//! the pair that survives the common colour-vision deficiencies best.
 
 use tauri::image::Image;
 
@@ -57,6 +57,16 @@ const STROKE: f64 = 0.075;
 const IRIS_R: f64 = 0.185;
 const IRIS_INNER: f64 = 0.115;
 const PUPIL_R: f64 = 0.075;
+
+/// The broken eye's cross: how far an arm reaches from the centre, and its half-thickness.
+///
+/// Sized against the IRIS rather than the lens, because the mark has to sit exactly where every
+/// other state puts its iris or the eye stops being the same eye: an arm's end is 0.177 from the
+/// centre, inside `IRIS_R`. The stroke comes out ~2.9 px in the buffer — the thinnest ink this
+/// mark carries, and the reason it is not thinner is that at 18 pt a hairline greys out instead
+/// of reading as a line.
+const CROSS_ARM: f64 = 0.125;
+const CROSS_STROKE: f64 = 0.045;
 
 /// The slice missing from the working iris, as a fraction of a full turn. A radar wedge: the iris
 /// is filled, and what moves is the 90° hole cut out of it.
@@ -177,19 +187,26 @@ fn in_lens(x: f64, y: f64, shrink: f64) -> bool {
     r > 0.0 && in_disc(x, y, (0.5, 0.5 + EYE_D), r) && in_disc(x, y, (0.5, 0.5 - EYE_D), r)
 }
 
-/// Distance from the point to the icon's diagonal slash, as a segment rather than a line so it
-/// stops at the eye's edge instead of running off the buffer.
+/// Distance from the point to a SEGMENT rather than to the line through it, so a stroke stops at
+/// its endpoints instead of running off the buffer.
+fn seg_distance(x: f64, y: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+    let t = (((x - a.0) * vx + (y - a.1) * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
+    ((x - (a.0 + t * vx)).powi(2) + (y - (a.1 + t * vy)).powi(2)).sqrt()
+}
+
+/// Distance from the point to the icon's diagonal slash.
 fn slash_distance(x: f64, y: f64) -> f64 {
     // Proportional to the lens rather than fixed points on the square: the endpoints are what
     // decide how far the slash overshoots, and a pair written for one set of eye proportions
     // silently pokes out of a different one — extending the ink box, which is the mark's whole
     // size budget. Slightly past the lens on both ends is intended; far past it is not.
-    let (ax, ay) = (0.5 - EYE_A * 0.55, 0.5 + EYE_B * 0.96);
-    let (bx, by) = (0.5 + EYE_A * 0.55, 0.5 - EYE_B * 0.96);
-    let (vx, vy) = (bx - ax, by - ay);
-    let t = (((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
-    let (px, py) = (ax + t * vx, ay + t * vy);
-    ((x - px).powi(2) + (y - py).powi(2)).sqrt()
+    seg_distance(
+        x,
+        y,
+        (0.5 - EYE_A * 0.55, 0.5 + EYE_B * 0.96),
+        (0.5 + EYE_A * 0.55, 0.5 - EYE_B * 0.96),
+    )
 }
 
 /// Where a point sits round the iris, as a fraction of a turn — 0 at 3 o'clock, growing clockwise
@@ -246,11 +263,25 @@ fn is_ink(state: TrayState, phase: f64, x: f64, y: f64, dev: bool) -> bool {
         }
         // Stopped on the user: a filled iris, and STILL. The stillness is half the message — the
         // motion means "working, leave it alone", so a waiting icon that also span would say both.
-        // Failed borrows the same geometry deliberately: both mean "this session has stopped and
-        // needs you", and the colour is what separates being asked from being broken. Giving the
-        // failure a mark of its own is a product call nobody has made — see docs/tray.md.
-        TrayState::Waiting { .. } | TrayState::Failed { .. } => {
+        TrayState::Waiting { .. } => {
             in_disc(x, y, (0.5, 0.5), IRIS_R) && !in_disc(x, y, (0.5, 0.5), PUPIL_R)
+        }
+        // Dead: a cross where every other state puts an iris. Until it had a mark of its own this
+        // was waiting's geometry in red — the one pair told apart by colour alone, and the pair a
+        // red-green deficiency reads worst, on the state that matters most. Three others were
+        // rendered at 18 pt beside this one and rejected: a broken outline and a fractured iris
+        // both read as a rendering fault rather than as information, and an exclamation lost on
+        // MEANING rather than legibility — "!" says look at me, which is exactly what the amber
+        // already says, while a cross says the session is not coming back.
+        TrayState::Failed { .. } => {
+            let arm = |a: (f64, f64), b: (f64, f64)| seg_distance(x, y, a, b) <= CROSS_STROKE;
+            arm(
+                (0.5 - CROSS_ARM, 0.5 - CROSS_ARM),
+                (0.5 + CROSS_ARM, 0.5 + CROSS_ARM),
+            ) || arm(
+                (0.5 - CROSS_ARM, 0.5 + CROSS_ARM),
+                (0.5 + CROSS_ARM, 0.5 - CROSS_ARM),
+            )
         }
     }
 }
@@ -439,20 +470,22 @@ mod tests {
         assert!(TrayState::Failed { count: 2 }.badge());
     }
 
-    /// Failed and Waiting share a geometry ON PURPOSE (both are a still, filled eye), so the colour
-    /// is the entire difference between "it is asking you something" and "it is broken". Asserted
-    /// because `icon_states_are_distinguishable` above would pass on a one-pixel accident, and this
-    /// is the pair a user is most likely to confuse.
+    /// Broken and Needs-you must differ by SHAPE, not only by colour — they are the pair a user is
+    /// most likely to confuse, and red-against-amber is the pair a red-green deficiency reads
+    /// worst. `icon_states_are_distinguishable` cannot carry this: it compares whole buffers, so
+    /// the two colours alone are enough to pass it, which is exactly how the shared geometry went
+    /// unnoticed for as long as it did. This one ignores the colour entirely and looks at the ink.
     #[test]
-    fn a_failed_icon_differs_from_a_waiting_one_by_its_colour() {
-        let failed = render(TrayState::Failed { count: 1 });
-        let waiting = render(TrayState::Waiting { count: 1 });
-        let ink = |b: &[u8]| b.chunks(4).find(|p| p[3] > 200).map(|p| [p[0], p[1], p[2]]);
-        assert_ne!(ink(&failed), ink(&waiting), "the two states must not share an ink colour");
-        // Same lit pixels, different colour: proof the shape is genuinely shared, so a future
-        // change to one geometry cannot silently leave the other behind.
+    fn a_failed_icon_differs_from_a_waiting_one_by_its_shape() {
         let lit = |b: &[u8]| b.chunks(4).map(|p| p[3]).collect::<Vec<_>>();
-        assert_eq!(lit(&failed), lit(&waiting), "the geometry is meant to be the same mark");
+        let failed = lit(&render(TrayState::Failed { count: 1 }));
+        let waiting = lit(&render(TrayState::Waiting { count: 1 }));
+        // Not merely `!=`: a mark differing in a handful of pixels differs on paper and nowhere a
+        // menu bar can show it. The cross replaces the whole iris, so the gap is a large fraction
+        // of the ink either of them carries.
+        let apart = failed.iter().zip(&waiting).filter(|(a, b)| a.abs_diff(**b) > 8).count();
+        let ink = failed.iter().filter(|a| **a > 8).count();
+        assert!(apart * 4 > ink, "only {apart} pixels differ, against {ink} of ink — too close to see");
     }
 
     /// The badge says THAT there is more than one, never how many. Asserted as equality so the

@@ -144,7 +144,7 @@ which gets an icon of its own rather than silence.
 | **Nothing live** | Grey eye, hollow iris ring |
 | **Working, nobody waiting** | Blue eye, iris **turning** — a radar wedge, a turn every two seconds. No count: a number that changes constantly is peripheral noise |
 | **≥1 waiting for you** | Amber eye, filled iris, **still**, plus a badge dot **only above one** |
-| **≥1 broken** | Red eye, filled iris, **still**, same badge rule — a session whose last model call FAILED |
+| **≥1 broken** | Red eye, **a cross where the iris goes**, same badge rule — a session whose last model call FAILED |
 
 The state comes from the same reading the panel draws (see [The poll](#the-poll)), and it is
 repainted only when it changes. **Unreachable covers "nothing configured" as well as "configured and
@@ -205,13 +205,12 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
 
 Three rules behind that table:
 
-- **The states differ by SHAPE, not only by colour** — struck through, hollow, filled, turning. Colour
-  alone would fail a colour-blind user and would vanish entirely under a macOS template image.
-  The exceptions are working-vs-waiting (blue against amber) and **waiting-vs-broken (amber against
-  red), which share a geometry deliberately**: both mean *this session has stopped and needs you*,
-  and the colour is what separates being asked something from being broken. That second pair is the
-  weaker of the two under a red-green deficiency, and giving the failure a mark of its own is an
-  open product call, not an oversight — see [What is not built yet](#what-is-not-built-yet).
+- **The states differ by SHAPE, not only by colour** — struck through, hollow, filled, turning,
+  crossed. Colour alone would fail a colour-blind user and would vanish entirely under a macOS
+  template image. **The one exception is working-vs-waiting**, blue against amber: the pair that
+  survives the common colour-vision deficiencies best. Waiting-vs-broken was the second exception
+  and was the weaker of the two, which is why it stopped being one — see
+  [The broken eye is crossed](#the-broken-eye-is-crossed).
 - **The badge says THAT more than one is waiting, never how many.** A numeral was built first
   and then dropped, on the render rather than on taste: at 18 pt a digit is three pixels wide,
   a `3` comes out a smudge, and the only way to give it room is to shrink the eye until the
@@ -223,6 +222,41 @@ Three rules behind that table:
   touch the outline merged with it and read as a deformity rather than as a count. A mark that
   resizes as it changes meaning reads as a glitch, so a test asserts the eye's height is
   identical across every state.
+
+### The broken eye is crossed
+
+**Broken is a cross where every other state puts an iris.** Until it had a mark of its own it was
+*Needs you*'s geometry in red — the single pair a user had to read by hue, on the state that matters
+most, and red-against-amber is the pair a red-green deficiency handles worst. The rule the rest of
+the icon obeys was simply not obeyed here.
+
+Four marks were drawn **by the real renderer** and looked at at 18 pt before this one was chosen, and
+what the other three lost on is worth knowing, because it is not what a description of them
+suggests:
+
+- **A broken outline** (the rim cut at top and bottom) and **a fractured iris** (the filled disc
+  split by a crack) both read as a rendering fault rather than as information. At this size a gap of
+  two or three pixels is indistinguishable from an artefact, and an icon that looks broken *as an
+  icon* is the one thing the never-absent rule exists to prevent.
+- **An exclamation** was the most legible of the four and lost anyway, on MEANING rather than on
+  render: *!* says *look at me*, which is precisely what the amber already says. A mark that is
+  unmistakable and says the wrong thing is worse than one that is merely quiet.
+- **The cross** says the session is not coming back, which is what the state means: an approval
+  resumes the instant it is answered, a failed call does not resume at all.
+
+It answers to every rule the other marks do. The eye's height is unchanged — the arms are sized
+against the IRIS, not against the lens, so the outline is never touched and a pixel or two of
+daylight is left between an arm's tip and the rim. The badge is the same rule it has always been,
+shared with waiting: *more than one*, never how many. The stroke is the thinnest ink the icon
+carries, about 2.9 px in the buffer, and it is not thinner because at 18 pt a hairline greys out
+instead of reading as a line.
+
+**The test asserts the SHAPE and ignores the colour**
+(`a_failed_icon_differs_from_a_waiting_one_by_its_shape`). The pairwise test that already existed
+compares whole buffers, so two different colours were enough to satisfy it — which is exactly how a
+shared geometry passed a suite that looked like it was checking for one. The new test compares alpha
+only, and demands the difference be a large fraction of the ink rather than merely non-zero: a mark
+differing in a handful of pixels differs on paper and nowhere a menu bar can show it.
 
 ### The development mark
 
@@ -1439,10 +1473,3 @@ confirm page, **created unchecked** — Tauri's `installer.nsi` creates the box 
 `BM_SETCHECK` — and ticking it is what runs `RmDir /r` over `%APPDATA%\app.seedeep.tray` and
 `%LOCALAPPDATA%\app.seedeep.tray`. That is read from Tauri's template, not observed: no Windows
 machine exists here, the same limit *What is signed* states above.
-
-## What is not built yet
-
-- **A mark of its own for the broken state.** *Broken* borrows *Needs you*'s geometry and differs
-  from it only by colour (red against amber), which is the pair a red-green deficiency handles
-  worst. Every other state differs by shape. Giving the failure its own mark is a product decision,
-  not a rendering one, and it has not been made — so it is recorded here rather than invented.
