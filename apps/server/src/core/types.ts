@@ -594,6 +594,28 @@ export interface AgentEndEvent extends EventBase {
 }
 
 /**
+ * A background task REPORTED something while still running — today only a `Monitor`, whose whole
+ * purpose is to forward events (a matching log line, a job that changed state).
+ *
+ * Parsed from the same `<task-notification>` line as an end, and told apart by what it carries:
+ * an `<event>` and NO `<status>`. That is not a stylistic distinction — treating one as an end
+ * would stop a task that is still watching. Only the `enqueue` copy is emitted: Claude Code writes
+ * the identical payload again as `remove` when the queue drains (42 enqueue / 6 remove locally,
+ * every remove repeating an enqueue), and counting the line would double the event.
+ *
+ * It carries no `tool-use-id` — the task id is the only link to the launch, which is why the
+ * reducer keys the count on `taskId` rather than parking it against a call.
+ */
+export interface BackgroundEventEvent extends EventBase {
+  type: 'background-event';
+  /** `<task-id>` — the launch receipt's own id, the only thing tying this to a row. */
+  taskId: string;
+  /** `<event>` — what the task forwarded, verbatim from Claude Code. Anonymized: a monitored log
+   * line can carry anything, paths included. */
+  event: string;
+}
+
+/**
  * A background command's process is GONE, and the transcript will never say so.
  *
  * Not parsed from any line: emitted by the server's liveness probe (`command-liveness.ts`), which
@@ -662,6 +684,7 @@ export type NormalizedEvent =
   | ToolEndEvent
   | AgentEndEvent
   | AgentLaunchEvent
+  | BackgroundEventEvent
   | CommandVanishedEvent
   | WorkflowAgentEvent
   | SubagentMetaEvent

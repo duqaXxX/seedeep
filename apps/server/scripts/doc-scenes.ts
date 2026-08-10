@@ -222,6 +222,43 @@ class Writer {
     });
   }
 
+  /**
+   * A `Monitor`'s launch receipt. The SAME kind of launch as `backgroundLaunch` above under a
+   * different field name — `taskId` + `timeoutMs`, never `backgroundTaskId` — which is exactly why
+   * a monitor used to reach no surface at all.
+   */
+  monitorLaunch(toolUseId: string, taskId: string, timeoutMs = 900_000): string {
+    return this.push({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: `Monitor started (task ${taskId}, timeout ${timeoutMs}ms). You will be notified on each event.`,
+          },
+        ],
+      },
+      toolUseResult: { taskId, timeoutMs, persistent: false },
+    });
+  }
+
+  /**
+   * One event a monitor forwarded while still running: a `<task-id>` and an `<event>`, and no
+   * status — nothing has ended. Only the `enqueue` copy is ever written here, as Claude Code's
+   * `remove` repeat would be the same event counted twice.
+   */
+  monitorEvent(taskId: string, description: string, event: string): string {
+    return this.push({
+      type: 'queue-operation',
+      operation: 'enqueue',
+      content:
+        `<task-notification>\n<task-id>${taskId}</task-id>\n` +
+        `<summary>Monitor event: "${description}"</summary>\n<event>${event}</event>\n</task-notification>`,
+    });
+  }
+
   /** The line that closes a turn. Its absence is what makes a turn read as interrupted. */
   turnEnd(durationMs: number, messageCount: number): string {
     return this.push({ type: 'system', subtype: 'turn_duration', durationMs, messageCount });
@@ -743,10 +780,27 @@ function commands(): Scene {
           description: 'Follow the publish log',
         },
       },
+      // A Monitor: the other kind of background task, and the only one that reports WHILE it runs.
+      // Armed here so the card shows the row a stream produces — the event count and the latest
+      // line — which no Bash can ever have.
+      {
+        id: 'toolu_c6',
+        name: 'Monitor',
+        input: {
+          command: "tail -f /tmp/orbit/logs/build.log | grep -E --line-buffered 'STEP|error'",
+          description: 'Build log steps and errors',
+          persistent: false,
+          timeout_ms: 900_000,
+        },
+      },
     ],
   });
   w.backgroundLaunch('toolu_c4', 'b9j5h1k7l', { timedOutAfterMs: 120_000 });
   w.backgroundLaunch('toolu_c5', 'b3d8f2g6s', { backgroundedByUser: true });
+  w.monitorLaunch('toolu_c6', 'b64ak9obp');
+  w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 1/4 compile — 12.4s');
+  w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 2/4 bundle — 3.1s');
+  w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 3/4 sign — skipped (unsigned build)');
   // c4 is killed from outside — the case that produces the failure nobody is told about in words,
   // and c5 is simply never reported, which is what 8% of real launches do.
   w.notification(

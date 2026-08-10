@@ -4,6 +4,33 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### A Monitor is a background command, and its events are counted (2026-08-10)
+
+A `Monitor` — Claude Code's watcher on a log or a CI run — was invisible: a 0.1s tool row and
+nothing else. Not in the catalogue of background commands, not in the chip that says the session is
+still waiting on something, not in the tray, while the console counted it in the status line. Two
+gates in the parser, each looking for a name the tool does not use. The receipt names its task
+`taskId` where a background `Bash` names it `backgroundTaskId`, so the launch was never marked; and
+the notifications carrying what the monitor SAW have no `<tool-use-id>` and no `<status>`, so all 74
+of them in one measured session produced nothing at all. Even its end was thrown away: recent Claude
+Code writes a proper terminal notification (`Monitor "…" stream ended`), which the parser read and
+the reducer then dropped, because the row it named had never been marked as having launched
+anything.
+
+A monitor now enters every surface a background command already reaches, and its **events are
+counted on its own row** — the count beside `still running`, the latest event on the line below.
+Only the latest, and none of them in the activity feed: a stream that forwards 74 events would
+leave a 13-row feed holding nothing else. The gate that recognises the launch is `taskId` **and**
+`timeoutMs`, never `taskId` alone — a `TaskUpdate` receipt carries a todo's `taskId` (218 locally)
+and a `Workflow`'s carries a run's, and both would otherwise be listed as running commands.
+
+The same audit checked everything else the parser drops. Two more real cases are filed and
+deliberately not fixed here — the background security review, whose notification carries no ids at
+all, and `ScheduleWakeup`, which is a commitment rather than a process. Three suspected losses were
+measured and refuted: a subagent resumed through `SendMessage` is already resolved by task id, and
+the 11 async agent notifications written *before* their launch all close correctly once the child
+transcripts are replayed, as the watcher does.
+
 ### The broken tray icon is a cross, not waiting's eye in red (2026-08-10)
 
 *Broken* had been *Needs you*'s geometry in a different colour since the state shipped — the one pair

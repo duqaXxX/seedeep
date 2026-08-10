@@ -75,6 +75,11 @@ export interface BackgroundCommand {
   /** Who put it in the background. Surfaces label the two minority branches and leave 'agent'
    * bare — it is what a background command already means to a reader. */
   by: BackgroundAuthor;
+  /** How many events the task has forwarded (a `Monitor`; 0 for a command that only ever reports
+   * its end, which is every Bash). */
+  events: number;
+  /** The latest of those events, or null when there have been none. */
+  lastEvent: string | null;
 }
 
 /**
@@ -135,6 +140,8 @@ export function backgroundCommands(tools: readonly ToolNode[], opts: { ended: bo
         // A node written before the reducer carried the author (a snapshot restored from an older
         // build) falls back to the unlabelled branch: an omitted label, never a wrong one.
         by: t.backgroundBy ?? 'agent',
+        events: t.events ?? 0,
+        lastEvent: t.lastEvent ?? null,
       };
     })
     .sort((a, b) => a.since.localeCompare(b.since));

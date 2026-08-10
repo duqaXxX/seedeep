@@ -131,6 +131,7 @@ function createSessionTree(opts) {
   const breakdown = { input: 0, cacheRead: 0, cacheCreation: 0 };
   const cacheTotals = { read: 0, created: 0 };
   const pendingBgOutcome = new Map;
+  const bgEvents = new Map;
   const regions = new Set;
   const skillTurns = new Map;
   const skillInvokes = new Map;
@@ -602,6 +603,9 @@ function createSessionTree(opts) {
         if (e.taskId && sp.runId === null)
           linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === "background-event") {
+      const seen = bgEvents.get(e.taskId);
+      bgEvents.set(e.taskId, { count: (seen?.count ?? 0) + 1, last: e.event });
     } else if (e.type === "command-vanished") {
       const bg = tools.get(e.toolUseId);
       if (bg?.backgroundTaskId && bg.outcomeStatus === null) {
@@ -694,6 +698,11 @@ function createSessionTree(opts) {
         node.vanishedTs = t.vanishedTs;
       if (t.lastSeenAliveTs)
         node.lastSeenAliveTs = t.lastSeenAliveTs;
+      const ev = bgEvents.get(t.backgroundTaskId);
+      if (ev) {
+        node.events = ev.count;
+        node.lastEvent = ev.last;
+      }
     }
     return node;
   }
@@ -2376,6 +2385,7 @@ var LISTENED = {
   "tool-end": true,
   "agent-end": true,
   "agent-launch": true,
+  "background-event": true,
   "command-vanished": true,
   "workflow-agent": true,
   "subagent-meta": true,
@@ -3951,7 +3961,9 @@ function backgroundCommands(tools, opts) {
       sentence: t.outcome ?? null,
       outputFile: t.outputFile ?? null,
       turnIndex: t.turnIndex,
-      by: t.backgroundBy ?? "agent"
+      by: t.backgroundBy ?? "agent",
+      events: t.events ?? 0,
+      lastEvent: t.lastEvent ?? null
     };
   }).sort((a, b) => a.since.localeCompare(b.since));
 }
@@ -7697,7 +7709,13 @@ function createGraph(container, state, opts = {}) {
     }
     l1.append(age);
     r.append(l1);
-    r.append(E("div", "stype", (c.turnIndex !== null ? "launched in turn " + c.turnIndex + " · " : "") + "still running"));
+    const events = c.events > 0 ? " · " + c.events + (c.events === 1 ? " event" : " events") : "";
+    r.append(E("div", "stype", (c.turnIndex !== null ? "launched in turn " + c.turnIndex + " · " : "") + "still running" + events));
+    if (c.lastEvent) {
+      const last = E("div", "sevt", c.lastEvent);
+      last.title = c.lastEvent;
+      r.append(last);
+    }
     return r;
   }
   function bgEndedRow(c) {
@@ -7714,9 +7732,12 @@ function createGraph(container, state, opts = {}) {
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
     if (exit)
       mid.append(E("span", "schip", "exit " + exit[1]));
+    if (c.events > 0)
+      mid.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
     r.append(mid);
     r.append(E("span", "sdur", c.ranMs === null ? "—" : (c.ranAtLeast ? "≥ " : "") + formatDuration(c.ranMs)));
-    r.title = c.sentence ?? c.command;
+    r.title = c.lastEvent ? (c.sentence ?? c.command) + `
+last event: ` + c.lastEvent : c.sentence ?? c.command;
     return r;
   }
   function renderTools(s) {

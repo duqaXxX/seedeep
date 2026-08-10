@@ -317,7 +317,10 @@ export function parseLine(
           // (`Background command "<description>" failed …`), so a list keyed on the shell one-liner
           // would name the same thing two different ways. Measured over the local corpus: 174 of
           // 178 background launches carry it.
-          if (block.name === 'Bash' && block.input && typeof block.input === 'object') {
+          // A `Monitor` is read here for exactly the same reason: it is a background task too, and
+          // Claude Code quotes its description back the same way (`Monitor "<description>" stream
+          // ended`), so the catalogue must name it the same on both lines.
+          if ((block.name === 'Bash' || block.name === 'Monitor') && block.input && typeof block.input === 'object') {
             const ds = block.input.description;
             if (typeof ds === 'string' && ds.length > 0) ev.description = anon(ds, 200);
           }
@@ -422,6 +425,23 @@ export function parseLine(
               by: tur.backgroundedByUser === true ? 'user' : tur.timedOutAfterMs !== undefined ? 'timeout' : 'agent',
             };
           }
+          // A `Monitor`'s receipt: the SAME kind of launch under a different field name — the task
+          // keeps running, reports events, and gets a terminal notification like any background
+          // command, but it names its id `taskId`. Without this the whole call was a 0.1s row.
+          // The gate is `taskId` AND `timeoutMs`, never `taskId` alone: a `TaskUpdate` receipt
+          // carries a todo's `taskId` (218 locally) and a `Workflow`'s carries a run's, and both
+          // would enter the catalogue of running commands. `timeoutMs` is on all 5 real Monitor
+          // receipts and on neither of the others. Always 'agent': no Monitor is promoted by a
+          // timeout or backgrounded by the user — the tool has no foreground mode to be moved from.
+          if (
+            tur &&
+            typeof tur === 'object' &&
+            typeof tur.taskId === 'string' &&
+            typeof tur.timeoutMs === 'number' &&
+            tur.runId === undefined
+          ) {
+            ev.background = { taskId: tur.taskId, by: 'agent' };
+          }
           out.push(ev);
         }
       }
@@ -516,6 +536,16 @@ export function parseLine(
     // tool call, so requiring the spawn name dropped the only signal that agent ever gets.
     // Reporting the fact is this layer's job; deciding what it can be attached to is the
     // reducer's, which is the only one that knows what it holds.
+    // A PROGRESS notification: an `<event>` and no status, which today is how a `Monitor` forwards
+    // what it saw. It ends nothing — the branch below is the one that does — so it is emitted as
+    // its own event and counted against the task. Only the `enqueue` copy: the `remove` written
+    // when the queue drains repeats the payload verbatim, and counting both doubles every event
+    // that happened to be drained (measured 2026-08-10: 42 enqueue, 6 remove, each a repeat).
+    const event = tag(d.content, 'event');
+    const taskId = tag(d.content, 'task-id');
+    if (!status && event && taskId && d.operation === 'enqueue') {
+      out.push({ type: 'background-event', ...base, taskId, event: anon(event, 300) });
+    }
     if (toolUseId || status) {
       // LIMIT: a few background launches never get this line at all; they stay `running` and the
       // view renders them `unknown` once the session is closed. Re-measured 2026-07-29 with the
@@ -533,7 +563,7 @@ export function parseLine(
         type: 'agent-end',
         ...base,
         toolUseId,
-        taskId: tag(d.content, 'task-id'),
+        taskId,
         status,
         // Anonymized: a summary names the command's `description`, and when the launch had none
         // Claude Code falls back to quoting the command itself, paths included.

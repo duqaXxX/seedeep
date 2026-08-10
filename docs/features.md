@@ -197,7 +197,7 @@ default that moved on its own would leave you unsure what you were reading — a
 the closed tab carries **its count and its failures on its own label**, so nothing
 that needs attention is hidden behind an unmarked door.
 
-![The bottom card on its Background commands tab: five commands in launch order — two done, two failed with their exit codes, one still running — beside a Subagents tab carrying the count of the other list](assets/shots/background-commands.png)
+![The bottom card on its Background commands tab: six commands in launch order — two done, two failed with their exit codes, one still running and one monitor carrying its event count — beside a Subagents tab carrying the count of the other list](assets/shots/background-commands.png)
 
 *The same card, switched to its other catalogue. The tab you are not on carries its
 own count, and its failures with it — which is what makes hiding one list behind a
@@ -220,6 +220,24 @@ The row's duration is never the launch call's, which closes in milliseconds and
 measures nothing — and never the SECOND copy of the notification either: Claude
 Code writes it twice, and the later copy is written when its queue drains, up to 76
 minutes after the command actually stopped.
+
+**A `Monitor` is one of these commands**, and for a long time it was the one thing
+in the session you could not see at all. It is Claude Code's watcher — a `tail -f`
+on a build log, a poll of a CI run — and it behaves like any background command:
+armed once, running for as long as it watches, ended by a notification. What told
+it apart was a field name. A background shell command names its task
+`backgroundTaskId`; a monitor names the same thing `taskId`, so the gate that
+recognises one never fired for the other. Everything downstream followed: the call
+closed on its 0.1s receipt, it never entered this catalogue, never reached the chip
+that says the session is still waiting on something, and never reached the tray.
+Meanwhile the console counted it in the status line and seedeep said nothing.
+
+A monitor also does something no other command does: it **reports while it runs**.
+Every line its script emits is an event, and the row says how many have arrived and
+shows the latest one under the title. Only the latest: one measured session
+forwarded 74 events, and putting a stream into the activity feed would have left
+room for nothing else there. The count is what tells a monitor that is working from
+one that has been silent since it was armed.
 
 Its drawer adds the full command, the sentence Claude Code wrote when it ended (the
 only place the exit code exists) and the **output file** — the path where the

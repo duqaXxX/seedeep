@@ -457,11 +457,18 @@ span is the timeout it ran for, and that is not a constant — 45s to 600s acros
 it asked for none. 18 of 114 measured spans are minutes long, not 100ms.) The
 outcome arrives minutes or hours afterwards (p50 2.9m, p90 32m, max 8.8h,
 measured 2026-08-02 over 731 local transcripts: 120 launches, 114 notified), on
-a `queue-operation` line, and is the only place the exit code exists. The span store keeps those spans (and only those: the gate is the
-receipt's `backgroundTaskId`, so a `Monitor` call or a resumed subagent's
-`SendMessage` — both named by `b…` notifications — are never touched) and, when
-a non-clean status lands, reddens the span and replaces its detail with Claude
-Code's own sentence. A clean exit changes nothing on the row.
+a `queue-operation` line, and is the only place the exit code exists. The span
+store keeps those spans and, when a non-clean status lands, reddens the span and
+replaces its detail with Claude Code's own sentence. A clean exit changes nothing
+on the row.
+
+The gate is the RECEIPT, never the notification's id shape: a resumed subagent's
+`SendMessage` is named by a `b…` notification too, and keying on that would redden
+a call that launched nothing. Two receipt shapes pass it — a `Bash`'s
+`backgroundTaskId`, and a `Monitor`'s `taskId` + `timeoutMs`, which is the same
+kind of launch under a different field name. A `Monitor` therefore behaves here
+exactly like a background `Bash`: a launch span that keeps its receipt's duration,
+a `bg` chip, and an outcome that lands when its stream ends.
 
 **The block says it was a background launch, in every state.** A `bg` chip sits
 beside the label, from the launch onwards: without it the row is an ordinary

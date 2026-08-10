@@ -1407,6 +1407,102 @@ test('golden transcript: a background command that completes is not an error', (
   assert.equal(row.outcome, summary, 'the outcome is still stated — it is what closed the row');
 });
 
+// A `Monitor` is Claude Code's OTHER background task, and every shape below is copied from real
+// lines (measured 2026-08-10, 533 sessions): the receipt names its task `taskId`, NOT
+// `backgroundTaskId`, so the gate that recognises a background Bash never fired for it; its
+// progress arrives as notifications carrying a `<task-id>` and an `<event>` and NO status; and on
+// recent versions its end is an ordinary terminal notification, which the reducer used to discard
+// because the launch row had never been marked. The whole call was invisible: a 0.1s tool row.
+const monitorLaunch = (uuid: string, id: string, description: string) =>
+  toolUse(uuid, id, 'Monitor', {
+    command: 'tail -f /home/dev/build.log | grep --line-buffered ERROR',
+    description,
+    persistent: false,
+    timeout_ms: 900_000,
+  });
+const monitorReceipt = (uuid: string, toolUseId: string, taskId: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: '2026-07-14T10:00:02.100Z',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: `Monitor started (task ${taskId}, timeout 900000ms). You will be notified on each event.`,
+        },
+      ],
+    },
+    toolUseResult: { taskId, timeoutMs: 900_000, persistent: false },
+  });
+// One event the monitor forwarded. Written `enqueue` when it arrives and, sometimes, `remove` when
+// the queue drains — the same payload twice (42 enqueue / 6 remove locally, every remove repeating
+// an enqueue), which is why a count keyed on the line would double.
+const monitorEvent = (taskId: string, description: string, event: string, operation = 'enqueue') =>
+  JSON.stringify({
+    type: 'queue-operation',
+    operation,
+    sessionId: 's1',
+    timestamp: '2026-07-14T10:05:00.000Z',
+    content: `<task-notification>\n<task-id>${taskId}</task-id>\n<summary>Monitor event: "${description}"</summary>\n<event>${event}</event>\n</task-notification>`,
+  });
+
+test('golden transcript: a Monitor is a background command, and its events are counted', () => {
+  const running = runLines([
+    typed('u1', 'watch the build'),
+    monitorLaunch('a1', 'toolu_m1', 'Build log errors'),
+    monitorReceipt('u2', 'toolu_m1', 'brjcunvia'),
+    monitorEvent('brjcunvia', 'Build log errors', 'ERROR: missing symbol _main'),
+    monitorEvent('brjcunvia', 'Build log errors', 'ERROR: 1 error generated'),
+    // The drain copy of the line above: the same event leaving the queue, not a second event.
+    monitorEvent('brjcunvia', 'Build log errors', 'ERROR: 1 error generated', 'remove'),
+  ]);
+  const row = running.mainTools.find((t) => t.id === 'toolu_m1')!;
+  assert.equal(row.background, true, 'the receipt is what says this Monitor is watching something');
+  assert.ok(row.startedTs, 'and when — the receipt closed in ms, so the call cannot say');
+  assert.deepEqual(
+    runningBackground(running.mainTools).map((c) => c.toolUseId),
+    ['toolu_m1'],
+    'armed and never told it stopped = still running',
+  );
+  const cmd = backgroundCommands(running.mainTools, { ended: false })[0]!;
+  assert.equal(cmd.label, 'Build log errors', 'the launch description names it, as it does for a Bash');
+  assert.equal(cmd.events, 2, 'two events arrived; the drain copy of one of them is not a third');
+  assert.equal(cmd.lastEvent, 'ERROR: 1 error generated', 'the latest event is what the row can show');
+
+  // The end, on a recent Claude Code: an ordinary terminal notification naming the launch.
+  const ended = runLines([
+    typed('u1', 'watch the build'),
+    monitorLaunch('a1', 'toolu_m1', 'Build log errors'),
+    monitorReceipt('u2', 'toolu_m1', 'brjcunvia'),
+    monitorEvent('brjcunvia', 'Build log errors', 'ERROR: missing symbol _main'),
+    backgroundNotification('toolu_m1', 'brjcunvia', 'completed', 'Monitor "Build log errors" stream ended'),
+  ]);
+  const done = backgroundCommands(ended.mainTools, { ended: false })[0]!;
+  assert.equal(done.state, 'done', 'the stream ending is a clean end, and it is what stops the row');
+  assert.equal(done.events, 1, 'the terminal notification is not an event of the stream');
+  assert.deepEqual(runningBackground(ended.mainTools), [], 'nothing is still being watched');
+});
+
+// A `TaskUpdate` receipt also carries a `taskId` — of a todo, not of a background task. Reading the
+// field name alone would put every todo edit in the catalogue of running commands.
+test('golden transcript: a taskId that is not a background task stays out of the catalogue', () => {
+  const snap = runLines([
+    typed('u1', 'mark it done'),
+    toolUse('a1', 'toolu_t1', 'TaskUpdate', { taskId: 'task-3', status: 'completed' }),
+    JSON.stringify({
+      type: 'user',
+      uuid: 'u2',
+      timestamp: '2026-07-14T10:00:03.000Z',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_t1', content: 'Updated' }] },
+      toolUseResult: { taskId: 'task-3', success: true, statusChange: 'completed', updatedFields: ['status'] },
+    }),
+  ]);
+  assert.deepEqual(backgroundCommands(snap.mainTools, { ended: true }), [], 'a todo is not a background task');
+});
+
 // `killed` is CC's word for a command it stopped ("was stopped"), and it is NOT the same event
 // as a failure. Both are non-clean, so both colour the row; the words tell them apart.
 test('golden transcript: a killed background command reports being stopped', () => {

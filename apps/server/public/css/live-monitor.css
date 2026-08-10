@@ -174,6 +174,17 @@
   margin-top: 0.22rem;
   min-height: 1em;
 }
+/* The latest event a watching task forwarded. One line, truncated: it is raw output (a log
+   line, a build error) and any of it may be arbitrarily long, so it must never grow the row
+   — the rows above it are what the card is for. */
+.subrow.act .sevt {
+  font: 0.68rem var(--mono);
+  color: var(--lo2);
+  margin-top: 0.22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* flex:none + nowrap: with a long title the elapsed time wrapped onto a second line
    and grew the row by 13px, which is what still made three rows scroll. The title is
    the only elastic part of this line — it truncates, everything else holds its size. */

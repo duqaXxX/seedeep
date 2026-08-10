@@ -171,7 +171,7 @@ describe('the commands scene', () => {
         .map((a) => a.title)
         .sort(),
     ).toEqual(['Check the docs against the code', 'Review the diff for correctness']);
-    expect(backgroundCommands(snap.mainTools, { ended: false }).length).toBe(5);
+    expect(backgroundCommands(snap.mainTools, { ended: false }).length).toBe(6);
   });
 
   test('the commands carry every state the figure shows', () => {
@@ -179,8 +179,20 @@ describe('the commands scene', () => {
       acc[c.state] = (acc[c.state] ?? 0) + 1;
       return acc;
     }, {});
-    // Two clean, two failed, and one nothing ever reported — the last is what 8% of real launches do.
-    expect(byState).toEqual({ done: 2, failed: 2, running: 1 });
+    // Two clean, two failed, and two still going — one of those a launch nothing ever reported,
+    // which is what 8% of real ones do, the other the monitor, which is still watching.
+    expect(byState).toEqual({ done: 2, failed: 2, running: 2 });
+  });
+
+  test('the monitor row can state its event count and its latest event', () => {
+    // The figure's claim about the one row a stream produces. A wrong field name in the scene
+    // would draw the row without them and nothing else in the suite can look at a PNG.
+    const monitor = backgroundCommands(snap.mainTools, { ended: false }).find(
+      (c) => c.label === 'Build log steps and errors',
+    );
+    expect(monitor?.state).toBe('running');
+    expect(monitor?.events).toBe(3);
+    expect(monitor?.lastEvent).toBe('STEP 3/4 sign — skipped (unsigned build)');
   });
 
   test('the three authors are all in the picture, one chip each and the majority bare', () => {
@@ -191,7 +203,9 @@ describe('the commands scene', () => {
       acc[c.by] = (acc[c.by] ?? 0) + 1;
       return acc;
     }, {});
-    expect(byAuthor).toEqual({ agent: 3, timeout: 1, user: 1 });
+    // The monitor is one of the bare ones, and cannot be anything else: a Monitor has no
+    // foreground mode, so neither a timeout nor Ctrl+B can be what put it in the background.
+    expect(byAuthor).toEqual({ agent: 4, timeout: 1, user: 1 });
   });
 
   test('a failed row can state its exit code and its real duration, or the picture says nothing', () => {

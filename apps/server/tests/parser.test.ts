@@ -797,8 +797,24 @@ test('a terminal task-notification without a tool-use-id still reports the end',
 test('a task-notification with no status is progress, not an end', () => {
   // 72 of these in the local corpus: `event` + `summary`, no status, nothing has finished.
   // The gate tests for the PRESENCE of a terminal status — an absence test would break the
-  // day Claude Code adds a field.
-  assert.deepEqual(parseLine(notif('<task-id>a49c476</task-id>\n<event>tool_use</event>'), ctx), []);
+  // day Claude Code adds a field. It IS reported, as progress: a Monitor's events are the only
+  // thing it ever produces, and reading them as an end would stop a task still watching.
+  const out = parseLine(notif('<task-id>a49c476</task-id>\n<event>tool_use</event>'), ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.type, 'background-event');
+  assert.equal((out[0] as any).taskId, 'a49c476');
+  assert.equal((out[0] as any).event, 'tool_use');
+});
+
+test('the drain copy of a progress notification is not a second event', () => {
+  // Claude Code writes the same payload again as `remove` when the queue drains (42 enqueue /
+  // 6 remove locally, every remove repeating an enqueue). Counting the line would double it.
+  const drained = JSON.stringify({
+    type: 'queue-operation',
+    operation: 'remove',
+    content: '<task-notification>\n<task-id>a49c476</task-id>\n<event>tool_use</event>\n</task-notification>',
+  });
+  assert.deepEqual(parseLine(drained, ctx), []);
 });
 
 test('a terminal task-notification with a tool-use-id is unchanged', () => {

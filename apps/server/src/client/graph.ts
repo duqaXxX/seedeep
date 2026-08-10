@@ -1984,9 +1984,23 @@ export function createGraph(
     }
     l1.append(age);
     r.append(l1);
+    // A task that FORWARDS things (a Monitor) says how many so far. A Bash reports nothing until
+    // it ends, so the clause is absent rather than reading "0 events" on every row.
+    const events = c.events > 0 ? ' · ' + c.events + (c.events === 1 ? ' event' : ' events') : '';
     r.append(
-      E('div', 'stype', (c.turnIndex !== null ? 'launched in turn ' + c.turnIndex + ' · ' : '') + 'still running'),
+      E(
+        'div',
+        'stype',
+        (c.turnIndex !== null ? 'launched in turn ' + c.turnIndex + ' · ' : '') + 'still running' + events,
+      ),
     );
+    // The latest event, verbatim and on its own line. One, never a list: this card answers what is
+    // still running, and a stream can forward hundreds (74 in one measured session).
+    if (c.lastEvent) {
+      const last = E('div', 'sevt', c.lastEvent);
+      last.title = c.lastEvent;
+      r.append(last);
+    }
     return r;
   }
 
@@ -2014,12 +2028,15 @@ export function createGraph(
     // there rather than inventing a parse of the command's own semantics.
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
     if (exit) mid.append(E('span', 'schip', 'exit ' + exit[1]));
+    // What the stream produced, which for a Monitor is the only thing it ever did. One line here,
+    // so the chip carries the count and the row's tooltip the last event.
+    if (c.events > 0) mid.append(E('span', 'schip', c.events + (c.events === 1 ? ' event' : ' events')));
     r.append(mid);
     // `≥` is not decoration: for a command the probe found gone, the figure is the last instant it
     // was SEEN alive, and nobody ever said when it stopped. Printing it bare would claim a
     // measurement seedeep does not have.
     r.append(E('span', 'sdur', c.ranMs === null ? '—' : (c.ranAtLeast ? '≥ ' : '') + formatDuration(c.ranMs)));
-    r.title = c.sentence ?? c.command;
+    r.title = c.lastEvent ? (c.sentence ?? c.command) + '\nlast event: ' + c.lastEvent : (c.sentence ?? c.command);
     return r;
   }
 

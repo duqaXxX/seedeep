@@ -57,6 +57,13 @@ export interface ToolNode {
   /** When the launch happened, for the age a running command is shown with. Only on a background
    * launch: the whole ledger carrying a timestamp it has no use for would be paid on every tool. */
   startedTs?: string;
+  /** How many events this task has forwarded while running — a `Monitor`'s only visible output.
+   * Absent on a background command that reports nothing, which is every Bash: the count is a
+   * property of a stream, and a row shows it only when there is one. */
+  events?: number;
+  /** The most recent of those events, verbatim. The row shows this one and no more: a stream can
+   * forward hundreds, and the history of them is not what a "what is still running" list is for. */
+  lastEvent?: string;
 }
 // One `file-history-delta`: a single change to one file, attributed to the turn it happened in.
 // Kept as one node per delta rather than pre-aggregated, so `scopeToTurn` can filter by turnIndex
@@ -624,6 +631,11 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     string,
     { summary: string | null; status: string | null; ts: string | null; outputFile: string | null }
   >();
+  // What a still-running background task has REPORTED, keyed by its task id — the only link a
+  // progress notification carries. Keyed on the task and not parked against a call on purpose: an
+  // event can arrive before the launch receipt is written, and a map the snapshot reads at the end
+  // is order-free, where parking would need a drain on every path that could close the row.
+  const bgEvents = new Map<string, { count: number; last: string }>();
   const regions = new Set<string>();
   const skillTurns = new Map<string, number>(); // skill name → assistant lines it drove
   const skillInvokes = new Map<string, number>(); // skill name → explicit Skill tool calls
@@ -1290,6 +1302,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         // the SendMessage's would repoint the child at a tool call that spawned nothing.
         if (e.taskId && sp.runId === null) linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === 'background-event') {
+      // Progress, not an end: the task keeps running and the row keeps saying so. Counted and
+      // kept as "the latest", which is the whole of what a row can show for a stream that may
+      // forward hundreds of lines — the feed deliberately gets none of them (a monitor watching a
+      // build wrote 74 events in one session, and 13 feed rows would have held nothing else).
+      const seen = bgEvents.get(e.taskId);
+      bgEvents.set(e.taskId, { count: (seen?.count ?? 0) + 1, last: e.event });
     } else if (e.type === 'command-vanished') {
       const bg = tools.get(e.toolUseId);
       // Three guards, and each one is the difference between a fact and a guess. It must be a
@@ -1432,6 +1451,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       if (t.description) node.description = t.description;
       if (t.vanishedTs) node.vanishedTs = t.vanishedTs;
       if (t.lastSeenAliveTs) node.lastSeenAliveTs = t.lastSeenAliveTs;
+      // What the task has reported so far. Read from the task-id map rather than accumulated on
+      // the row, so an event that arrived before the receipt still counts.
+      const ev = bgEvents.get(t.backgroundTaskId);
+      if (ev) {
+        node.events = ev.count;
+        node.lastEvent = ev.last;
+      }
     }
     return node;
   }
