@@ -110,7 +110,10 @@ function failedAnnouncement(e: DigestEntry): Announcement {
  */
 function finishedAnnouncement(e: DigestEntry): Announcement | null {
   if (e.turn?.state === 'interrupted') return null;
-  let body = 'Finished';
+  // `Back to you`, not `Finished`: the session has not ended — the turn closed and the session
+  // became the user's again, which is the event. In the case where the turn left nothing on record
+  // this line is the WHOLE notification, so the word carries all of the meaning there is.
+  let body = 'Back to you';
   const said = e.turn?.now?.text;
   if (said) body += `\n${said}`;
   return {
