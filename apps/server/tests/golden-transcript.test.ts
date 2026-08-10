@@ -1486,6 +1486,162 @@ test('golden transcript: a Monitor is a background command, and its events are c
   assert.deepEqual(runningBackground(ended.mainTools), [], 'nothing is still being watched');
 });
 
+// A hook that ATTACHED SOMETHING to a call it watched. Claude Code writes it as an `attachment`
+// line — a type seedeep ignores wholesale, because most of them are the bookkeeping every tool
+// produces (`hook_success`, twice per call). This one is different: it carries the `toolUseID` of
+// the call it is about and text meant to be read. Measured 2026-08-10 over 533 sessions: 65 of
+// them, 39 sessions, and the great majority are the security plugin warning about what was just
+// written. Content is an ARRAY of strings, verified on real lines.
+const hookNote = (uuid: string, toolUseId: string, hookName: string, text: string) =>
+  JSON.stringify({
+    type: 'attachment',
+    uuid,
+    timestamp: '2026-07-14T10:00:05.000Z',
+    attachment: {
+      type: 'hook_additional_context',
+      content: [text],
+      hookName,
+      toolUseID: toolUseId,
+      hookEvent: 'PostToolUse',
+    },
+  });
+// What the 555 SessionStart context injections look like: no `toolUseID`, because they are about
+// the session and not about a call. They must stay out — a note is a note ABOUT something.
+const sessionStartNote = (uuid: string, text: string) =>
+  JSON.stringify({
+    type: 'attachment',
+    uuid,
+    timestamp: '2026-07-14T10:00:00.000Z',
+    attachment: {
+      type: 'hook_additional_context',
+      content: [text],
+      hookName: 'SessionStart',
+      hookEvent: 'SessionStart',
+    },
+  });
+
+const WARNING =
+  '[from security-guidance@claude-code-plugins plugin]\n\n⚠️ Security Warning: Setting innerHTML with untrusted content can lead to XSS.';
+
+test('golden transcript: a hook note lands on the call it is about, and only there', () => {
+  const snap = runLines([
+    typed('u1', 'render the row'),
+    toolUse('a1', 'toolu_x1', 'Write', { file_path: '/home/dev/app/row.ts', content: 'el.innerHTML = raw' }),
+    toolResult('u2', 'toolu_x1', 'File written'),
+    hookNote('h1', 'toolu_x1', 'PostToolUse:Write', WARNING),
+    sessionStartNote('h2', 'A session-wide instruction that belongs to no call at all.'),
+    toolUse('a2', 'toolu_x2', 'Write', { file_path: '/home/dev/app/safe.ts', content: 'el.textContent = raw' }),
+    toolResult('u3', 'toolu_x2', 'File written'),
+  ]);
+  const warned = snap.mainTools.find((t) => t.id === 'toolu_x1')!;
+  const clean = snap.mainTools.find((t) => t.id === 'toolu_x2')!;
+  assert.equal(warned.notes?.length, 1, 'the note is on the call whose id the hook named');
+  assert.equal(
+    warned.notes?.[0]?.source,
+    'security-guidance@claude-code-plugins',
+    'the plugin names itself in the text',
+  );
+  assert.match(warned.notes?.[0]?.text ?? '', /Security Warning/);
+  assert.equal(clean.notes, undefined, 'the other Write was not warned about, and must not say it was');
+  // A SessionStart injection names no call: it belongs to nothing, and inventing an owner for it
+  // would put a session-wide instruction on whichever tool happened to be open.
+  assert.equal(
+    snap.mainTools.filter((t) => t.notes?.length).length,
+    1,
+    'the 555 session-wide injections must reach no call at all',
+  );
+});
+
+// The OTHER shape of a note: a `<task-notification>` carrying nothing but a sentence — no task id,
+// no tool-use id, no status. That is the background security review, which runs with no tool call
+// of its own, so there is no row its findings could ever be attached to.
+const sessionNote = (summary: string, operation = 'enqueue') =>
+  JSON.stringify({
+    type: 'queue-operation',
+    operation,
+    sessionId: 's1',
+    timestamp: '2026-07-14T10:06:00.000Z',
+    content: `<task-notification>\n<summary>${summary}</summary>\n</task-notification>`,
+  });
+
+test('golden transcript: a note about the session belongs to no call, and is not lost', () => {
+  const found = 'Background security review found 2 issues: XSS in src/row.ts; path traversal in src/read.ts';
+  const snap = runLines([
+    typed('u1', 'render the row'),
+    toolUse('a1', 'toolu_x1', 'Write', { file_path: '/home/dev/app/row.ts', content: 'x' }),
+    toolResult('u2', 'toolu_x1', 'File written'),
+    sessionNote(found),
+    // The drain copy: the same notification leaving the queue, not a second review.
+    sessionNote(found, 'remove'),
+  ]);
+  assert.deepEqual(
+    snap.notes.map((n) => n.text),
+    [found],
+    'stated once, and attached to the session — no call ran it',
+  );
+  assert.equal(
+    snap.mainTools.filter((t) => t.notes?.length).length,
+    0,
+    'it names no call, so it must not be pinned on the Write that happened to be last',
+  );
+});
+
+// A `ScheduleWakeup`: the session making an appointment with itself (a self-paced `/loop`). Not a
+// process — nothing runs — so it is not a background command; it is a COMMITMENT, and the only
+// thing the transcript ever says about it is the instant it was set for. Shapes verified over the
+// local corpus (18 receipts): arming carries `scheduledFor` as epoch ms, stopping carries
+// `scheduledFor: 0` with `stopped: true`.
+const wakeupReceipt = (uuid: string, toolUseId: string, result: object, ts = '2026-07-14T10:00:03.000Z') =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: ts,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: 'Next wakeup set.' }] },
+    toolUseResult: result,
+  });
+const AT = Date.parse('2026-07-14T10:25:00.000Z');
+
+test('golden transcript: a scheduled wakeup is what the session is waiting for, until it is stopped', () => {
+  const armed = runLines([
+    typed('u1', 'watch the release every 20 minutes'),
+    toolUse('a1', 'toolu_w1', 'ScheduleWakeup', { delaySeconds: 1500, reason: 'poll the release' }),
+    wakeupReceipt('u2', 'toolu_w1', { scheduledFor: AT, clampedDelaySeconds: 1500, wasClamped: false }),
+  ]);
+  assert.deepEqual(armed.wakeup, {
+    toolUseId: 'toolu_w1',
+    at: '2026-07-14T10:25:00.000Z',
+    turnIndex: 1,
+  });
+
+  // A second arming REPLACES the first: a dynamic loop re-arms every turn, and two rows would
+  // claim the session is waiting for two instants when it is waiting for one.
+  const rearmed = runLines([
+    typed('u1', 'watch the release every 20 minutes'),
+    toolUse('a1', 'toolu_w1', 'ScheduleWakeup', { delaySeconds: 1500, reason: 'poll the release' }),
+    wakeupReceipt('u2', 'toolu_w1', { scheduledFor: AT, clampedDelaySeconds: 1500, wasClamped: false }),
+    toolUse('a2', 'toolu_w2', 'ScheduleWakeup', { delaySeconds: 600, reason: 'poll again' }),
+    wakeupReceipt('u3', 'toolu_w2', { scheduledFor: AT + 600_000, clampedDelaySeconds: 600, wasClamped: false }),
+  ]);
+  assert.equal(rearmed.wakeup?.toolUseId, 'toolu_w2', 'the latest arming is the one the session is waiting for');
+  assert.equal(rearmed.wakeup?.at, new Date(AT + 600_000).toISOString());
+
+  // Stopping the loop cancels it, and the row must go: `stopped: true` with `scheduledFor: 0`.
+  const stopped = runLines([
+    typed('u1', 'watch the release every 20 minutes'),
+    toolUse('a1', 'toolu_w1', 'ScheduleWakeup', { delaySeconds: 1500, reason: 'poll the release' }),
+    wakeupReceipt('u2', 'toolu_w1', { scheduledFor: AT, clampedDelaySeconds: 1500, wasClamped: false }),
+    toolUse('a2', 'toolu_w2', 'ScheduleWakeup', { stop: true }),
+    wakeupReceipt('u3', 'toolu_w2', {
+      scheduledFor: 0,
+      clampedDelaySeconds: 0,
+      wasClamped: false,
+      stopped: true,
+      cancelledWakeups: 1,
+    }),
+  ]);
+  assert.equal(stopped.wakeup, null, 'a stopped loop is waiting for nothing');
+});
+
 // A `TaskUpdate` receipt also carries a `taskId` — of a todo, not of a background task. Reading the
 // field name alone would put every todo edit in the catalogue of running commands.
 test('golden transcript: a taskId that is not a background task stays out of the catalogue', () => {

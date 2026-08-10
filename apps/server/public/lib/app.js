@@ -132,6 +132,9 @@ function createSessionTree(opts) {
   const cacheTotals = { read: 0, created: 0 };
   const pendingBgOutcome = new Map;
   const bgEvents = new Map;
+  let wakeup = null;
+  const pendingNotes = new Map;
+  const sessionNotes = [];
   const regions = new Set;
   const skillTurns = new Map;
   const skillInvokes = new Map;
@@ -464,8 +467,10 @@ function createSessionTree(opts) {
         taskRef: e.taskRef ?? null,
         subagentType: e.subagentType ?? null,
         description: e.description ?? null,
-        turnIndex: owner === null ? currentTurn?.index ?? null : null
+        turnIndex: owner === null ? currentTurn?.index ?? null : null,
+        notes: pendingNotes.get(e.id) ?? null
       });
+      pendingNotes.delete(e.id);
       if (owner === null) {
         if (endedToolUseIds.has(e.id))
           openMainCalls.delete(e.id);
@@ -603,6 +608,21 @@ function createSessionTree(opts) {
         if (e.taskId && sp.runId === null)
           linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === "note") {
+      const note = { source: e.source, hook: e.hook, text: e.text };
+      if (e.toolUseId === null) {
+        if (!sessionNotes.some((n) => n.text === note.text))
+          sessionNotes.push(note);
+      } else {
+        const t = tools.get(e.toolUseId);
+        const list = t ? t.notes ??= [] : pendingNotes.get(e.toolUseId) ?? [];
+        if (!list.some((n) => n.text === note.text))
+          list.push(note);
+        if (!t)
+          pendingNotes.set(e.toolUseId, list);
+      }
+    } else if (e.type === "wakeup") {
+      wakeup = e.at === null ? null : { toolUseId: e.toolUseId, at: new Date(e.at).toISOString() };
     } else if (e.type === "background-event") {
       const seen = bgEvents.get(e.taskId);
       bgEvents.set(e.taskId, { count: (seen?.count ?? 0) + 1, last: e.event });
@@ -680,6 +700,8 @@ function createSessionTree(opts) {
       node.error = true;
     if (t.outcome)
       node.outcome = t.outcome;
+    if (t.notes?.length)
+      node.notes = t.notes.map((n) => ({ ...n }));
     if (t.backgroundTaskId) {
       node.background = true;
       node.backgroundTaskId = t.backgroundTaskId;
@@ -1002,7 +1024,9 @@ function createSessionTree(opts) {
       seq,
       turnList,
       openCall,
-      error: sessionError && { ...sessionError }
+      error: sessionError && { ...sessionError },
+      wakeup: wakeup && { ...wakeup, turnIndex: tools.get(wakeup.toolUseId)?.turnIndex ?? null },
+      notes: sessionNotes.map((n) => ({ ...n }))
     };
   }
   function onChange(cb) {
@@ -2386,6 +2410,8 @@ var LISTENED = {
   "agent-end": true,
   "agent-launch": true,
   "background-event": true,
+  note: true,
+  wakeup: true,
   "command-vanished": true,
   "workflow-agent": true,
   "subagent-meta": true,
@@ -4398,6 +4424,17 @@ function createSpanStore() {
           mutated = true;
         }
       }
+    } else if (e.type === "note") {
+      let found;
+      for (const turn of [...turns.values()].reverse()) {
+        found = turn.spans.find((s) => s.handle?.kind === "tool" && s.handle.toolUseId === e.toolUseId);
+        if (found)
+          break;
+      }
+      if (found && !found.flagged) {
+        found.flagged = true;
+        mutated = true;
+      }
     } else if (e.type === "agent-end") {
       const bgSpan = e.toolUseId ? backgroundSpans.get(e.toolUseId) : undefined;
       if (!bgSpan && e.toolUseId && !spawnById.has(e.toolUseId)) {
@@ -5966,6 +6003,13 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
       bg.textContent = "bg";
       bg.title = "Launched in the background. The duration is the LAUNCH; the command itself may still be " + "running — Claude Code reports it only when it ends.";
       slDiv.append(bg);
+    }
+    if (s.flagged) {
+      const fl = document.createElement("span");
+      fl.className = "sflag";
+      fl.textContent = "⚑";
+      fl.title = "A hook attached a note to this call — open it to read what it said.";
+      slDiv.append(fl);
     }
     const ssDiv = document.createElement("div");
     ssDiv.className = "ss";
@@ -7670,7 +7714,10 @@ function createGraph(container, state, opts = {}) {
     subLiveCard.append(slHead, subLiveHost);
     for (const c of commands)
       subLiveHost.append(bgActiveRow(c));
-    if (commands.length) {
+    const wakeupRow = wakeupActiveRow(full);
+    if (wakeupRow)
+      subLiveHost.append(wakeupRow);
+    if (commands.length || wakeupRow) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0)
         subLiveHost.scrollTop = liveScrollTop;
@@ -7683,7 +7730,7 @@ function createGraph(container, state, opts = {}) {
         subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    if (commands.length)
+    if (commands.length || wakeupRow)
       return;
     const empty = E("div", "slempty");
     empty.append(E("div", "slempty-t", "No subagents running"), E("div", "slempty-s", finished ? finished + " finished this session — see the full list below" : "Spawned subagents will appear here live"));
@@ -7694,6 +7741,35 @@ function createGraph(container, state, opts = {}) {
     timeout: "auto-backgrounded",
     user: "backgrounded by you"
   };
+  function wakeupActiveRow(full) {
+    const w = full.wakeup;
+    if (!w)
+      return null;
+    const at = Date.parse(w.at);
+    if (!Number.isFinite(at) || at <= Date.now())
+      return null;
+    const r = E("div", "subrow act wake");
+    r.onclick = () => openBlock({ kind: "tool", toolUseId: w.toolUseId });
+    const l1 = E("div", "sl1");
+    l1.append(E("span", "sdot"), E("b", null, "Scheduled wakeup"));
+    l1.append(E("span", "schip", "timer"));
+    const left = E("span", "sel");
+    const renderLeft = () => {
+      const ms = at - Date.now();
+      if (ms <= 0) {
+        r.hidden = true;
+        return "due";
+      }
+      return "in " + formatDuration(ms);
+    };
+    left.textContent = renderLeft();
+    liveCounters.push({ el: left, render: renderLeft });
+    l1.append(left);
+    r.append(l1);
+    const at12 = new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    r.append(E("div", "stype", (w.turnIndex !== null ? "armed in turn " + w.turnIndex + " · " : "") + "waking at " + at12));
+    return r;
+  }
   function bgActiveRow(c) {
     const r = E("div", "subrow act");
     r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
@@ -8437,7 +8513,12 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       th.querySelector(".deyebrow")?.append(E("span", "dchip err", "failed"));
     if (t.background)
       th.querySelector(".deyebrow")?.append(E("span", "dchip bg", BG_AUTHOR_LABEL[t.backgroundBy ?? "agent"]));
+    if (t.notes?.length)
+      th.querySelector(".deyebrow")?.append(E("span", "dchip note", t.notes.length === 1 ? "flagged" : t.notes.length + " flags"));
     dbody.append(th);
+    for (const n of t.notes ?? []) {
+      dbody.append(blockD("Hook note", [n.source, n.hook].filter(Boolean).join(" · ") || null, E("pre", null, n.text)));
+    }
     const bgRan = t.background && t.startedTs && t.outcomeTs ? Date.parse(t.outcomeTs) - Date.parse(t.startedTs) : null;
     dbody.append(kpis(kpi2(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended2)), t.background ? kpi2("Ran for", bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : "—") : kpi2("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));
     if (t.background) {
@@ -9181,6 +9262,18 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       if (e.background)
         feed.mark(e.toolUseId);
       if (changed && live)
+        renderFeed();
+    } else if (e.type === "note" && e.toolUseId === null) {
+      const evTs = tsMs(e.timestamp);
+      feed.push({
+        name: "Note",
+        arg: e.text,
+        turnIndex: ctx?.turnIndex ?? null,
+        ts: evTs ?? 0,
+        startMs: null,
+        ms: null
+      });
+      if (live)
         renderFeed();
     } else if (e.type === "agent-end" && e.toolUseId) {
       const clean = e.status === null || e.status === "completed" || e.status === "stopped";

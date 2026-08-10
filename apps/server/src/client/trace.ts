@@ -1010,6 +1010,15 @@ export function createTrace(container: HTMLElement, opts: TraceOpts = {}) {
         'running — Claude Code reports it only when it ends.';
       slDiv.append(bg);
     }
+    // A hook flagged this call. Only the mark is here: the note itself can be a paragraph, and the
+    // block is one line — clicking it opens the drawer, which is where the text is.
+    if (s.flagged) {
+      const fl = document.createElement('span');
+      fl.className = 'sflag';
+      fl.textContent = '⚑';
+      fl.title = 'A hook attached a note to this call — open it to read what it said.';
+      slDiv.append(fl);
+    }
 
     const ssDiv = document.createElement('div');
     ssDiv.className = 'ss';

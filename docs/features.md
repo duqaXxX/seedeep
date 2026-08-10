@@ -246,6 +246,18 @@ tag of its own, and the launch receipt carries the same path in prose (`Output i
 being written to: …`) — on 198 of 198 background launches measured locally, which
 is what makes it readable for a command whose end is never written at all.
 
+**A scheduled wakeup shares the band, and it is not a command.** When a session paces
+itself (a `/loop` with no interval), it arranges to wake itself up later — nothing
+runs in the meantime, nothing holds a file open, there is nothing to probe. It is a
+commitment, so it gets a row of its own, amber rather than green, saying when it will
+wake and how long that is from now.
+
+The row stops being drawn the moment its instant passes, and that is deliberate:
+Claude Code writes **nothing** when a wakeup fires — no line, no marker that tells it
+from any other system message — so seedeep can say what the session is waiting for and
+never that it happened. A countdown running into the negative would be claiming a wait
+that is over; saying "fired" would be claiming knowledge that is not on disk.
+
 A command whose end **Claude Code never wrote** is the one row seedeep cannot read
 off the transcript: 23 of 198 launches measured locally get no notification ever,
 and the rule "launched, nothing said" means *still running* for as long as the
@@ -395,6 +407,40 @@ flagged.
 
 *The badge sits on the row itself, so a failure is visible without opening anything —
 and the call after it succeeded, which is why this is a badge and not a session state.*
+
+## When something else has a warning for you
+
+Hooks and plugins can attach text to a session, and it is text nobody generated for
+your benefit twice: a security plugin objecting to what was just written to a file, a
+background review reporting what it found. In the transcript it lands among the
+bookkeeping every tool produces, and seedeep used to drop all of it — which meant a
+real warning about a real file could pass through a session and leave no mark on any
+surface.
+
+It now shows up where it belongs, and *where* depends on what it is about:
+
+- **A note about one call** — the common case, and the security plugin about a `Write`
+  or an `Edit` is nearly all of it — marks that call. A ⚑ on its Trace block, a chip in
+  its drawer, and the text itself in the drawer, verbatim, above the call's own
+  arguments. It is a warning about what that call did, so it sits with the call and
+  nowhere else.
+- **A note about the session** — work that ran with no call of its own, like the
+  background security review — goes into the activity feed, because there is no row it
+  could be attached to. Pinning it on whichever call happened to be open would be an
+  invention.
+
+![The drawer of a Write the security plugin objected to: a flagged chip beside the tool call, and the warning verbatim above the file the call wrote](assets/shots/hook-note.png)
+
+*The note sits above the call's own arguments, because it is about what that call did.
+The chip in the eyebrow is what tells you there is something to read before you open it.*
+
+Nothing here is modelled as "a security finding". What the transcript records is that
+something had text to say, and the writer names itself in it — a plugin, a hook you
+wrote yourself. A feature keyed on one plugin's name would go blind the day another one
+speaks.
+
+The marks are amber, never red: a call somebody warned about is not a call that failed,
+and the two can be true of the same row at once.
 
 ## Nothing is hidden from you
 

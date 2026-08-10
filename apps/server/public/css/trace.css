@@ -514,6 +514,15 @@
   white-space: nowrap;
   flex: none;
 }
+/* A hook's flag. Amber and glyph-only: the block is one line, and what was said is a paragraph
+   that lives in the drawer. Not red — a call somebody warned about is not a call that failed. */
+.trace-modal .snode .sl .sflag {
+  font: 9px var(--mono);
+  color: var(--warn);
+  line-height: 13px;
+  white-space: nowrap;
+  flex: none;
+}
 .trace-modal .snode .sl i {
   width: 8px;
   height: 8px;

@@ -470,6 +470,15 @@ kind of launch under a different field name. A `Monitor` therefore behaves here
 exactly like a background `Bash`: a launch span that keeps its receipt's duration,
 a `bg` chip, and an outcome that lands when its stream ends.
 
+**A ⚑ means a hook had something to say about this call.** Claude Code writes a hook's
+note as an `attachment` line naming the call's id — a security plugin objecting to what
+was just written, most often — and the block carries the mark while the drawer carries
+the text. Only the mark: a note can be a paragraph, and a block is one line. Amber, not
+red, and independent of the span's status: a call somebody warned about is not a call
+that failed, and both can be true at once. The note arrives AFTER the call closed, so
+the store looks the span up by handle (newest turn first) rather than keeping every
+closed span to catch it — that would grow with the session to serve 65 notes per corpus.
+
 **The block says it was a background launch, in every state.** A `bg` chip sits
 beside the label, from the launch onwards: without it the row is an ordinary
 100ms `Bash`, and its sub-line changes identity when the outcome lands (the

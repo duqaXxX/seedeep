@@ -1911,7 +1911,13 @@ export function createGraph(
     // reports nothing at all until it ends, so it is the one the reader can learn least about
     // anywhere else.
     for (const c of commands) subLiveHost.append(bgActiveRow(c));
-    if (commands.length) {
+    // The session's appointment with itself, in the same band and for the same question: what is
+    // this session still waiting on. Not a command — nothing runs — so it is drawn as its own row,
+    // and it answers to the clock rather than to an event: the transcript never says a wakeup
+    // fired, so the row simply stops being true once its instant has passed.
+    const wakeupRow = wakeupActiveRow(full);
+    if (wakeupRow) subLiveHost.append(wakeupRow);
+    if (commands.length || wakeupRow) {
       measureRowHeight(subLiveHost);
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
     }
@@ -1932,9 +1938,9 @@ export function createGraph(
       if (liveScrollTop > 0) subLiveHost.scrollTop = liveScrollTop;
       return;
     }
-    // With a command running the card is not empty, so the placeholder would be a card
-    // contradicting its own contents.
-    if (commands.length) return;
+    // With a command running — or a wakeup armed — the card is not empty, so the placeholder would
+    // be a card contradicting its own contents.
+    if (commands.length || wakeupRow) return;
     const empty = E('div', 'slempty');
     empty.append(
       E('div', 'slempty-t', 'No subagents running'),
@@ -1965,6 +1971,51 @@ export function createGraph(
     timeout: 'auto-backgrounded',
     user: 'backgrounded by you',
   };
+
+  /**
+   * The wakeup the session has scheduled for itself, or null when it has none — or when the
+   * instant has already passed.
+   *
+   * That last clause is the whole design. Claude Code writes nothing when a wakeup FIRES: no line,
+   * no origin, no prompt source that tells it from any other system message. So this row can only
+   * ever say what the session is waiting FOR, and the honest end of it is to stop saying anything
+   * once the instant is behind us — never "fired", which nothing on disk supports, and never a
+   * countdown running negative, which would state a wait that is over.
+   */
+  function wakeupActiveRow(full: TreeSnapshot): HTMLElement | null {
+    const w = full.wakeup;
+    if (!w) return null;
+    const at = Date.parse(w.at);
+    if (!Number.isFinite(at) || at <= Date.now()) return null;
+    const r = E('div', 'subrow act wake');
+    r.onclick = () => openBlock({ kind: 'tool', toolUseId: w.toolUseId });
+    const l1 = E('div', 'sl1');
+    l1.append(E('span', 'sdot'), E('b', null, 'Scheduled wakeup'));
+    l1.append(E('span', 'schip', 'timer'));
+    const left = E('span', 'sel');
+    // Ticks on the shared counter, like every other age on this card, and hides its own row when
+    // it runs out: the card is rebuilt on events, and a session waiting on a wakeup produces none
+    // — so without this the row would sit there claiming a wait that had expired.
+    const renderLeft = () => {
+      const ms = at - Date.now();
+      if (ms <= 0) {
+        r.hidden = true;
+        return 'due';
+      }
+      return 'in ' + formatDuration(ms);
+    };
+    left.textContent = renderLeft();
+    liveCounters.push({ el: left, render: renderLeft }); // no owner — see backgroundChip
+    l1.append(left);
+    r.append(l1);
+    // The clock time as well as the countdown: a wakeup 40 minutes out is easier to place against
+    // your own day than against a duration.
+    const at12 = new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    r.append(
+      E('div', 'stype', (w.turnIndex !== null ? 'armed in turn ' + w.turnIndex + ' · ' : '') + 'waking at ' + at12),
+    );
+    return r;
+  }
 
   function bgActiveRow(c: BackgroundCommand): HTMLElement {
     const r = E('div', 'subrow act');
@@ -3055,6 +3106,7 @@ export function createGraph(
       outcomeTs?: string;
       outputFile?: string;
       startedTs?: string;
+      notes?: { source: string | null; hook: string | null; text: string }[];
     },
     owner: string | null,
     back?: BackEntry,
@@ -3078,7 +3130,19 @@ export function createGraph(
     // Same word as the row this drawer was opened from — the two must not name one command twice.
     if (t.background)
       th.querySelector('.deyebrow')?.append(E('span', 'dchip bg', BG_AUTHOR_LABEL[t.backgroundBy ?? 'agent']));
+    // A hook had something to say about this call. The chip is the same promise the `failed` one
+    // makes — the eyebrow tells you there is something to read, and the block below is where it is.
+    if (t.notes?.length)
+      th.querySelector('.deyebrow')?.append(
+        E('span', 'dchip note', t.notes.length === 1 ? 'flagged' : t.notes.length + ' flags'),
+      );
     dbody.append(th);
+    // Verbatim, and first: it is a warning about what this call did, so it goes above the call's
+    // own arguments rather than under its output. The source is named when the writer named
+    // itself — a note with no attribution is shown without one, never with a guessed author.
+    for (const n of t.notes ?? []) {
+      dbody.append(blockD('Hook note', [n.source, n.hook].filter(Boolean).join(' · ') || null, E('pre', null, n.text)));
+    }
     // A tool opened from the live feed can still be RUNNING: toolDuration's null case says
     // "running…", the same wording the feed row and the cards use — never a bare '—', which
     // reads as "unknown" when the truth is "not finished".
@@ -4227,6 +4291,20 @@ export function createGraph(
       // looks the same until that outcome lands.
       if (e.background) feed.mark(e.toolUseId);
       if (changed && live) renderFeed();
+    } else if (e.type === 'note' && e.toolUseId === null) {
+      // A note about the SESSION — work that ran with no call of its own. It belongs in the feed
+      // for exactly that reason: nothing else on any surface can carry it, because there is no row
+      // it is about. An ANCHORED note is not pushed here: it already marks the call it names.
+      const evTs = tsMs(e.timestamp);
+      feed.push({
+        name: 'Note',
+        arg: e.text,
+        turnIndex: ctx?.turnIndex ?? null,
+        ts: evTs ?? 0,
+        startMs: null,
+        ms: null,
+      });
+      if (live) renderFeed();
     } else if (e.type === 'agent-end' && e.toolUseId) {
       // The outcome of a background command. Rows are retained PER TURN, so the launch row is
       // usually still in the ring even though the notification lands in a later turn.

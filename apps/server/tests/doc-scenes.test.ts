@@ -184,6 +184,15 @@ describe('the commands scene', () => {
     expect(byState).toEqual({ done: 2, failed: 2, running: 2 });
   });
 
+  test('the warned write carries its note, and no other call does', () => {
+    // The figure's claim: a hook's warning marks the ONE call it named. A wrong field name in the
+    // scene would draw a picture with no flag anywhere, and nothing else in the suite reads a PNG.
+    const warned = snap.mainTools.filter((t) => t.notes?.length);
+    expect(warned.map((t) => t.name)).toEqual(['Write']);
+    expect(warned[0]?.notes?.[0]?.source).toBe('security-guidance@claude-code-plugins');
+    expect(warned[0]?.notes?.[0]?.text).toContain('Security Warning');
+  });
+
   test('the monitor row can state its event count and its latest event', () => {
     // The figure's claim about the one row a stream produces. A wrong field name in the scene
     // would draw the row without them and nothing else in the suite can look at a PNG.

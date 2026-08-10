@@ -37,6 +37,10 @@ export interface TraceSpan {
    * command — which may still be running, or have died hours later. Set from the receipt's
    * `backgroundTaskId`; the row is marked so its duration is not read as the command's. */
   background?: true;
+  /** A hook attached a note to this call (today, the security plugin about a `Write`/`Edit`).
+   * The span carries the FACT, never the text: the Trace marks the block and the drawer reads it,
+   * so a warning of any length cannot bloat a structure the whole timeline is built from. */
+  flagged?: true;
   /** `api` spans only: the mid-turn text of THIS call — the model saying what it is about to do.
    * It names the round the call opens (round = api + its tools). 40.2% of real rounds carry one
    * (measured over 235 transcripts), so the number stays the label of the other 60%. */
@@ -573,6 +577,21 @@ export function createSpanStore(): SpanStore {
           if (turn && ts > turn.t1) turn.t1 = ts;
           mutated = true;
         }
+      }
+    } else if (e.type === 'note') {
+      // The note lands AFTER the call closed (Claude Code writes it right behind the tool_result),
+      // so the span is no longer in `openToolSpans` — and keeping every closed span to catch it
+      // would grow with the session, for a thing that happens 65 times in 533 sessions. It is
+      // searched for instead, newest turn first, which finds it on the first turn in the normal
+      // case and costs a scan only when it does not.
+      let found: TraceSpan | undefined;
+      for (const turn of [...turns.values()].reverse()) {
+        found = turn.spans.find((s) => s.handle?.kind === 'tool' && s.handle.toolUseId === e.toolUseId);
+        if (found) break;
+      }
+      if (found && !found.flagged) {
+        found.flagged = true;
+        mutated = true;
       }
     } else if (e.type === 'agent-end') {
       // Not every notification is about an agent: one naming a tool that launched a background

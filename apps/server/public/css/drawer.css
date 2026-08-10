@@ -181,6 +181,13 @@
   border: 1px solid var(--border2);
   margin-left: 0.4rem;
 }
+/* A hook flagged this call. Amber, not red: something was said about it, which is not the same as
+   the call having failed — and the two chips can appear together. */
+.drawer .dchip.note {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.16);
+  margin-left: 0.4rem;
+}
 /* Identity line: WHAT the entity is (type, model, owner) — never a measurement. */
 .drawer .dsub {
   font: 0.72rem var(--mono);

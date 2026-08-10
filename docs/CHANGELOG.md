@@ -4,6 +4,31 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### A hook's warning reaches the call it is about, and a scheduled wakeup is a visible wait (2026-08-10)
+
+Two more things the parser used to drop, found by auditing everything it dropped besides `Monitor`.
+
+**A hook's note.** Claude Code writes an `attachment` line when a hook has text to say — a security
+plugin objecting to what was just written to a file, most often. seedeep dropped every `attachment`
+wholesale, because nearly all of them are the bookkeeping each tool produces twice per call. What
+separates a note from that noise is the `toolUseID` it carries, and the difference is not academic:
+65 real warnings in 39 sessions (7.3% of the corpus) passed through and left no mark anywhere. A
+note now marks the call it names — a ⚑ on its Trace block, a chip and the verbatim text in its
+drawer — and a note that names no call (the background security review, which runs with no tool
+call of its own) goes into the activity feed, where it can be seen without being pinned on whichever
+call happened to be open. Amber, never red: a call somebody warned about is not a call that failed.
+
+Deliberately not modelled as "a security finding". What the transcript records is that something
+had text to say and the writer names itself in it; a type keyed on one plugin's name would go blind
+the day another one speaks.
+
+**A scheduled wakeup.** A self-paced `/loop` arranges to wake the session later, and the receipt
+(`scheduledFor`) was another shape the parser did not know. It now shows as its own row in the band
+that answers "what is this session still waiting on" — amber rather than green, because nothing is
+running. The row disappears once its instant passes and never says the wakeup fired: measured over
+the corpus, a wakeup that goes off produces no line of its own, so claiming otherwise would be an
+invention, and a countdown running negative would claim a wait that is over.
+
 ### A Monitor is a background command, and its events are counted (2026-08-10)
 
 A `Monitor` — Claude Code's watcher on a log or a CI run — was invisible: a 0.1s tool row and

@@ -64,6 +64,10 @@ export interface ToolNode {
   /** The most recent of those events, verbatim. The row shows this one and no more: a stream can
    * forward hundreds, and the history of them is not what a "what is still running" list is for. */
   lastEvent?: string;
+  /** What a hook had to say about THIS call — today, almost always the security plugin warning
+   * about what was just written. Absent on the great majority of calls, which is the point: a
+   * marked row means someone flagged it. */
+  notes?: { source: string | null; hook: string | null; text: string }[];
 }
 // One `file-history-delta`: a single change to one file, attributed to the turn it happened in.
 // Kept as one node per delta rather than pre-aggregated, so `scopeToTurn` can filter by turnIndex
@@ -395,6 +399,25 @@ export interface TreeSnapshot {
    * Session-scoped like `openCall`, so `scopeToTurn` passes it through unchanged.
    */
   error: { at: number | null; status: string | null; message: string; agentId: string | null } | null;
+  /**
+   * The instant the session has arranged to wake itself at (a self-paced `/loop`), or null when it
+   * has arranged none — never armed, or the loop was stopped.
+   *
+   * Last-wins, and that is the whole rule: a dynamic loop re-arms every turn, so only the newest
+   * arming is what the session is waiting for. Says nothing about whether it FIRED — no line in
+   * the transcript does, so a surface shows this while the instant is still ahead and then stops
+   * showing it, which is the honest shape of what seedeep knows.
+   *
+   * Session-scoped like `openCall`, so `scopeToTurn` passes it through unchanged.
+   */
+  wakeup: { toolUseId: string; at: string; turnIndex: number | null } | null;
+  /**
+   * Text something attached to the SESSION rather than to a call — today only the background
+   * security review, which runs with no tool call of its own and reports what it found.
+   *
+   * Session-scoped like `openCall`: it belongs to no turn, so `scopeToTurn` passes it through.
+   */
+  notes: { source: string | null; hook: string | null; text: string }[];
 }
 
 type WindowFor = (model: string | null) => { window: number; estimated: boolean };
@@ -449,6 +472,7 @@ interface ToolAcc {
   subagentType: string | null; // Agent spawn only — the type it was launched as
   description: string | null; // an Agent spawn's intent, or a Bash's own name for what it runs
   turnIndex: number | null; // which turn this tool belongs to (null for subagent tools)
+  notes: { source: string | null; hook: string | null; text: string }[] | null; // what a hook said about this call
 }
 
 interface TurnAcc {
@@ -636,6 +660,16 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
   // event can arrive before the launch receipt is written, and a map the snapshot reads at the end
   // is order-free, where parking would need a drain on every path that could close the row.
   const bgEvents = new Map<string, { count: number; last: string }>();
+  // The appointment the session has made with itself, or null when it has none. One slot, not a
+  // list: a dynamic loop re-arms every turn, and the older instants are not things it is still
+  // waiting for.
+  let wakeup: { toolUseId: string; at: string } | null = null;
+  // Notes whose call is not on the ledger yet. Same reason as `pendingBgOutcome`: the line order
+  // is not guaranteed, and a note is the only copy of what the hook said.
+  const pendingNotes = new Map<string, { source: string | null; hook: string | null; text: string }[]>();
+  // Notes about the SESSION rather than about a call: work that ran with no tool call of its own
+  // (the background security review) and reported what it found.
+  const sessionNotes: { source: string | null; hook: string | null; text: string }[] = [];
   const regions = new Set<string>();
   const skillTurns = new Map<string, number>(); // skill name → assistant lines it drove
   const skillInvokes = new Map<string, number>(); // skill name → explicit Skill tool calls
@@ -1104,7 +1138,11 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         subagentType: e.subagentType ?? null,
         description: e.description ?? null,
         turnIndex: owner === null ? (currentTurn?.index ?? null) : null,
+        // Kept if a note arrived FIRST: a hook writes its line right after the tool_result, but
+        // the tailer promises no order, and dropping it here would lose the only copy there is.
+        notes: pendingNotes.get(e.id) ?? null,
       });
+      pendingNotes.delete(e.id);
       // A re-sent line re-adds the same id, so this cannot drift; a start arriving after its
       // own end (never observed, but the tailer promises no order) is corrected below.
       if (owner === null) {
@@ -1302,6 +1340,25 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         // the SendMessage's would repoint the child at a tool call that spawned nothing.
         if (e.taskId && sp.runId === null) linkSpawn(sp.toolUseId, e.taskId);
       }
+    } else if (e.type === 'note') {
+      // Appended, never replaced: two writers can speak about the same call, and the second is not
+      // a correction of the first. Deduped on the text, because a re-read line must not double it.
+      const note = { source: e.source, hook: e.hook, text: e.text };
+      // No call named: it is about the SESSION (a background review reporting what it found), and
+      // there is nothing to anchor it to — inventing an owner would put it on whichever call
+      // happened to be open.
+      if (e.toolUseId === null) {
+        if (!sessionNotes.some((n) => n.text === note.text)) sessionNotes.push(note);
+      } else {
+        const t = tools.get(e.toolUseId);
+        const list = t ? (t.notes ??= []) : (pendingNotes.get(e.toolUseId) ?? []);
+        if (!list.some((n) => n.text === note.text)) list.push(note);
+        if (!t) pendingNotes.set(e.toolUseId, list);
+      }
+    } else if (e.type === 'wakeup') {
+      // `at: null` is the stop receipt — the loop was called off, so there is nothing to wait for.
+      // Anything else replaces what was there: the newest arming is the appointment.
+      wakeup = e.at === null ? null : { toolUseId: e.toolUseId, at: new Date(e.at).toISOString() };
     } else if (e.type === 'background-event') {
       // Progress, not an end: the task keeps running and the row keeps saying so. Counted and
       // kept as "the latest", which is the whole of what a row can show for a stream that may
@@ -1435,6 +1492,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     };
     if (t.error) node.error = true;
     if (t.outcome) node.outcome = t.outcome;
+    // Outside the background branch below: any call can be spoken about, and the ones that are
+    // are Write and Edit, which never launch anything.
+    if (t.notes?.length) node.notes = t.notes.map((n) => ({ ...n }));
     // Only a background launch carries these two, and only because something downstream must be
     // able to ask "is it still running, and since when" (`runningBackground`). The call itself
     // closed in milliseconds — the receipt is not the command — so `ms` cannot answer either.
@@ -1907,6 +1967,10 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       turnList,
       openCall,
       error: sessionError && { ...sessionError },
+      // The turn is read off the launch call, not stored with the appointment: the tool node
+      // already knows which turn it belongs to, and a second copy could only disagree with it.
+      wakeup: wakeup && { ...wakeup, turnIndex: tools.get(wakeup.toolUseId)?.turnIndex ?? null },
+      notes: sessionNotes.map((n) => ({ ...n })),
     };
   }
 

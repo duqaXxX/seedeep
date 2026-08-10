@@ -90,6 +90,23 @@
       ]
     },
     {
+      "id": "hook-note",
+      "subject": "A call a hook warned about: the drawer's flagged chip, and the note verbatim above the call's own arguments",
+      "cue": "end",
+      "scene": "commands",
+      "click": [
+        ".fev:has-text(\"row.ts\")"
+      ],
+      "selector": ".drawer.on",
+      "waitFor": ".drawer.on .dchip.note",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/public/css/drawer.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ],
+      "viewportHeight": 760
+    },
+    {
       "id": "subagent-drawer",
       "subject": "A subagent's drawer: its launch intent, its tools, and the verbatim output it returned",
       "cue": "end",

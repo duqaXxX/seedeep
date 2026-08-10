@@ -22,6 +22,8 @@ const LISTENED: Record<NormalizedEvent['type'], true> = {
   'agent-end': true,
   'agent-launch': true,
   'background-event': true,
+  note: true,
+  wakeup: true,
   // Not parsed from any line — the server's liveness probe emits it. The browser listens for the
   // same reason it listens to the rest: it owns its own reducer, and a verdict only the server
   // heard would leave the two disagreeing about what is still running.

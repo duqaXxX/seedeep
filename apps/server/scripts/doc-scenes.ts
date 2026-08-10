@@ -223,6 +223,25 @@ class Writer {
   }
 
   /**
+   * A hook's note about one call — the shape Claude Code writes when a plugin has something to say
+   * about what a tool just did. An `attachment` line, which seedeep otherwise drops wholesale; the
+   * `toolUseID` is what makes this one a note rather than the bookkeeping around it, and the
+   * `content` is an array of BARE strings, exactly as on the real lines.
+   */
+  hookNote(toolUseId: string, hookName: string, text: string): string {
+    return this.push({
+      type: 'attachment',
+      attachment: {
+        type: 'hook_additional_context',
+        content: [text],
+        hookName,
+        toolUseID: toolUseId,
+        hookEvent: 'PostToolUse',
+      },
+    });
+  }
+
+  /**
    * A `Monitor`'s launch receipt. The SAME kind of launch as `backgroundLaunch` above under a
    * different field name — `taskId` + `timeoutMs`, never `backgroundTaskId` — which is exactly why
    * a monitor used to reach no surface at all.
@@ -797,6 +816,29 @@ function commands(): Scene {
   });
   w.backgroundLaunch('toolu_c4', 'b9j5h1k7l', { timedOutAfterMs: 120_000 });
   w.backgroundLaunch('toolu_c5', 'b3d8f2g6s', { backgroundedByUser: true });
+  // A write the security plugin objects to. In the LAST turn on purpose: the figure of its drawer
+  // is cut from the whole-session feed, so the row has to be among the newest activity — and it is
+  // what a note is, an ordinary call among calls nobody warned about.
+  w.call({
+    text: 'And rendering the row while all that runs.',
+    cacheRead: 97_000,
+    out: 180,
+    tools: [
+      {
+        id: 'toolu_c9',
+        name: 'Write',
+        input: { file_path: '/home/dev/orbit/src/client/row.ts', content: 'el.innerHTML = payload.title' },
+      },
+    ],
+  });
+  w.result('toolu_c9', 'File created successfully at: /home/dev/orbit/src/client/row.ts');
+  w.hookNote(
+    'toolu_c9',
+    'PostToolUse:Write',
+    '[from security-guidance@claude-code-plugins plugin]\n\n⚠️ Security Warning: assigning untrusted ' +
+      'content to innerHTML can lead to XSS. Use textContent for plain text, or sanitize the HTML ' +
+      'before inserting it.',
+  );
   w.monitorLaunch('toolu_c6', 'b64ak9obp');
   w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 1/4 compile — 12.4s');
   w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 2/4 bundle — 3.1s');

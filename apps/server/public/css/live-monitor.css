@@ -146,6 +146,20 @@
   border-color: var(--good);
   background: linear-gradient(180deg, rgba(110, 231, 183, 0.1), rgba(110, 231, 183, 0.02));
 }
+/* A scheduled wakeup shares the running row's shape but not its colour: nothing is working, the
+   session is waiting on a clock. Amber is the palette's "waiting", the same reading the tray
+   gives it, so the two rows cannot be mistaken for each other at a glance. */
+.subrow.act.wake {
+  border-color: var(--warn);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.02));
+}
+.subrow.act.wake .sdot {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.18);
+}
+.subrow.act.wake .sel {
+  color: var(--warn);
+}
 .subrow.act .sl1 {
   display: flex;
   align-items: center;

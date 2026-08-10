@@ -46,6 +46,8 @@ function stubs() {
     seq: 0,
     turnList: [],
     openCall: null,
+    wakeup: null,
+    notes: [],
     error: null,
   };
   const treeState = {

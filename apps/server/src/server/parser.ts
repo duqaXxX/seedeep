@@ -5,7 +5,9 @@ import { toolOutcome } from './failure.ts';
 
 // Only these types carry no signal we use. `user`/`system` are now inspected
 // (tool_result blocks, compactMetadata) so they are no longer blanket-ignored.
-const IGNORED = new Set(['mode', 'attachment', 'file-history-snapshot', 'ai-title', 'last-prompt']);
+// `attachment` is NOT in here: it is handled by a branch of its own, which keeps the one shape
+// worth reading (a hook's note about a call) and drops the rest — see `parseLine`.
+const IGNORED = new Set(['mode', 'file-history-snapshot', 'ai-title', 'last-prompt']);
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -236,12 +238,43 @@ export function parseLine(
   }
   if (!d || typeof d !== 'object') return [];
   const type = d.type;
-  if (typeof type !== 'string' || IGNORED.has(type)) return [];
+  if (typeof type !== 'string') return [];
 
   const timestamp: string = typeof d.timestamp === 'string' ? d.timestamp : '';
   const agentId = ctx.agentId ?? null;
   const base = { sessionId: ctx.sessionId, root: ctx.root, timestamp, seq: ctx.seq, agentId };
   const out: NormalizedEvent[] = [];
+
+  // `attachment` is ignored wholesale — nearly every one is the bookkeeping a hook writes around
+  // each call — with ONE door: a hook that attached text about a specific call. The `toolUseID` is
+  // the gate and the anchor; without it the line is about the session (555 SessionStart
+  // injections locally) and there is no call it could honestly be shown on.
+  if (type === 'attachment') {
+    const a = d.attachment;
+    if (a?.type === 'hook_additional_context' && typeof a.toolUseID === 'string' && a.toolUseID) {
+      // An array of BARE STRINGS, not of `{type:'text'}` blocks — verified on real lines, and the
+      // reason `renderedText` (which reads `.text`) returns nothing for it.
+      const text = (
+        Array.isArray(a.content)
+          ? a.content.filter((c: unknown) => typeof c === 'string').join('\n')
+          : renderedText(a.content)
+      ).trim();
+      if (text) {
+        out.push({
+          type: 'note',
+          ...base,
+          toolUseId: a.toolUseID,
+          hook: typeof a.hookName === 'string' ? a.hookName : '',
+          // The writer names itself in a header line the plugin API puts there; absent for a
+          // hook a user wrote by hand, which is a note with no attribution, never a wrong one.
+          source: /^\s*\[from ([^\]]+?)(?: plugin)?\]/.exec(text)?.[1] ?? null,
+          text: anon(text, 2000),
+        });
+      }
+    }
+    return out;
+  }
+  if (IGNORED.has(type)) return [];
 
   if (type === 'assistant') {
     const usage = d.message?.usage;
@@ -442,7 +475,16 @@ export function parseLine(
           ) {
             ev.background = { taskId: tur.taskId, by: 'agent' };
           }
+          // A `ScheduleWakeup` receipt: the session's appointment with itself. Not a background
+          // task — nothing is running — so it gets its own event rather than a row in the
+          // catalogue of commands. Two shapes, told apart by the instant: arming carries
+          // `scheduledFor` as epoch ms, stopping carries 0 with `stopped: true` (18 receipts
+          // locally, 14 arm / 4 stop).
           out.push(ev);
+          // Emitted AFTER the tool-end so the reducer has the closed call to hang a turn index on.
+          if (tur && typeof tur === 'object' && typeof tur.scheduledFor === 'number') {
+            out.push({ type: 'wakeup', ...base, toolUseId: block.tool_use_id, at: tur.scheduledFor || null });
+          }
         }
       }
     }
@@ -543,6 +585,15 @@ export function parseLine(
     // that happened to be drained (measured 2026-08-10: 42 enqueue, 6 remove, each a repeat).
     const event = tag(d.content, 'event');
     const taskId = tag(d.content, 'task-id');
+    // A notification that names NOTHING — no task, no call, no status — and carries only a
+    // sentence. That is work with no tool call of its own reporting to the session: the background
+    // security review, whose findings would otherwise be the one thing in the transcript that
+    // nobody can see. Same `enqueue`-only rule as a progress event, for the same reason.
+    if (!status && !toolUseId && !taskId && !event && d.operation === 'enqueue') {
+      const summary = tag(d.content, 'summary');
+      if (summary)
+        out.push({ type: 'note', ...base, toolUseId: null, hook: null, source: null, text: anon(summary, 2000) });
+    }
     if (!status && event && taskId && d.operation === 'enqueue') {
       out.push({ type: 'background-event', ...base, taskId, event: anon(event, 300) });
     }

@@ -594,6 +594,56 @@ export interface AgentEndEvent extends EventBase {
 }
 
 /**
+ * Something attached TEXT to this session that seedeep would never have derived: a hook warning
+ * about the file just written, a background review reporting what it found.
+ *
+ * Two on-disk shapes, one meaning, and the difference between them is the ANCHOR:
+ * - an `attachment` line whose `hook_additional_context` names a `toolUseID` — a note about that
+ *   CALL. `attachment` is otherwise ignored wholesale (nearly all of them are the bookkeeping every
+ *   tool produces, twice per call), and the id is exactly what separates a note from that noise:
+ *   the 555 SessionStart injections in the local corpus carry none, because they are about the
+ *   session and not about a call;
+ * - a `<task-notification>` carrying nothing but a `<summary>` — a note about the SESSION, from
+ *   work that ran with no tool call of its own (the background security review).
+ *
+ * Measured 2026-08-10 over 533 sessions: 65 anchored notes in 39 of them (7.3%), and 2 unanchored.
+ * Deliberately NOT modelled as "a security finding": what the transcript records is that something
+ * had text to say, and the writer names itself in it. A type keyed on one plugin would go blind
+ * the day another one speaks.
+ */
+export interface NoteEvent extends EventBase {
+  type: 'note';
+  /** The call this is about, or null when it is about the session as a whole. */
+  toolUseId: string | null;
+  /** Claude Code's own hook name (`PostToolUse:Write`), or null when no hook wrote it. */
+  hook: string | null;
+  /** Who wrote it, when the text declares it (`[from <plugin> plugin]`), else null. */
+  source: string | null;
+  /** The note itself, anonymized — a warning quotes the code and the path it is about. */
+  text: string;
+}
+
+/**
+ * The session made an appointment with itself: a `ScheduleWakeup` (the self-paced `/loop`).
+ *
+ * Not a background task — nothing runs, nothing holds a file open, and there is nothing to probe.
+ * It is a COMMITMENT, and the receipt is the only place it is ever stated: `scheduledFor` as epoch
+ * ms when armed, `stopped` with `scheduledFor: 0` when the loop is called off.
+ *
+ * **The FIRING is invisible.** Measured over the local corpus: a wakeup that goes off produces no
+ * line of its own — no `origin`, no `promptSource` that tells it from any other system prompt — so
+ * seedeep can say what the session is waiting FOR and never that it happened. A surface that
+ * claimed otherwise would be inventing it.
+ */
+export interface WakeupEvent extends EventBase {
+  type: 'wakeup';
+  /** The launch call, so a surface can open its drawer. */
+  toolUseId: string;
+  /** When it will fire, as epoch ms. Null when this receipt STOPPED the loop instead of arming it. */
+  at: number | null;
+}
+
+/**
  * A background task REPORTED something while still running — today only a `Monitor`, whose whole
  * purpose is to forward events (a matching log line, a job that changed state).
  *
@@ -685,6 +735,8 @@ export type NormalizedEvent =
   | AgentEndEvent
   | AgentLaunchEvent
   | BackgroundEventEvent
+  | NoteEvent
+  | WakeupEvent
   | CommandVanishedEvent
   | WorkflowAgentEvent
   | SubagentMetaEvent

@@ -51,6 +51,8 @@ function baseSnapshot() {
     commands: [] as any[],
     turnList: [] as any[],
     openCall: null,
+    wakeup: null,
+    notes: [],
     error: null,
   };
 }
@@ -5313,5 +5315,75 @@ test('a card fetch still in flight when the tab closes builds nothing', async ()
   await new Promise((r) => setTimeout(r, 0));
 
   assert.equal(built, 0, 'the closed tab rendered a card anyway');
+  g.document = prevDoc;
+});
+
+// A scheduled wakeup is drawn in the same band as the running commands — it answers the same
+// question, what is this session still waiting on. The invariant that matters is the OTHER half:
+// Claude Code writes nothing when a wakeup fires, so the row must stop being drawn once its
+// instant has passed, rather than sit there counting into the negative.
+test('a scheduled wakeup is drawn while it is ahead, and not once it is behind', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const rowsFor = (at: string) => {
+    const container = g.document.createElement();
+    const snap = baseSnapshot();
+    (snap as any).wakeup = { toolUseId: 'toolu_w1', at, turnIndex: 4 };
+    const state = { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} };
+    const view = createGraph(container, state);
+    const rows = findByClass(container, 'wake');
+    view.destroy();
+    return rows;
+  };
+  const ahead = rowsFor(new Date(Date.now() + 20 * 60_000).toISOString());
+  assert.equal(ahead.length, 1, 'a wakeup still ahead is what the session is waiting for');
+  assert.match(textOf(ahead[0]), /Scheduled wakeup/);
+  assert.match(textOf(ahead[0]), /armed in turn 4/);
+  // Passed: seedeep never learns whether it fired, so the honest thing is to stop claiming a wait.
+  assert.equal(rowsFor(new Date(Date.now() - 60_000).toISOString()).length, 0, 'a passed wakeup is not a wait');
+  g.document = prevDoc;
+});
+
+// A note that names NO call has nowhere to be anchored, so the feed is the only surface that can
+// carry it. Driven through the real event path (`onEvent`), because the row is not built from the
+// snapshot at all — a fixture that only set snapshot state could not tell whether it appears.
+test('a note about the session becomes a feed row', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const text = 'Background security review found 2 issues: XSS in row.ts; path traversal in read.ts';
+  let emit: ((e: any, ctx: any) => void) | null = null;
+  const state = {
+    snapshot: baseSnapshot,
+    onChange: () => () => {},
+    onEvent: (cb: (e: any, ctx: any) => void) => {
+      emit = cb;
+      return () => {};
+    },
+  };
+  const view = createGraph(container, state);
+  emit!(
+    {
+      type: 'note',
+      sessionId: 's1',
+      root: 'cli',
+      timestamp: '2026-07-23T10:05:00.000Z',
+      seq: 1,
+      agentId: null,
+      toolUseId: null,
+      hook: null,
+      source: null,
+      text,
+    },
+    { turnIndex: null, label: null },
+  );
+  const rows = findByClass(container, 'fev').map((r: any) => textOf(r));
+  assert.ok(
+    rows.some((r: string) => r.includes(text)),
+    'the review reported findings and nothing else could show them: ' + JSON.stringify(rows),
+  );
+  view.destroy();
   g.document = prevDoc;
 });
