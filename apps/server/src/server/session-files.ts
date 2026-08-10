@@ -1,4 +1,5 @@
 import { type FilesOrigin, mergeFiles, type SessionFiles, scratchFiles } from '../core/file-attribution.ts';
+import { artifactLabel, mergeArtifacts, type SessionArtifact } from '../core/session-artifacts.ts';
 import { anon } from '../core/text.ts';
 import type { SessionRecord } from '../core/types.ts';
 import { type RepoRef, readCommitFiles, repoFor } from './git.ts';
@@ -13,7 +14,24 @@ import { type Scan, scanSession } from './transcript-scan.ts';
  * cannot stand in for that — `git status` describes the repository, not a session.
  */
 
-const EMPTY: SessionFiles = { files: [], scratch: [], roots: [], origin: { kind: 'no-repo' } };
+const EMPTY: SessionFiles = { files: [], scratch: [], artifacts: [], roots: [], origin: { kind: 'no-repo' } };
+
+/**
+ * The pages the session published, deduped by URL, newest first.
+ *
+ * `anon` leaves the uuid of an artifact URL alone (see `core/text.ts`) — masked, the link would go
+ * nowhere and could not even be copied by hand, which is the whole point of keeping the row.
+ */
+function artifactsOf(scan: Scan): SessionArtifact[] {
+  return mergeArtifacts(
+    scan.artifacts.map((a) => ({
+      url: anon(a.url, 200),
+      label: anon(artifactLabel(a.description, a.path), 120),
+      path: anon(a.path, 200),
+      at: a.at,
+    })),
+  );
+}
 
 /**
  * Every repo a session's cwds resolve to, keyed by TOPLEVEL rather than `--git-common-dir`.
@@ -43,8 +61,11 @@ export async function filesForSession(rec: SessionRecord, others: readonly Sessi
   // the raw path — the scratchpad root is spelled three ways across platforms, and testing the raw
   // form silently classified every temporary as a repo file.
   const scratch = scratchFiles(scan.deltas.map((d) => ({ ...d, path: anon(d.path, 200) })));
+  const artifacts = artifactsOf(scan);
   const repos = await reposOf(scan);
-  if (!repos.length) return { ...EMPTY, scratch };
+  // Both secondary lists come from the transcript, so a session outside a repository still has
+  // them: git answering nothing is not the same as the session having delivered nothing.
+  if (!repos.length) return { ...EMPTY, scratch, artifacts };
 
   const { commits } = await commitsForSession(rec, others);
   const found: Array<{ path: string; at: number; commit: string }> = [];
@@ -71,5 +92,5 @@ export async function filesForSession(rec: SessionRecord, others: readonly Sessi
       ? { kind: 'unknown' }
       : { kind: 'none' };
 
-  return { files, scratch, roots: repos.map((r) => anon(r.toplevel, 200)), origin };
+  return { files, scratch, artifacts, roots: repos.map((r) => anon(r.toplevel, 200)), origin };
 }

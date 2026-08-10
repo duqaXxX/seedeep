@@ -41,6 +41,7 @@ import {
   turnCostStats,
   workingMs,
 } from '../core/selectors.ts';
+import { ARTIFACT_URL, type SessionArtifact } from '../core/session-artifacts.ts';
 import type {
   ActivityGroup,
   AgentNode,
@@ -2250,6 +2251,7 @@ export function createGraph(
     filesDesc.textContent = filesDescText(all);
     if (!all.length) {
       appendScratchRow(scratch.length);
+      appendArtifactRow(artifactsInScope().length);
       return;
     }
     const num = E('div', 'num');
@@ -2288,6 +2290,7 @@ export function createGraph(
       filesHost.append(more);
     }
     appendScratchRow(scratch.length);
+    appendArtifactRow(artifactsInScope().length);
   }
 
   /**
@@ -2309,9 +2312,17 @@ export function createGraph(
     return inScope(displayFiles(filesData.scratch, filesData.roots, true));
   }
 
-  /** Narrow a file list to the selected turn by the instant it was delivered. */
-  function inScope(rows: DisplayFile[]): DisplayFile[] {
-    if (selectedTurn === null) return rows;
+  /** The pages published in scope — the transcript's exclusive: they are on claude.ai, not on disk. */
+  function artifactsInScope(): SessionArtifact[] {
+    if (!filesData) return [];
+    // Scoped by the instant of the PUBLISH, exactly as a file is scoped by the instant of the
+    // commit that delivered it. A row that ignored the turn would contradict its neighbours.
+    return inScope(filesData.artifacts);
+  }
+
+  /** Narrow a list of dated rows to the selected turn by the instant it was delivered. */
+  function inScope<T extends { at: number }>(rows: readonly T[]): T[] {
+    if (selectedTurn === null) return [...rows];
     const range = turnRangeMs(selectedTurn);
     if (!range) return [];
     return rows.filter((f) => f.at >= range[0] && f.at < range[1]);
@@ -2335,6 +2346,17 @@ export function createGraph(
   function appendScratchRow(n: number): void {
     if (!n) return;
     const row = E('div', 'fchgscr', `+${n} scratchpad file${n === 1 ? '' : 's'} — Expand all`);
+    row.onclick = () => openAllFiles();
+    filesHost.append(row);
+  }
+
+  // The published-artifact tally, under the scratchpad row and for the same reason: a page put
+  // online is not a file this session changed, so it can never enter the hero. It counts PAGES,
+  // not publishes — a redeploy overwrites the page it names (20 of 33 local publishes did, one
+  // page six times over), and 33 would be a number the user cannot find anywhere.
+  function appendArtifactRow(n: number): void {
+    if (!n) return;
+    const row = E('div', 'fchgart', `+${n} published artifact${n === 1 ? '' : 's'} — Expand all`);
     row.onclick = () => openAllFiles();
     filesHost.append(row);
   }
@@ -3300,10 +3322,10 @@ export function createGraph(
   // call published anything, and a `Bash` that happened to print an artifact link (a `cat` of a
   // log) did not. The `action: "list"` form returns no URL, so it correctly gets no block.
   //
-  // LIMIT: the host is matched literally. If it ever changes, this degrades to what the drawer did
-  // before — the URL still readable in the output below, just not clickable.
-  const ARTIFACT_URL = /https:\/\/claude\.ai\/code\/artifact\/[\w-]+/;
-
+  // LIMIT: the host is matched literally (in `core/session-artifacts.ts`, shared with the scan that
+  // builds the Changed-files row, so the two can never disagree about what an artifact URL is). If
+  // it ever changes, this degrades to what the drawer did before — the URL still readable in the
+  // output below, just not clickable.
   /** The artifact URL an `Artifact` call's output reports, or null when there is none to link. */
   function publishedUrl(name: string, text: string): string | null {
     if (name !== 'Artifact') return null;
@@ -3886,6 +3908,7 @@ export function createGraph(
     const repoFiles = filesInScope();
     const scratchList = scratchInScope();
     const files = [...repoFiles, ...scratchList];
+    const artifacts = artifactsInScope();
     const scratchTotal = scratchList.length;
     const projectTotal = repoFiles.length;
     // Same split as the card, and for the same reason — but here EVERY group is listed: the
@@ -3894,9 +3917,20 @@ export function createGraph(
       dhead('files changed', 'main session', [
         projectTotal + (projectTotal === 1 ? ' project file' : ' project files'),
         scratchTotal ? scratchTotal + ' scratchpad' : null,
+        artifacts.length ? artifacts.length + ' published' : null,
       ]),
     );
-    dbody.append(kpis(kpi('Project', String(projectTotal)), kpi('Scratchpad', String(scratchTotal))));
+    // The third tile only when there is something to publish about: on a session that published
+    // nothing it would be a permanent zero, and the two-tile row is the normal case by far.
+    dbody.append(
+      artifacts.length
+        ? kpis(
+            kpi('Project', String(projectTotal)),
+            kpi('Scratchpad', String(scratchTotal)),
+            kpi('Published', String(artifacts.length)),
+          )
+        : kpis(kpi('Project', String(projectTotal)), kpi('Scratchpad', String(scratchTotal))),
+    );
 
     const filterInput = E('input', 'tfilter') as HTMLInputElement;
     filterInput.placeholder = 'filter by path';
@@ -3937,7 +3971,11 @@ export function createGraph(
       countEl.textContent = narrowed ? `${filtered.length} of ${files.length} files` : `${files.length} files`;
       box.replaceChildren();
       if (!filtered.length) {
-        box.append(E('div', 'wdesc', 'No files match the filters.'));
+        // Blaming a filter nobody set is the same defect the waiting state above exists to avoid —
+        // and it became easy to reach the moment the published-artifacts row started opening this
+        // drawer on sessions whose only delivery was a page. With nothing narrowed, the list is
+        // empty because the SESSION is, so it says which of those states it is in.
+        box.append(E('div', 'wdesc', narrowed ? 'No files match the filters.' : filesDescText(repoFiles)));
         return;
       }
       // Grouped, project first. The headings track what is DISPLAYED, not what the session
@@ -3986,6 +4024,31 @@ export function createGraph(
         box,
       ),
     );
+    // The published pages, in a block of their own below the list. Deliberately NOT a third group
+    // inside it: that list is narrowed by path and by file extension, and a page has neither — a
+    // row folded in there would have made every file mechanism carry an exception for it.
+    if (artifacts.length) {
+      const abox = E('div');
+      for (const a of artifacts) {
+        const row = E('div', 'fchgarow');
+        row.append(E('div', 'fchgalbl', a.label));
+        // A real anchor, built as a node and never as markup: the label and the URL both come from
+        // a transcript, which is arbitrary text somebody's tool printed.
+        const link = E('a', 'dlink fchgaurl', a.url) as HTMLAnchorElement;
+        link.href = a.url;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        row.append(link);
+        abox.append(row);
+      }
+      dbody.append(
+        blockD(
+          artifacts.length === 1 ? 'Published artifact' : 'Published artifacts',
+          'Pages this session put online with the Artifact tool. They live on claude.ai, not on this machine — the HTML they were built from is a scratchpad temporary, the link is what outlasts the session. One row per page: a redeploy overwrites the page it names.',
+          abox,
+        ),
+      );
+    }
     openDrawer();
   }
 

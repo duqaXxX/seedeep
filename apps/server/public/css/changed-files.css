@@ -72,6 +72,56 @@
   color: var(--ink);
   opacity: 1;
 }
+/* Published-artifact tally, under the scratchpad row. Same weight and the same rule — outside the
+   count above — so the two read as one aside rather than as two competing claims.
+   It carries the separating rule itself because the scratchpad row is SKIPPED when that count is
+   zero (measured: 1 of the 8 local publish sessions), and without it the row then sits flush
+   against the extension bars — reading as one more kind of project file, the very thing the rule
+   exists to prevent. When both asides are on screen the second drops it: one rule, one boundary. */
+.fchgart {
+  font: 0.72rem var(--mono);
+  color: var(--lo2);
+  opacity: 0.8;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.fchgscr + .fchgart {
+  margin-top: 0.35rem;
+  padding-top: 0;
+  border-top: none;
+}
+.fchgart:hover {
+  color: var(--ink);
+  opacity: 1;
+}
+/* A published page in the drawer: what it is, then where it lives. Two lines rather than a grid
+   row — an artifact URL is ~55 monospace characters and would push any second column off the
+   panel — and the link is the only clickable thing, so the row itself takes no pointer. */
+.fchgarow {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+}
+.fchgarow:hover {
+  background: rgba(125, 211, 252, 0.07);
+}
+/* The description wraps to two lines on every real page (measured: 73–163 characters, median 115),
+   so line-height alone put the link as close to the label's second line as those two lines are to
+   each other — the row read as one paragraph. The gap is what separates what it is from where it
+   is. */
+.fchgalbl {
+  font-size: 0.78rem;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}
+.fchgaurl {
+  display: block;
+  font: 0.7rem var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Drawer group heading (Project / Scratchpad). Rendered only while BOTH groups are on screen —
    a heading names a separation, so a list showing one group gets none. */
 .fchggrp {

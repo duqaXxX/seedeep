@@ -124,9 +124,12 @@ command or produced by a build is invisible to it (measured on one commit: 8 of 
 files). And which session made a shell write is recorded nowhere at all, so it is
 never guessed. The ledger is still read for the one thing git cannot see — the
 per-session scratchpad Claude Code uses for throwaway scripts, which lives outside
-your repository and gets its own row instead of inflating the total. Expand the
-card for the complete list, project first then scratchpad, narrowed by a path
-filter and by type. Full rules: [`changed-files.md`](changed-files.md).
+your repository and gets its own row instead of inflating the total. A page the
+session published with the Artifact tool gets a row of the same kind: it is not a
+file that changed, it is something put online, and the link is the only part of it
+that outlasts the session. Expand the card for the complete list, project first
+then scratchpad, narrowed by a path filter and by type, with the published pages
+listed under it as links. Full rules: [`changed-files.md`](changed-files.md).
 
 ### The output row — Main tools · Commits · Cards
 

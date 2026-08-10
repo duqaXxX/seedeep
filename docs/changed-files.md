@@ -1,10 +1,10 @@
 # Changed files
 
 seedeep shows, on a session, the files that session delivered. This document states the CURRENT
-rules. Code: `src/core/file-attribution.ts` (pure), `src/server/git.ts` (the git reads),
-`src/server/transcript-scan.ts` (one cached pass over a transcript, shared with commits and cards),
-`src/server/session-files.ts` (the join), `renderFiles`/`openAllFiles` in `src/client/graph.ts`,
-`GET /api/files`.
+rules. Code: `src/core/file-attribution.ts` (pure), `src/core/session-artifacts.ts` (pure),
+`src/server/git.ts` (the git reads), `src/server/transcript-scan.ts` (one cached pass over a
+transcript, shared with commits and cards), `src/server/session-files.ts` (the join),
+`renderFiles`/`openAllFiles` in `src/client/graph.ts`, `GET /api/files`.
 
 ## The count is the session's commits, and nothing else
 
@@ -94,11 +94,45 @@ toplevel. Every root a session touched is sent to the client, and a row is short
 longest one that matches — a session moving between two repos would otherwise show one set of rows
 relative and the other absolute.
 
+## The published-artifacts row
+
+A page published with the `Artifact` tool is the one thing a session delivers that does not live on
+this machine at all: the HTML behind it is a scratchpad temporary, while the page stays online.
+Measured 2026-08-10 over the local corpus — 12 distinct pages, all 12 still reachable, the oldest 29
+days — so the URL is what survives the session, and losing it loses the work.
+
+It gets its own row under the bars (`+N published artifacts`), never the hero, for the same reason
+the scratchpad row does: a page put online is not a file this session changed. The drawer then lists
+each page as a real link, under its own heading, with a third KPI tile.
+
+**The row counts PAGES, not publishes.** A redeploy passes the page's own `url` and overwrites it —
+measured, 20 of 33 local publishes did, and one session republished a single page six times. `33`
+would be a number the reader cannot find anywhere; the last publish to a URL wins, so the label is
+the description that matches what is online now. Same rule as a path delivered by several commits.
+
+**A publish is recognised by its `file_path`, not by the URL in its output.** The reading form
+(`action: "list"`) returns a result FULL of artifact URLs — one per page the user owns — and matching
+on the URL alone turned one listing into a dozen rows claiming this session had published them all.
+A publish whose result names no page (it failed) leaves no row: only the server can say a page
+exists.
+
+**Attaching the URL to the scratchpad row it came from was tried and REJECTED.** The join key is
+there (`Published <file> at <url>`), but only 11 of 33 local publishes have their file in the same
+session's ledger: the other 22 are HTML written by a script, which Claude Code's own file-writing
+tools never saw — the same missing half documented above. Two prototypes in three would have
+vanished.
+
+Both this row and the scratchpad one come from the transcript, so a session **outside a repository
+still shows them**: git having nothing to say is not the same as the session having delivered
+nothing.
+
 ## Scope
 
 Session scope shows everything. With a turn selected, files are filtered by TIME: a file falls in
-the turn whose `[start, next start)` contains the instant of the commit that delivered it. The
-description follows the selection, counting the commits actually on screen.
+the turn whose `[start, next start)` contains the instant of the commit that delivered it. A
+published page follows the same rule, on the instant of its publish — a row that ignored the turn
+would contradict its neighbours. The description follows the selection, counting the commits
+actually on screen.
 
 ## Refresh
 
@@ -111,7 +145,11 @@ bento mid-replay.
 
 Until the first answer lands the card shows no number and says `Reading the repository…`; the drawer
 says the same instead of rendering an empty list under a filter box, which reads as "your filter
-matched nothing".
+matched nothing". Once the answer HAS landed and the list is still empty, the drawer names the state
+it is actually in (`Nothing committed in this session.`, or whichever line the card carries) and
+says `No files match the filters.` only when a filter really is set — the same defect, one step
+later, and easy to reach now that a published page opens this drawer on sessions with no files at
+all.
 
 ## Limits
 
@@ -119,5 +157,7 @@ matched nothing".
 - A session that has **not committed** shows no number, however much it wrote — including every live
   session before its first commit. Measured: 76 of 151 local sessions that changed something carry a
   commit of their own; much of the rest is delivered by a later session, whose card then shows it.
-- A session **outside a repo** has no count at all.
+- A session **outside a repo** has no count at all (it can still carry the two secondary rows).
 - The card says what was **delivered**, not who typed it (see the note on shared commits above).
+- A published page is listed from the transcript, so seedeep says it EXISTED, never that it is still
+  online — nothing here asks claude.ai anything, and a page the owner deleted would still be listed.

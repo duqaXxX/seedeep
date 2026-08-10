@@ -71,8 +71,12 @@
   padding: 1.4rem 1.5rem;
   overflow-y: auto;
 }
+/* Bottom breathing room for every drawer. It is a real child, not padding: Chrome ignores
+   padding-bottom on an overflow:auto container, so the last line would sit against the viewport
+   edge. At 20px — under the drawer's own 1.4rem top padding — the last row still read as clipped,
+   so the gap is deliberately larger than the panel's padding rather than matched to it. */
 .drawer-spacer {
-  height: 20px;
+  height: 2.5rem;
   flex-shrink: 0;
 }
 .drawer.on {

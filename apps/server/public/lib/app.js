@@ -4075,6 +4075,9 @@ function workingMs(s) {
   return total;
 }
 
+// apps/server/src/core/session-artifacts.ts
+var ARTIFACT_URL = /https:\/\/claude\.ai\/code\/artifact\/[\w-]+/;
+
 // apps/server/src/core/span-store.ts
 var _nextId = 0;
 function nextId() {
@@ -7948,6 +7951,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     filesDesc.textContent = filesDescText(all);
     if (!all.length) {
       appendScratchRow(scratch.length);
+      appendArtifactRow(artifactsInScope().length);
       return;
     }
     const num = E("div", "num");
@@ -7975,6 +7979,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       filesHost.append(more);
     }
     appendScratchRow(scratch.length);
+    appendArtifactRow(artifactsInScope().length);
   }
   function filesInScope() {
     if (!filesData)
@@ -7986,9 +7991,14 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       return [];
     return inScope(displayFiles(filesData.scratch, filesData.roots, true));
   }
+  function artifactsInScope() {
+    if (!filesData)
+      return [];
+    return inScope(filesData.artifacts);
+  }
   function inScope(rows) {
     if (selectedTurn === null)
-      return rows;
+      return [...rows];
     const range = turnRangeMs(selectedTurn);
     if (!range)
       return [];
@@ -8009,6 +8019,13 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     if (!n)
       return;
     const row = E("div", "fchgscr", `+${n} scratchpad file${n === 1 ? "" : "s"} — Expand all`);
+    row.onclick = () => openAllFiles();
+    filesHost.append(row);
+  }
+  function appendArtifactRow(n) {
+    if (!n)
+      return;
+    const row = E("div", "fchgart", `+${n} published artifact${n === 1 ? "" : "s"} — Expand all`);
     row.onclick = () => openAllFiles();
     filesHost.append(row);
   }
@@ -8606,7 +8623,6 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     });
     return bl;
   }
-  const ARTIFACT_URL = /https:\/\/claude\.ai\/code\/artifact\/[\w-]+/;
   function publishedUrl(name, text) {
     if (name !== "Artifact")
       return null;
@@ -8993,13 +9009,15 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const repoFiles = filesInScope();
     const scratchList = scratchInScope();
     const files = [...repoFiles, ...scratchList];
+    const artifacts = artifactsInScope();
     const scratchTotal = scratchList.length;
     const projectTotal = repoFiles.length;
     dbody.append(dhead("files changed", "main session", [
       projectTotal + (projectTotal === 1 ? " project file" : " project files"),
-      scratchTotal ? scratchTotal + " scratchpad" : null
+      scratchTotal ? scratchTotal + " scratchpad" : null,
+      artifacts.length ? artifacts.length + " published" : null
     ]));
-    dbody.append(kpis(kpi2("Project", String(projectTotal)), kpi2("Scratchpad", String(scratchTotal))));
+    dbody.append(artifacts.length ? kpis(kpi2("Project", String(projectTotal)), kpi2("Scratchpad", String(scratchTotal)), kpi2("Published", String(artifacts.length))) : kpis(kpi2("Project", String(projectTotal)), kpi2("Scratchpad", String(scratchTotal))));
     const filterInput = E("input", "tfilter");
     filterInput.placeholder = "filter by path";
     const filterBar = E("div", "tfilterbar");
@@ -9032,7 +9050,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       countEl.textContent = narrowed ? `${filtered.length} of ${files.length} files` : `${files.length} files`;
       box.replaceChildren();
       if (!filtered.length) {
-        box.append(E("div", "wdesc", "No files match the filters."));
+        box.append(E("div", "wdesc", narrowed ? "No files match the filters." : filesDescText(repoFiles)));
         return;
       }
       const groups = [
@@ -9064,6 +9082,20 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     paintChips();
     renderRows();
     dbody.append(filterBar, typeBar, countEl, blockD("All changed files", "Project files come from git — the commits this session made, plus what is still uncommitted while it runs — so they include shell writes and build output. Scratchpad files are this session's temporaries, outside the repo, and only Claude Code's own ledger sees them.", box));
+    if (artifacts.length) {
+      const abox = E("div");
+      for (const a of artifacts) {
+        const row = E("div", "fchgarow");
+        row.append(E("div", "fchgalbl", a.label));
+        const link = E("a", "dlink fchgaurl", a.url);
+        link.href = a.url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        row.append(link);
+        abox.append(row);
+      }
+      dbody.append(blockD(artifacts.length === 1 ? "Published artifact" : "Published artifacts", "Pages this session put online with the Artifact tool. They live on claude.ai, not on this machine — the HTML they were built from is a scratchpad temporary, the link is what outlasts the session. One row per page: a redeploy overwrites the page it names.", abox));
+    }
     openDrawer();
   }
   function withSessionNotes(rows) {

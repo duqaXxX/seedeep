@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { type CommitCall, harvestHashes, isGitCommit } from '../core/commit-attribution.ts';
 import { ledgerPath } from '../core/file-attribution.ts';
+import { ARTIFACT_URL } from '../core/session-artifacts.ts';
 import {
   type CardEvidence,
   type CardSource,
@@ -40,10 +41,23 @@ export interface TrackerCall {
   cwd: string | null;
 }
 
+/** One `Artifact` publish: the page it put online, and what the call said about it. */
+export interface ArtifactPublish {
+  /** When the publish's result landed, ms since epoch. */
+  at: number;
+  url: string;
+  /** The call's `description`; empty when it carried none. */
+  description: string;
+  /** Its `file_path`, raw — anonymized by the consumer, like every other path here. */
+  path: string;
+}
+
 /** One transcript's tool-call slice, cached against the file's size+mtime. */
 export interface Scan {
   commits: CommitCall[];
   tracker: TrackerCall[];
+  /** `Artifact` publishes, in file order — a page put online is the session's, provably. */
+  artifacts: ArtifactPublish[];
   /** `file-history-delta` paths, absolute — CC's proof that its own tools wrote this file. */
   deltas: LedgerDelta[];
   cwds: string[];
@@ -91,10 +105,12 @@ function resultText(content: unknown): string {
 export function scanLines(lines: readonly string[]): Scan {
   const commits: CommitCall[] = [];
   const tracker: TrackerCall[] = [];
+  const artifacts: ArtifactPublish[] = [];
   const deltas: LedgerDelta[] = [];
   const cwds = new Set<string>();
   const pendingCommit = new Map<string, string>(); // tool_use id -> command
   const pendingTracker = new Map<string, Array<Omit<TrackerCall, 'at' | 'result'>>>();
+  const pendingArtifact = new Map<string, { description: string; path: string }>();
   let cwd: string | null = null; // the cwd of the line being read, for relative `cd` targets
   let firstAt = Infinity;
   let lastAt = -Infinity;
@@ -183,6 +199,18 @@ export function scanLines(lines: readonly string[]): Scan {
             },
           ]);
         }
+        // An `Artifact` call that publishes. `file_path` is what separates it from the reading
+        // forms (`action: "list"`), which put no page online and must leave no row: the URL alone
+        // could not tell them apart, since a listing's result is FULL of artifact URLs.
+        if (name === 'Artifact') {
+          const input = b.input as { file_path?: unknown; description?: unknown } | undefined;
+          if (typeof input?.file_path === 'string' && input.file_path) {
+            pendingArtifact.set(b.id, {
+              description: typeof input.description === 'string' ? input.description : '',
+              path: input.file_path,
+            });
+          }
+        }
       } else if (b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
         const command = pendingCommit.get(b.tool_use_id);
         if (command !== undefined) {
@@ -192,6 +220,20 @@ export function scanLines(lines: readonly string[]): Scan {
             command,
             outputHashes: harvestHashes(resultText(b.content)),
           });
+        }
+        const pub = pendingArtifact.get(b.tool_use_id);
+        if (pub !== undefined) {
+          pendingArtifact.delete(b.tool_use_id);
+          // The URL comes from the RESULT, never from the call: the call knows the file it sent,
+          // only the server knows which page it landed on.
+          //
+          // `is_error` decides whether it landed, rather than "the error text names no URL" —
+          // that would be an assumption about text seedeep does not own, and the tool's own
+          // 409-conflict path tells the caller to re-read THAT artifact, so an error quoting the
+          // target URL is exactly the shape to expect. Measured locally: the flag is on the one
+          // failed publish and on none of the 34 that worked.
+          const url = ARTIFACT_URL.exec(resultText(b.content))?.[0];
+          if (url && !b.is_error) artifacts.push({ at: Number.isFinite(ts) ? ts : 0, url, ...pub });
         }
         const metas = pendingTracker.get(b.tool_use_id);
         if (metas !== undefined) {
@@ -221,9 +263,11 @@ export function scanLines(lines: readonly string[]): Scan {
       tracker.push({ ...meta, at: Number.isFinite(lastAt) ? lastAt : 0, result: '' });
     }
   }
+  // A publish whose result never landed is NOT recorded, unlike a commit: a commit's command is
+  // proof it ran, while a publish's page exists only if the server named it. Nothing to keep.
   commits.sort((a, b) => a.at - b.at);
   tracker.sort((a, b) => a.at - b.at);
-  return { commits, tracker, deltas, cwds: [...cwds], firstAt, lastAt };
+  return { commits, tracker, artifacts, deltas, cwds: [...cwds], firstAt, lastAt };
 }
 
 /** Scan a transcript and its subagent sidecars — a subagent's work belongs to its parent. */
@@ -235,7 +279,7 @@ export async function scanSession(path: string): Promise<Scan> {
     const hit = scanCache.get(path);
     if (hit && hit.key === key) return hit.scan;
   } catch {
-    return { commits: [], tracker: [], deltas: [], cwds: [], firstAt: Infinity, lastAt: -Infinity };
+    return { commits: [], tracker: [], artifacts: [], deltas: [], cwds: [], firstAt: Infinity, lastAt: -Infinity };
   }
   const { lines } = await readNewLines(path, initTailState());
   const scan = scanLines(lines);
@@ -249,6 +293,8 @@ export async function scanSession(path: string): Promise<Scan> {
       const sub = scanLines(childLines);
       scan.commits.push(...sub.commits);
       scan.tracker.push(...sub.tracker);
+      // A subagent publishes on the parent's behalf — same rule as its commits and its writes.
+      scan.artifacts.push(...sub.artifacts);
       // A subagent's writes are the parent session's work — measured 0 sidecar deltas locally, but
       // reading them costs nothing and the day CC starts writing them the card is already right.
       scan.deltas.push(...sub.deltas);
@@ -256,6 +302,10 @@ export async function scanSession(path: string): Promise<Scan> {
     }
     scan.commits.sort((a, b) => a.at - b.at);
     scan.tracker.sort((a, b) => a.at - b.at);
+    // Artifacts too: sidecar publishes are appended after the parent's, so array order stops
+    // tracking time — and `mergeArtifacts` breaks a tie on ARRAY order, meaning two publishes of
+    // one page in the same millisecond would otherwise be resolved by who is a subagent.
+    scan.artifacts.sort((a, b) => a.at - b.at);
   } catch {
     // no sidecars — the common case
   }

@@ -4,6 +4,29 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### Changed files carries the pages a session published (2026-08-10)
+
+A prototype published with the `Artifact` tool was reachable in exactly one place: the drawer of
+that one tool call, somewhere among the session's hundreds. Search does not reach it either — it
+indexes prompts and assistant prose, not tool output, and measured over the local corpus 6 sessions
+of 12 carry the URL ONLY in the result, with 2 pages of 12 named in no prose at all. Reopening an
+old session, the link was effectively gone, while the page itself was not: 12 pages published, all
+12 still reachable, the oldest 29 days.
+
+The Changed-files card now carries a **`+N published artifacts` row** under the scratchpad one, and
+the drawer lists each page as a link with a third KPI tile. Both secondary rows come from the
+transcript, so a session outside a repository still shows them.
+
+It counts **pages, not publishes** — a redeploy overwrites the page it names (20 of 33 local
+publishes did, one page six times) — and a publish is recognised by its `file_path`: `action:
+"list"` returns a result full of artifact URLs and must produce nothing. Hanging the URL on the
+scratchpad file it came from was tried and rejected: only 11 of 33 publishes have that file in the
+ledger, the rest being HTML a script wrote. See `docs/changed-files.md`.
+
+One thing fixed on the way: with the answer in and the list empty, the drawer said `No files match
+the filters.` with no filter set. It now names the state it is in — a page-only session made that
+easy to reach.
+
 ### Both Expand-all lists are grouped by turn, and a tool call is numbered (2026-08-10)
 
 The complete lists behind **Expand all** were flat, which stops working at the size real sessions

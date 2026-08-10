@@ -18,6 +18,7 @@
  * outside the repository.
  */
 
+import type { SessionArtifact } from './session-artifacts.ts';
 import { isScratchPath } from './text.ts';
 
 export interface SessionFile {
@@ -50,6 +51,9 @@ export interface SessionFiles {
   files: SessionFile[];
   /** Scratchpad files it wrote — the ledger's one exclusive, kept off the main count. */
   scratch: SessionFile[];
+  /** Pages it published online, newest first — off the main count for the same reason: an artifact
+   *  is not a file this session changed, it is a page it put somewhere else (`session-artifacts.ts`). */
+  artifacts: SessionArtifact[];
   /** Every repo root the paths sit under, anonymized; a row inside one is shown relative to it. */
   roots: string[];
   origin: FilesOrigin;

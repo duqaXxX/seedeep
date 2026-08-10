@@ -3742,6 +3742,7 @@ test('stats strip: one extra item per card when subagents ran, none when they di
     roots: ['~/proj'],
     origin: { kind: 'commits' as const, commits: 1 },
     scratch: [],
+    artifacts: [],
     files: ['a.ts', 'b.js', 'c.md', 'd.json', 'e.css', 'f.sh'].map((p, i) => ({
       path: `~/proj/${p}`,
       at: 1000 + i,
@@ -3802,6 +3803,7 @@ test('Changed files: the hero counts repo files only, scratchpad gets its own ro
         origin: { kind: 'commits' as const, commits: 1 },
         files: files.map((p, i) => ({ path: `~/proj/${p}`, at: 1000 + i, commit: 'aaa1111' })),
         scratch: scratch.map((p, i) => ({ path: p, at: 2000 + i, commit: null })),
+        artifacts: [],
       }),
     });
     view.goLive();
@@ -3851,6 +3853,7 @@ test('Changed files drawer: group headings appear only when both groups are on s
         origin: { kind: 'commits' as const, commits: 1 },
         files: files.map((p, i) => ({ path: `~/proj/${p}`, at: 1000 + i, commit: 'aaa1111' })),
         scratch: scratch.map((p, i) => ({ path: p, at: 2000 + i, commit: null })),
+        artifacts: [],
       }),
     });
     view.goLive();
@@ -3875,6 +3878,93 @@ test('Changed files drawer: group headings appear only when both groups are on s
   logChip.onclick();
   assert.equal(findByClass(mix.drawer, 'fchggrp').length, 0, 'filtered down to scratchpad alone: no heading');
   mix.view.destroy();
+  g.document = prevDoc;
+});
+
+test('Changed files: published pages get their own row, and their links in the drawer', async () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const cardBy = (container: any, title: string) =>
+    findByClass(container, 'card').find((c: any) =>
+      findByClass(c, 'wtitle').some((t: any) => (t.textContent ?? '').startsWith(title)),
+    );
+  const PAGE = 'https://claude.ai/code/artifact/11111111-2222-4333-8444-555555555555';
+  const OTHER = 'https://claude.ai/code/artifact/99999999-8888-4777-8666-555555555555';
+  const mount = async (artifacts: any[], files: string[] = ['src/a.ts'], scratch = ['~scratch/p/proto.html']) => {
+    const container = g.document.createElement();
+    const view = createGraph(container, drivableState(snapWithTurns([makeTurn(1)])), {
+      loading: true,
+      loadFiles: async () => ({
+        roots: ['~/proj'],
+        // Faithful to what the server builds: `commits` origin only when a commit delivered a file.
+        origin: files.length ? ({ kind: 'commits', commits: 1 } as const) : ({ kind: 'none' } as const),
+        files: files.map((p, i) => ({ path: `~/proj/${p}`, at: 1000 + i, commit: 'aaa1111' })),
+        scratch: scratch.map((p, i) => ({ path: p, at: 2000 + i, commit: null })),
+        artifacts,
+      }),
+    });
+    view.goLive();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    return { container, view, card: cardBy(container, 'Changed files') };
+  };
+
+  // The hero stays the repo files: a page put online is not a file this session changed. The two
+  // pages get a row of their own, under the scratchpad one.
+  const two = await mount([
+    { url: PAGE, label: 'Where should a session note live?', path: '~scratch/p/proto.html', at: 3000 },
+    { url: OTHER, label: 'NOW — the four states', path: '~scratch/p/now.html', at: 2500 },
+  ]);
+  assert.equal(textOf(findByClass(two.card, 'num')[0]).replace(/\s/g, ''), '1file', 'the hero ignores the pages');
+  const row = findByClass(two.card, 'fchgart');
+  assert.equal(row.length, 1, 'one published-artifacts row');
+  assert.ok(textOf(row[0]).includes('2 published artifacts'), `row names the count, got: ${textOf(row[0])}`);
+
+  // The drawer carries the URL as a real link — the whole point of keeping the row: the HTML it was
+  // built from is a temporary, the link is what still answers a month later.
+  findByClass(two.card, 'xbtn')[0].onclick();
+  const drawer = findByClass(two.container, 'drawer')[0];
+  const links = findByClass(drawer, 'fchgaurl');
+  assert.deepEqual(
+    links.map((a: any) => a.href),
+    [PAGE, OTHER],
+    'both pages linked, newest first',
+  );
+  assert.ok(
+    findByClass(drawer, 'fchgalbl').some((l: any) => textOf(l) === 'Where should a session note live?'),
+    'the row is named by the publish description',
+  );
+  two.view.destroy();
+
+  // A session whose ONLY delivery is a page: the file list is empty because there are no files,
+  // not because a filter hid them. Saying "No files match the filters" there blames a filter the
+  // reader never set — the defect the waiting state already exists to avoid.
+  const pageOnly = await mount(
+    [{ url: PAGE, label: 'A page and nothing else', path: '~scratch/p/proto.html', at: 3000 }],
+    [],
+    [],
+  );
+  findByClass(pageOnly.card, 'fchgart')[0].onclick();
+  const pageDrawer = findByClass(pageOnly.container, 'drawer')[0];
+  const empty = findByClass(pageDrawer, 'wdesc').map((d: any) => textOf(d));
+  assert.ok(!empty.includes('No files match the filters.'), `no filter was set, got: ${empty.join(' | ')}`);
+  assert.ok(
+    empty.includes('Nothing committed in this session.'),
+    `expected the set to be named, got: ${empty.join(' | ')}`,
+  );
+  assert.equal(findByClass(pageDrawer, 'fchgaurl').length, 1, 'the page is still listed');
+  pageOnly.view.destroy();
+
+  // A session that published nothing says nothing: no row, no third KPI tile.
+  const none = await mount([]);
+  assert.equal(findByClass(none.card, 'fchgart').length, 0, 'silent without a publish');
+  findByClass(none.card, 'xbtn')[0].onclick();
+  const bare = findByClass(none.container, 'drawer')[0];
+  assert.equal(findByClass(bare, 'fchgaurl').length, 0, 'no links in the drawer either');
+  assert.equal(findByClass(bare, 'kpi').length, 2, 'the KPI row keeps its two tiles');
+  none.view.destroy();
+
   g.document = prevDoc;
 });
 
@@ -5524,6 +5614,7 @@ test("Changed files: the count is git's, and the caption says which set it came 
         { path: '~/proj/docs/CHANGELOG.md', at: 1, commit: 'aaa1111' }, // written by `cat >>`
       ],
       scratch: [{ path: '~scratch/x/probe.ts', at: 2, commit: null }],
+      artifacts: [],
     }),
   });
   view.goLive();
@@ -5568,6 +5659,7 @@ test('Changed files: a session that never committed says so, instead of showing 
       origin: { kind: 'none' as const },
       files: [],
       scratch: [{ path: '~scratch/x/probe.ts', at: 2, commit: null }],
+      artifacts: [],
     }),
   });
   view.goLive();
@@ -5610,7 +5702,13 @@ test('Changed files: the description names the set in every state', async () => 
 
   // git could not answer. Saying "nothing committed" here would be the card asserting something it
   // never learned — the exact failure this rework exists to remove.
-  const unknown = await descFor({ roots: ['~/proj'], origin: { kind: 'unknown' as const }, files: [], scratch: [] });
+  const unknown = await descFor({
+    roots: ['~/proj'],
+    origin: { kind: 'unknown' as const },
+    files: [],
+    scratch: [],
+    artifacts: [],
+  });
   assert.equal(unknown.desc, 'The repository could not be read.');
   assert.equal(unknown.hero, 0);
 
@@ -5619,6 +5717,7 @@ test('Changed files: the description names the set in every state', async () => 
     origin: { kind: 'no-repo' as const },
     files: [],
     scratch: [{ path: '~scratch/x/probe.ts', at: 1, commit: null }],
+    artifacts: [],
   });
   assert.equal(noRepo.desc, 'This session is not inside a git repository.');
 
@@ -5630,6 +5729,7 @@ test('Changed files: the description names the set in every state', async () => 
       { path: '~/proj/b.ts', at: 20, commit: 'bbb2222' },
     ],
     scratch: [],
+    artifacts: [],
   });
   assert.equal(many.desc, 'Files in 2 commits.');
 
@@ -5674,7 +5774,7 @@ test('Changed files: a pending refresh dies with the tab', async () => {
     loading: true,
     loadFiles: async () => {
       fetches++;
-      return { roots: ['~/proj'], origin: { kind: 'none' as const }, files: [], scratch: [] };
+      return { roots: ['~/proj'], origin: { kind: 'none' as const }, files: [], scratch: [], artifacts: [] };
     },
   });
   view.goLive();
