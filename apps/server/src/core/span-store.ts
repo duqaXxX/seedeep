@@ -130,6 +130,8 @@ export function createSpanStore(): SpanStore {
   const backgroundSpans = new Map<string, TraceSpan>();
   // Outcomes whose launching call has not been seen yet (the end can be written first).
   const pendingBgOutcome = new Map<string, { clean: boolean; summary: string | null }>();
+  // Calls a hook flagged before their span existed. Ids only — the text never enters the store.
+  const pendingFlags = new Set<string>();
 
   // All spawns indexed by spawnId (= toolUseId of the spawn tool-start). Persists after
   // the spawn span closes so late-arriving subagent-meta/child events can still find it.
@@ -530,6 +532,8 @@ export function createSpanStore(): SpanStore {
             status: 'running',
             handle: { kind: 'tool', toolUseId: e.id },
           };
+          // A hook's note can arrive before the call it names is written (see `pendingFlags`).
+          if (pendingFlags.delete(e.id)) span.flagged = true;
           turn.spans.push(span);
           openToolSpans.set(e.id, span);
           mutated = true;
@@ -584,14 +588,24 @@ export function createSpanStore(): SpanStore {
       // would grow with the session, for a thing that happens 65 times in 533 sessions. It is
       // searched for instead, newest turn first, which finds it on the first turn in the normal
       // case and costs a scan only when it does not.
+      // A note about the session names no call and marks no block — the feed is its surface.
+      if (e.toolUseId === null) return;
       let found: TraceSpan | undefined;
       for (const turn of [...turns.values()].reverse()) {
         found = turn.spans.find((s) => s.handle?.kind === 'tool' && s.handle.toolUseId === e.toolUseId);
         if (found) break;
       }
-      if (found && !found.flagged) {
-        found.flagged = true;
-        mutated = true;
+      if (found) {
+        if (!found.flagged) {
+          found.flagged = true;
+          mutated = true;
+        }
+      } else {
+        // The span is not there YET. Live, the tailer promises no order, and the reducer already
+        // parks a note whose call has not been written (`pendingNotes`) for the same reason — a
+        // note dropped here would leave the drawer saying `flagged` over a Trace block with no
+        // mark, which is one screen contradicting itself. Applied by the tool-start.
+        pendingFlags.add(e.toolUseId);
       }
     } else if (e.type === 'agent-end') {
       // Not every notification is about an agent: one naming a tool that launched a background

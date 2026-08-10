@@ -216,6 +216,9 @@ Each command is one line: what it was launched to do (Claude Code's own
 `description`, the name it quotes back when the command ends), its state, the turn
 that started it, its exit code, and **how long the command itself ran** — launch
 instant to the notification that ended it, which for a killed build can be hours.
+A command still running has no duration to state, so it states its **age** instead,
+ticking, exactly as the live row above does: one command described two ways on one
+screen was a discrepancy, not a nuance.
 The row's duration is never the launch call's, which closes in milliseconds and
 measures nothing — and never the SECOND copy of the notification either: Claude
 Code writes it twice, and the later copy is written when its queue drains, up to 76
@@ -231,6 +234,15 @@ recognises one never fired for the other. Everything downstream followed: the ca
 closed on its 0.1s receipt, it never entered this catalogue, never reached the chip
 that says the session is still waiting on something, and never reached the tray.
 Meanwhile the console counted it in the status line and seedeep said nothing.
+
+**What ends a monitor is not what ends a shell command.** A background `Bash`
+announces its own death twice over — a notification, and the moment it lets go of
+its output file, which is what seedeep asks the machine when the notification never
+comes. A monitor does neither: it holds no file open (measured on one that was
+demonstrably alive), and stopping it writes no notification at all. What it does
+write is the `TaskStop` itself — *"Successfully stopped task: …"*, naming the task —
+and that sentence is what closes the row. Without it a monitor you stopped would go
+on calling itself *still running* for the rest of the session.
 
 A monitor also does something no other command does: it **reports while it runs**.
 Every line its script emits is an event, and the row says how many have arrived and

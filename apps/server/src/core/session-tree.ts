@@ -655,6 +655,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     string,
     { summary: string | null; status: string | null; ts: string | null; outputFile: string | null }
   >();
+  // Background launches by TASK id. A `<task-notification>` names the launching call, but a
+  // `TaskStop` names only the task — and for a Monitor that stop is the only end ever written.
+  const bgByTaskId = new Map<string, ToolAcc>();
   // What a still-running background task has REPORTED, keyed by its task id — the only link a
   // progress notification carries. Keyed on the task and not parked against a call on purpose: an
   // event can arrive before the launch receipt is written, and a map the snapshot reads at the end
@@ -1210,6 +1213,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         if (e.background) {
           t.backgroundTaskId = e.background.taskId;
           t.backgroundBy = e.background.by;
+          // The task id is the only name a `TaskStop` gives what it stopped, so the launch has to
+          // be findable by it — see the `agent-end` branch.
+          bgByTaskId.set(e.background.taskId, t);
           if (parked) {
             t.outcome = parked.summary;
             t.outcomeStatus = parked.status;
@@ -1290,7 +1296,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       // never the id's shape: `Monitor` gets a `b`-prefixed notification too, and a resumed
       // subagent's notification names the SendMessage call — marking either row failed would
       // state something about a tool that launched nothing.
-      const bg = !sp && e.toolUseId ? tools.get(e.toolUseId) : undefined;
+      // ...and the notification may name the TASK instead of the call: a `TaskStop` says which task
+      // it stopped and nothing about the call that launched it, and for a Monitor that sentence is
+      // the only end that will ever be written (no `<task-notification>`, and no file held open for
+      // the liveness probe to ask about). The launch's own id stays the primary route.
+      const bg = sp
+        ? undefined
+        : ((e.toolUseId ? tools.get(e.toolUseId) : undefined) ?? bgByTaskId.get(e.taskId ?? ''));
       // The end can be written BEFORE the launch: Claude Code appends an assistant line when its
       // block CLOSES, so a command that finishes in seconds reports back while the `tool_use` that
       // started it is still unwritten (verified on a real session: notification at line 1853, its
@@ -2011,6 +2023,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
     const out: { toolUseId: string; taskId: string }[] = [];
     for (const [id, t] of tools) {
       if (!t.backgroundTaskId || t.outcomeStatus !== null || t.vanishedTs !== null) continue;
+      // A `Monitor` is excluded, and this is a fact about the machine rather than a preference:
+      // the probe answers "does any process still hold this command's output file open", and a
+      // monitor NEVER holds it — measured 2026-08-10 on a monitor that was demonstrably alive
+      // (its `sleep 90` in the process table, its output file 13 bytes long): `held: false`. A
+      // background Bash keeps the file open, which is what the whole mechanism was measured on.
+      // Asking anyway would report a working monitor as gone two probes after its first event.
+      if (t.name === 'Monitor') continue;
       out.push({ toolUseId: id, taskId: t.backgroundTaskId });
     }
     return out;

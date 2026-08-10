@@ -35,6 +35,15 @@ export interface Scene {
   archive?: Array<{ cwd: string; sessionId: string; lines: string[] }>;
   /** What the live-session record should claim while the shot is taken. */
   status?: 'busy' | 'idle' | 'waiting';
+  /**
+   * The instant the page should believe it is, as ISO — the capture pins the browser's clock to it.
+   *
+   * Only matters for a scene showing something the page dates against NOW (a running command's
+   * age): the transcript is written at a fixed date, so without this the age is measured against
+   * today and grows by a day every day, in a figure that is supposed to be reproducible byte for
+   * byte. Set it a little after the scene's last line — that is what "just now" means here.
+   */
+  now?: string;
 }
 
 const OPUS = 'claude-opus-5';
@@ -859,6 +868,10 @@ function commands(): Scene {
     sessionId,
     lines: w.lines,
     status: 'busy',
+    // Two of this scene's commands are still running, and a running row states its AGE. Pinned a
+    // few minutes past the last line so those ages read like a session you are watching right now
+    // — and read the same on every re-cut.
+    now: '2026-03-04T09:21:00.000Z',
     children: {
       a1: child({
         agentId: 'a1',

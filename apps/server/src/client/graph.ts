@@ -1993,13 +1993,17 @@ export function createGraph(
     l1.append(E('span', 'sdot'), E('b', null, 'Scheduled wakeup'));
     l1.append(E('span', 'schip', 'timer'));
     const left = E('span', 'sel');
-    // Ticks on the shared counter, like every other age on this card, and hides its own row when
-    // it runs out: the card is rebuilt on events, and a session waiting on a wakeup produces none
-    // — so without this the row would sit there claiming a wait that had expired.
+    // Ticks on the shared counter, like every other age on this card. When it runs out the row
+    // must GO — a session waiting on a wakeup produces no events, so nothing else would rebuild
+    // the card, and the row would sit there claiming a wait that had expired. Hiding it is not
+    // enough: with no subagents and no commands this row is the card's only content, and a hidden
+    // one leaves a header over nothing. So it asks for a repaint, which draws the placeholder
+    // instead — and cannot loop, because the row is not rebuilt once its instant is behind.
     const renderLeft = () => {
       const ms = at - Date.now();
       if (ms <= 0) {
         r.hidden = true;
+        scheduleRender();
         return 'due';
       }
       return 'in ' + formatDuration(ms);
@@ -2083,10 +2087,22 @@ export function createGraph(
     // so the chip carries the count and the row's tooltip the last event.
     if (c.events > 0) mid.append(E('span', 'schip', c.events + (c.events === 1 ? ' event' : ' events')));
     r.append(mid);
-    // `≥` is not decoration: for a command the probe found gone, the figure is the last instant it
-    // was SEEN alive, and nobody ever said when it stopped. Printing it bare would claim a
-    // measurement seedeep does not have.
-    r.append(E('span', 'sdur', c.ranMs === null ? '—' : (c.ranAtLeast ? '≥ ' : '') + formatDuration(c.ranMs)));
+    // A RUNNING row has no duration to state — nothing has ended — but it does have an age, and
+    // the live row two cards up has been showing it all along. Leaving `—` here made one command
+    // read two ways on one screen. It ticks on the shared counter, so it cannot go stale, and it
+    // is never confused with a measured duration: the running rows are the only ones that count up.
+    const since = c.state === 'running' ? Date.parse(c.since) : Number.NaN;
+    if (Number.isFinite(since)) {
+      const age = E('span', 'sdur run');
+      const renderAge = () => formatDuration(Math.max(0, Date.now() - since));
+      age.textContent = renderAge();
+      liveCounters.push({ el: age, render: renderAge }); // no owner — see backgroundChip
+      r.append(age);
+    } else {
+      // `≥` is not decoration: for a command the probe found gone, the figure is the last instant
+      // it was SEEN alive, and nobody ever said when it stopped.
+      r.append(E('span', 'sdur', c.ranMs === null ? '—' : (c.ranAtLeast ? '≥ ' : '') + formatDuration(c.ranMs)));
+    }
     r.title = c.lastEvent ? (c.sentence ?? c.command) + '\nlast event: ' + c.lastEvent : (c.sentence ?? c.command);
     return r;
   }
@@ -2632,7 +2648,9 @@ export function createGraph(
       const t = E('span', 'ft');
       if (it.sub) t.append(E('span', 'fagent', 'subagent'));
       if (it.error) t.append(E('span', 'ferr', 'error'));
-      t.append(document.createTextNode(toolDuration(it.ms, ended)));
+      // A note has no duration and never will — `running…` there would say a review is at work
+      // when it has already reported. The column stays, empty, so the rows keep their alignment.
+      if (!it.note) t.append(document.createTextNode(toolDuration(it.ms, ended)));
       r.append(t);
       feedHost.append(r);
     }
@@ -3255,6 +3273,21 @@ export function createGraph(
     return block('Published at', a);
   }
 
+  /**
+   * The drawer for a note about the SESSION — the one surface where its text can be read whole.
+   *
+   * Deliberately bare: a note has no duration, no owner and no output, so a KPI strip would be
+   * three em-dashes. What the reader came for is the sentence, and it is here verbatim.
+   */
+  function openNote(text: string): void {
+    crumbs.length = 0;
+    dbody.replaceChildren();
+    renderCrumbs();
+    dbody.append(dhead('note', 'Reported to the session', []));
+    dbody.append(blockD('What it says', 'attached by a hook or a background review, verbatim', E('pre', null, text)));
+    openDrawer();
+  }
+
   // The drawer for an API call. Facts FIRST (model + token breakdown), like a tool's drawer,
   // then the call's input and output — the FULL text fetched from the session file on click,
   // never held in the client. Until the fetch lands the input already shows the short hint the
@@ -3508,6 +3541,12 @@ export function createGraph(
   function openFeedItem(it: FeedItem): void {
     if (it.apiCall) {
       openCall(it);
+      return;
+    }
+    // A note's whole content IS the row, ellipsized into one column — so the drawer is the only
+    // place its findings can be read in full, and without it the row would be a dead click.
+    if (it.note) {
+      openNote(it.arg ?? '');
       return;
     }
     if (!it.id) return;
@@ -4299,6 +4338,7 @@ export function createGraph(
       feed.push({
         name: 'Note',
         arg: e.text,
+        note: true,
         turnIndex: ctx?.turnIndex ?? null,
         ts: evTs ?? 0,
         startMs: null,

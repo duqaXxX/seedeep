@@ -826,3 +826,52 @@ test('a terminal task-notification with a tool-use-id is unchanged', () => {
   assert.equal((out[0] as any).toolUseId, 'toolu_9');
   assert.equal((out[0] as any).status, 'failed');
 });
+
+// A hook's note is about a CALL, and the gate for that is the hook's EVENT — never the mere
+// presence of `toolUseID`. Measured 2026-08-10 over 533 sessions: the field takes exactly two
+// shapes, `hookEvent: PostToolUse` with a real `toolu_…` (73 lines), and `hookEvent: SessionStart`
+// with the literal `"SessionStart"` (555 lines) — a non-empty string that anchors nothing. An
+// id-only gate emitted a 2 KB note for every session start, about a call that does not exist.
+const attachment = (a: object) =>
+  JSON.stringify({ type: 'attachment', uuid: 'h1', timestamp: '2026-07-14T10:00:05.000Z', attachment: a });
+
+test('a tool hook’s note is emitted, anchored to the call it names', () => {
+  const out = parseLine(
+    attachment({
+      type: 'hook_additional_context',
+      content: ['[from security-guidance@claude-code-plugins plugin]\n\nWarning: check this'],
+      hookName: 'PostToolUse:Write',
+      toolUseID: 'toolu_01abc',
+      hookEvent: 'PostToolUse',
+    }),
+    ctx,
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.type, 'note');
+  assert.equal((out[0] as any).toolUseId, 'toolu_01abc');
+  assert.equal((out[0] as any).source, 'security-guidance@claude-code-plugins');
+  assert.equal((out[0] as any).hook, 'PostToolUse:Write');
+});
+
+test('a SessionStart injection is not a note about a call, though it carries a toolUseID', () => {
+  const out = parseLine(
+    attachment({
+      type: 'hook_additional_context',
+      content: ['You have superpowers. Here is the whole skill catalogue…'],
+      hookName: 'SessionStart',
+      toolUseID: 'SessionStart',
+      hookEvent: 'SessionStart',
+    }),
+    ctx,
+  );
+  assert.deepEqual(out, []);
+});
+
+test('the bookkeeping attachments around every call stay ignored', () => {
+  // `hook_success` is written twice per tool call; reading it would flood every surface.
+  const out = parseLine(
+    attachment({ type: 'hook_success', hookName: 'PostToolUse:Bash', toolUseID: 'toolu_01abc', stdout: '{}\n' }),
+    ctx,
+  );
+  assert.deepEqual(out, []);
+});

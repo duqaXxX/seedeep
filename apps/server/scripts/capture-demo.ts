@@ -1268,6 +1268,12 @@ async function shootScene(
   await withDocPage(
     cfg,
     async (page, url) => {
+      // Freeze the page's clock at the scene's own "now". A synthetic transcript is written at a
+      // FIXED date so the same code produces the same pixels — but anything the page derives from
+      // the wall clock (a running command's age) is then measured against today, which made a row
+      // read `3823h 19m` and grow by 24h every day the figure was re-cut. With the clock pinned,
+      // those ages are as reproducible as the rest of the picture.
+      if (scene.now) await page.clock.setFixedTime(new Date(scene.now));
       await page.goto(withSession(url, sessionId), { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(5_000);
       const take = makeTake(page, outDir, cut);

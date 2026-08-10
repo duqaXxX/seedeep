@@ -60,6 +60,14 @@ function taskRefOf(input: unknown, name: string): TaskRef | undefined {
 // (InputValidationError), which creates no task and must therefore map nothing.
 const TASK_CREATED_RE = /^Task #(\d+) created successfully: (.+)$/s;
 
+// A `TaskStop` receipt, and the ONLY thing that says a stopped Monitor stopped. Claude Code writes
+// no `<task-notification>` for it — measured 2026-08-10 on two stopped monitors, 0 of the 49 lines
+// naming them carries a `<status>` — and a monitor holds no file open, so the liveness probe cannot
+// answer for it either. Which leaves this sentence, on all 8 real receipts, as the whole evidence.
+// Matched on the RESULT rather than on the tool name, exactly as TASK_CREATED_RE is: a tool-end
+// does not carry the name of the tool it ends.
+const TASK_STOPPED_RE = /^Successfully stopped task: ([A-Za-z0-9_-]+)/;
+
 // Human-meaningful argument for a tool_use, by tool name (used by P2).
 function argOf(input: unknown, name: string): string | undefined {
   if (!input || typeof input !== 'object') return undefined;
@@ -246,12 +254,24 @@ export function parseLine(
   const out: NormalizedEvent[] = [];
 
   // `attachment` is ignored wholesale — nearly every one is the bookkeeping a hook writes around
-  // each call — with ONE door: a hook that attached text about a specific call. The `toolUseID` is
-  // the gate and the anchor; without it the line is about the session (555 SessionStart
-  // injections locally) and there is no call it could honestly be shown on.
+  // each call — with ONE door: a hook of a TOOL that attached text about the call it watched.
+  //
+  // The gate is the hook's EVENT, not the presence of `toolUseID`, and that distinction was
+  // measured the hard way: every one of the 555 SessionStart injections carries
+  // `toolUseID: "SessionStart"` — a non-empty string that anchors nothing — so an id-only gate let
+  // all of them through as notes about a call that does not exist. Measured 2026-08-10 over 533
+  // sessions, the field takes exactly two shapes: `hookEvent: SessionStart` with that literal
+  // (555), and `hookEvent: PostToolUse` with a real `toolu_…` (73). A session-wide injection is
+  // about the session, and there is no call it could honestly be shown on.
+  const TOOL_HOOK_EVENTS = new Set(['PreToolUse', 'PostToolUse']);
   if (type === 'attachment') {
     const a = d.attachment;
-    if (a?.type === 'hook_additional_context' && typeof a.toolUseID === 'string' && a.toolUseID) {
+    if (
+      a?.type === 'hook_additional_context' &&
+      TOOL_HOOK_EVENTS.has(a.hookEvent) &&
+      typeof a.toolUseID === 'string' &&
+      a.toolUseID
+    ) {
       // An array of BARE STRINGS, not of `{type:'text'}` blocks — verified on real lines, and the
       // reason `renderedText` (which reads `.text`) returns nothing for it.
       const text = (
@@ -264,7 +284,7 @@ export function parseLine(
           type: 'note',
           ...base,
           toolUseId: a.toolUseID,
-          hook: typeof a.hookName === 'string' ? a.hookName : '',
+          hook: typeof a.hookName === 'string' && a.hookName ? a.hookName : null,
           // The writer names itself in a header line the plugin API puts there; absent for a
           // hook a user wrote by hand, which is a note with no attribution, never a wrong one.
           source: /^\s*\[from ([^\]]+?)(?: plugin)?\]/.exec(text)?.[1] ?? null,
@@ -484,6 +504,22 @@ export function parseLine(
           // Emitted AFTER the tool-end so the reducer has the closed call to hang a turn index on.
           if (tur && typeof tur === 'object' && typeof tur.scheduledFor === 'number') {
             out.push({ type: 'wakeup', ...base, toolUseId: block.tool_use_id, at: tur.scheduledFor || null });
+          }
+          // A task the session STOPPED on purpose. Reported as an ordinary end, keyed on the task
+          // id — the stop names the task, never the call that launched it — and with Claude Code's
+          // own word for it: `stopped`, which every surface already reads as a clean end.
+          const stopped = typeof tur?.message === 'string' ? TASK_STOPPED_RE.exec(tur.message) : null;
+          if (stopped) {
+            out.push({
+              type: 'agent-end',
+              ...base,
+              toolUseId: null,
+              taskId: stopped[1]!,
+              status: 'stopped',
+              // The sentence quotes the whole command back, paths included.
+              summary: anon(tur.message, 300),
+              outputFile: null,
+            });
           }
         }
       }

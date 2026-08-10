@@ -1516,6 +1516,11 @@ const sessionStartNote = (uuid: string, text: string) =>
       type: 'hook_additional_context',
       content: [text],
       hookName: 'SessionStart',
+      // It DOES carry one, and it is this literal — an id that anchors nothing. The first version
+      // of this fixture omitted the field, so the gate it was defending (`toolUseID` present)
+      // passed a test against a shape that does not exist on disk while letting all 555 real
+      // injections through as notes about a call. Read off a real line, not written from belief.
+      toolUseID: 'SessionStart',
       hookEvent: 'SessionStart',
     },
   });
@@ -1640,6 +1645,55 @@ test('golden transcript: a scheduled wakeup is what the session is waiting for, 
     }),
   ]);
   assert.equal(stopped.wakeup, null, 'a stopped loop is waiting for nothing');
+});
+
+// Stopping a monitor is the one end Claude Code writes for it in words and in no other way: no
+// `<task-notification>` follows a TaskStop (0 of the 49 lines naming two stopped monitors carries a
+// `<status>`), and a monitor holds no output file open, so the liveness probe cannot answer for it
+// either. The receipt's sentence — the same on all 8 real ones — names the TASK, never the call.
+const taskStopReceipt = (uuid: string, toolUseId: string, taskId: string, command: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: '2026-07-14T10:30:00.000Z',
+    message: {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: toolUseId, content: `Successfully stopped task: ${taskId}` }],
+    },
+    toolUseResult: {
+      message: `Successfully stopped task: ${taskId} (${command})`,
+      task_id: taskId,
+      task_type: 'local_bash',
+    },
+  });
+
+test('golden transcript: stopping a monitor is what ends it — nothing else ever will', () => {
+  const lines = [
+    typed('u1', 'watch the build'),
+    monitorLaunch('a1', 'toolu_m1', 'Build log errors'),
+    monitorReceipt('u2', 'toolu_m1', 'brjcunvia'),
+    monitorEvent('brjcunvia', 'Build log errors', 'ERROR: missing symbol _main'),
+  ];
+  assert.deepEqual(
+    runningBackground(runLines(lines).mainTools).map((c) => c.toolUseId),
+    ['toolu_m1'],
+    'armed and never told otherwise',
+  );
+
+  const stopped = runLines([
+    ...lines,
+    toolUse('a2', 'toolu_s1', 'TaskStop', { task_id: 'brjcunvia' }),
+    taskStopReceipt('u3', 'toolu_s1', 'brjcunvia', 'tail -f /home/dev/build.log'),
+  ]);
+  const cmd = backgroundCommands(stopped.mainTools, { ended: false }).find((c) => c.toolUseId === 'toolu_m1')!;
+  assert.equal(cmd.state, 'done', 'stopped on purpose is a clean end, and CC has no other word for it');
+  assert.match(cmd.sentence ?? '', /Successfully stopped task/, 'reported in Claude Code’s own words');
+  assert.deepEqual(runningBackground(stopped.mainTools), [], 'and it is no longer something to wait on');
+  // The stop names the TASK; the row it closed is the launch. Nothing may be pinned on the
+  // TaskStop call itself, which launched nothing.
+  const stopCall = stopped.mainTools.find((t) => t.id === 'toolu_s1')!;
+  assert.equal(stopCall.background, undefined);
+  assert.equal(stopCall.outcome, undefined);
 });
 
 // A `TaskUpdate` receipt also carries a `taskId` — of a todo, not of a background task. Reading the

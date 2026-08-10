@@ -4,6 +4,30 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### What ends a Monitor is its TaskStop, and a running command says how long it has been running (2026-08-10)
+
+Marking a `Monitor` as a background command put it in front of the liveness probe, and the probe
+answers one question: does any process still hold this command's output file open? A background
+`Bash` holds it through the whole chain, which is what the mechanism was measured on. **A monitor
+does not** — measured on one that was demonstrably alive, its `sleep` in the process table and its
+output file already written: nothing held it. So a working monitor was reported gone two probes
+after its first event. Monitors are no longer asked.
+
+Which left the opposite hole: a monitor that IS stopped never says so. Claude Code writes no
+`<task-notification>` for a stop (0 of the 49 lines naming two stopped monitors carries a
+`<status>`), so the row went on calling itself running for the rest of the session — which is what
+Davide saw. The end it does write is the `TaskStop` receipt, *"Successfully stopped task: …"*,
+naming the task rather than the call. That sentence now closes the row, with `stopped` as its
+status: Claude Code's own word, which every surface already reads as a clean end.
+
+Two more things the same report caught. A command still RUNNING showed `—` where its duration
+would go, while the live row above it had been showing its age all along — one command described
+two ways on one screen; the catalogue now ticks the same age. And the note gate was wrong in a way
+its own test could not see: every one of the 555 SessionStart injections carries
+`toolUseID: "SessionStart"`, so an id-only gate emitted a 2 KB note per session about a call that
+does not exist. The gate is now the hook's EVENT, and the fixture that "proved" otherwise — written
+from belief, with the field omitted — was replaced with the shape real lines have.
+
 ### A hook's warning reaches the call it is about, and a scheduled wakeup is a visible wait (2026-08-10)
 
 Two more things the parser used to drop, found by auditing everything it dropped besides `Monitor`.

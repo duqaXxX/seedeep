@@ -49,6 +49,12 @@ export interface FeedItem {
    * keeps a later notification from being applied to a row that ran no command.
    */
   background?: boolean;
+  /**
+   * This row is a NOTE about the session — text something attached (a background review reporting
+   * findings), not a call. It has no duration and never will: the third column would otherwise
+   * read `running…` about a thing that does not run. `arg` carries the text.
+   */
+  note?: boolean;
 }
 
 /** Epoch ms from an ISO timestamp, or null when it is absent/unparseable. */

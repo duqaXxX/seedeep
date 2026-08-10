@@ -131,6 +131,7 @@ function createSessionTree(opts) {
   const breakdown = { input: 0, cacheRead: 0, cacheCreation: 0 };
   const cacheTotals = { read: 0, created: 0 };
   const pendingBgOutcome = new Map;
+  const bgByTaskId = new Map;
   const bgEvents = new Map;
   let wakeup = null;
   const pendingNotes = new Map;
@@ -526,6 +527,7 @@ function createSessionTree(opts) {
         if (e.background) {
           t.backgroundTaskId = e.background.taskId;
           t.backgroundBy = e.background.by;
+          bgByTaskId.set(e.background.taskId, t);
           if (parked) {
             t.outcome = parked.summary;
             t.outcomeStatus = parked.status;
@@ -584,7 +586,7 @@ function createSessionTree(opts) {
       const sp = (e.toolUseId ? spawns.get(e.toolUseId) : undefined) ?? (e.taskId ? spawns.get(spawnByAgentId.get(e.taskId) ?? "") : undefined);
       if (!sp && e.taskId)
         endedAgentIds.set(e.taskId, e.status);
-      const bg = !sp && e.toolUseId ? tools.get(e.toolUseId) : undefined;
+      const bg = sp ? undefined : (e.toolUseId ? tools.get(e.toolUseId) : undefined) ?? bgByTaskId.get(e.taskId ?? "");
       if (!sp && e.toolUseId && !bg?.backgroundTaskId) {
         pendingBgOutcome.set(e.toolUseId, {
           summary: e.summary,
@@ -1042,6 +1044,8 @@ function createSessionTree(opts) {
     const out = [];
     for (const [id, t] of tools) {
       if (!t.backgroundTaskId || t.outcomeStatus !== null || t.vanishedTs !== null)
+        continue;
+      if (t.name === "Monitor")
         continue;
       out.push({ toolUseId: id, taskId: t.backgroundTaskId });
     }
@@ -4090,6 +4094,7 @@ function createSpanStore() {
   const openToolSpans = new Map;
   const backgroundSpans = new Map;
   const pendingBgOutcome = new Map;
+  const pendingFlags = new Set;
   const spawnById = new Map;
   const openSpawnIds = new Set;
   const agentSpawnMap = new Map;
@@ -4383,6 +4388,8 @@ function createSpanStore() {
             status: "running",
             handle: { kind: "tool", toolUseId: e.id }
           };
+          if (pendingFlags.delete(e.id))
+            span.flagged = true;
           turn.spans.push(span);
           openToolSpans.set(e.id, span);
           mutated = true;
@@ -4425,15 +4432,21 @@ function createSpanStore() {
         }
       }
     } else if (e.type === "note") {
+      if (e.toolUseId === null)
+        return;
       let found;
       for (const turn of [...turns.values()].reverse()) {
         found = turn.spans.find((s) => s.handle?.kind === "tool" && s.handle.toolUseId === e.toolUseId);
         if (found)
           break;
       }
-      if (found && !found.flagged) {
-        found.flagged = true;
-        mutated = true;
+      if (found) {
+        if (!found.flagged) {
+          found.flagged = true;
+          mutated = true;
+        }
+      } else {
+        pendingFlags.add(e.toolUseId);
       }
     } else if (e.type === "agent-end") {
       const bgSpan = e.toolUseId ? backgroundSpans.get(e.toolUseId) : undefined;
@@ -7758,6 +7771,7 @@ function createGraph(container, state, opts = {}) {
       const ms = at - Date.now();
       if (ms <= 0) {
         r.hidden = true;
+        scheduleRender();
         return "due";
       }
       return "in " + formatDuration(ms);
@@ -7811,7 +7825,16 @@ function createGraph(container, state, opts = {}) {
     if (c.events > 0)
       mid.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
     r.append(mid);
-    r.append(E("span", "sdur", c.ranMs === null ? "—" : (c.ranAtLeast ? "≥ " : "") + formatDuration(c.ranMs)));
+    const since = c.state === "running" ? Date.parse(c.since) : Number.NaN;
+    if (Number.isFinite(since)) {
+      const age = E("span", "sdur run");
+      const renderAge = () => formatDuration(Math.max(0, Date.now() - since));
+      age.textContent = renderAge();
+      liveCounters.push({ el: age, render: renderAge });
+      r.append(age);
+    } else {
+      r.append(E("span", "sdur", c.ranMs === null ? "—" : (c.ranAtLeast ? "≥ " : "") + formatDuration(c.ranMs)));
+    }
     r.title = c.lastEvent ? (c.sentence ?? c.command) + `
 last event: ` + c.lastEvent : c.sentence ?? c.command;
     return r;
@@ -8163,7 +8186,8 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         t.append(E("span", "fagent", "subagent"));
       if (it.error)
         t.append(E("span", "ferr", "error"));
-      t.append(document.createTextNode(toolDuration(it.ms, ended2)));
+      if (!it.note)
+        t.append(document.createTextNode(toolDuration(it.ms, ended2)));
       r.append(t);
       feedHost.append(r);
     }
@@ -8564,6 +8588,14 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     a.rel = "noreferrer";
     return block("Published at", a);
   }
+  function openNote(text) {
+    crumbs.length = 0;
+    dbody.replaceChildren();
+    renderCrumbs();
+    dbody.append(dhead("note", "Reported to the session", []));
+    dbody.append(blockD("What it says", "attached by a hook or a background review, verbatim", E("pre", null, text)));
+    openDrawer();
+  }
   function openCall(it, back) {
     if (back)
       crumbs.push(back);
@@ -8704,6 +8736,10 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
   function openFeedItem(it) {
     if (it.apiCall) {
       openCall(it);
+      return;
+    }
+    if (it.note) {
+      openNote(it.arg ?? "");
       return;
     }
     if (!it.id)
@@ -9268,6 +9304,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       feed.push({
         name: "Note",
         arg: e.text,
+        note: true,
         turnIndex: ctx?.turnIndex ?? null,
         ts: evTs ?? 0,
         startMs: null,

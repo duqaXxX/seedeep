@@ -92,6 +92,11 @@
   color: var(--lo2);
   white-space: nowrap;
 }
+/* A running row's figure counts UP — it is an age, not a duration — so it is coloured like the
+   live rows above rather than like the measured durations beside it. */
+.subrow .sdur.run {
+  color: var(--good);
+}
 
 /* empty state (nothing running) — centred so it fills the card and keeps the cockpit symmetric */
 .slempty {
