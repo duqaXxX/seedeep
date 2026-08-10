@@ -18,6 +18,7 @@ import { defaultConfig, type NotifyConfig, type SeedDeepConfig, writeConfig } fr
 import { type DigestEntry, digestEntry } from './digest.ts';
 import { createLiveTrees } from './live-trees.ts';
 import { createNotifyEngine } from './notify-engine.ts';
+import { sendWebhook } from './notify-webhook.ts';
 import { streamReplay } from './replay.ts';
 import { buildSearchRows, createSearchIndex, defaultIndexFile } from './search-index.ts';
 import { cardsForSession } from './session-cards.ts';
@@ -406,7 +407,16 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   const notify = createNotifyEngine({
     config: () => currentConfig.notifications,
     deliver: (a, channel) => {
-      if (channel === 'tray') registry.broadcast('notification', a);
+      if (channel === 'tray') {
+        registry.broadcast('notification', a);
+        return;
+      }
+      // Not awaited: the engine must not be held while a user's endpoint answers, or the next
+      // event waits behind an address that may never answer at all. The outcome is logged once —
+      // a webhook that is silently failing is a setting the user cannot debug.
+      void sendWebhook(currentConfig.notifications.webhook, a).then((r) => {
+        if (!r.ok) console.warn(`seedeep: webhook POST failed${r.status === null ? '' : ` (HTTP ${r.status})`}`);
+      });
     },
     hasListeners: () => registry.size() > 0,
   });
