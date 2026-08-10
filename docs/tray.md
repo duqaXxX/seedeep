@@ -1446,6 +1446,3 @@ machine exists here, the same limit *What is signed* states above.
   from it only by colour (red against amber), which is the pair a red-green deficiency handles
   worst. Every other state differs by shape. Giving the failure its own mark is a product decision,
   not a rendering one, and it has not been made — so it is recorded here rather than invented.
-- **Starting the server from the tray.** The rule below still holds — the tray never spawns
-  anything — and now that the server has a binary to spawn, changing it is a product decision with
-  its own card.
