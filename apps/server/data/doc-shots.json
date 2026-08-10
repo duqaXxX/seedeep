@@ -72,6 +72,52 @@
       "waitFor": ".subcard"
     },
     {
+      "id": "tracker-cards",
+      "subject": "Cards: the tracker cards the session moved, and the ones it only read",
+      "cue": "end",
+      "scene": "shipping",
+      "selector": ".card:has(.wtitle:text-is(\"Cards\"))",
+      "waitFor": ".card:has(.wtitle:text-is(\"Cards\")) .crdrow",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/client/cards-view.ts",
+        "apps/server/src/core/tracker-cards.ts",
+        "apps/server/public/css/tracker-cards.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "session-commits",
+      "subject": "Commits: what the session shipped, each row opening the commit where it lives",
+      "cue": "end",
+      "scene": "shipping",
+      "selector": ".card:has(.wtitle:text-is(\"Commits\"))",
+      "waitFor": ".card:has(.wtitle:text-is(\"Commits\")) .cmtrow",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/client/commits-view.ts",
+        "apps/server/src/server/session-commits.ts",
+        "apps/server/public/css/commits.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
+      "id": "changed-files",
+      "subject": "Changed files: the files the commits carried, the scratchpad apart, and the page it published",
+      "cue": "end",
+      "scene": "shipping",
+      "selector": ".card:has(.wtitle:text-is(\"Changed files\"))",
+      "waitFor": ".card:has(.wtitle:text-is(\"Changed files\")) .fchgart",
+      "invalidatedBy": [
+        "apps/server/src/client/graph.ts",
+        "apps/server/src/server/session-files.ts",
+        "apps/server/src/core/file-attribution.ts",
+        "apps/server/src/core/session-artifacts.ts",
+        "apps/server/public/css/changed-files.css",
+        "apps/server/scripts/doc-scenes.ts"
+      ]
+    },
+    {
       "id": "background-commands",
       "subject": "The bottom card's two tabs: the background commands the session launched, each with its fate",
       "cue": "end",

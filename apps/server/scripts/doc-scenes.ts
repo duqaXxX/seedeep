@@ -36,6 +36,18 @@ export interface Scene {
   /** What the live-session record should claim while the shot is taken. */
   status?: 'busy' | 'idle' | 'waiting';
   /**
+   * A real git repository to build at `cwd` before the shot.
+   *
+   * The only scene ingredient that is not a transcript, and it has to be: the Commits and Changed
+   * files cards do not read the session file for their content, they read GIT — the transcript only
+   * says which hashes are the session's, and every number after that comes from `git show`. Without
+   * a repository on disk those two cards photograph their own empty state.
+   *
+   * A transcript cannot know the hashes it must name (they exist only once the commits do), so it
+   * writes `{{commit:0}}` and {@link substituteHashes} fills them in.
+   */
+  repo?: SceneRepo;
+  /**
    * The instant the page should believe it is, as ISO — the capture pins the browser's clock to it.
    *
    * Only matters for a scene showing something the page dates against NOW (a running command's
@@ -44,6 +56,92 @@ export interface Scene {
    * byte. Set it a little after the scene's last line — that is what "just now" means here.
    */
   now?: string;
+}
+
+/** The repository a scene needs on disk, as the commits it must contain, oldest first. */
+export interface SceneRepo {
+  commits: Array<{
+    message: string;
+    /**
+     * When the commit was made, ISO. It must fall between the `git commit` call that names it and
+     * the one before — that ordering IS the attribution rule (`commit-attribution.ts`), so a
+     * fixture dated outside the session is proven by nothing and the card comes out empty. Measured
+     * the hard way: dated half an hour before the transcript, the second commit was never claimed.
+     */
+    date: string;
+    files: Record<string, string>;
+  }>;
+}
+
+/**
+ * The identity and the clock every fixture commit is made with.
+ *
+ * FIXED on purpose, and this is the one place in the repository where that is right: a git hash is
+ * a function of the tree, the message, the author and the DATES, so a fixture built with the wall
+ * clock gets a new hash on every run — and the hash is printed inside the figure. `--verify` would
+ * then report the Commits figure as changed forever, which is a comparison that can no longer fail
+ * usefully. Nothing here is anybody's history: the repository is built in a temporary directory and
+ * deleted after the shot. The dates come per commit, from the scene.
+ */
+const FIXTURE_GIT_ENV = {
+  GIT_AUTHOR_NAME: 'docs',
+  GIT_AUTHOR_EMAIL: 'docs@example.com',
+  GIT_COMMITTER_NAME: 'docs',
+  GIT_COMMITTER_EMAIL: 'docs@example.com',
+};
+
+/** Where a transcript names a commit it cannot know yet: `{{commit:0}}` is the first one made. */
+const HASH_TOKEN = /\{\{commit:(\d+)\}\}/g;
+
+/**
+ * Build `scene.repo` at `scene.cwd` and return the short hash of each commit, in order.
+ *
+ * `run` is injected so a test can drive this against a temporary directory without the capture, and
+ * so the one place that shells out is visible from the signature.
+ */
+export async function materialiseRepo(
+  scene: Scene,
+  io: {
+    mkdir: (p: string, o: { recursive: true }) => Promise<unknown>;
+    writeFile: (p: string, s: string) => Promise<unknown>;
+    run: (args: string[], cwd: string, env: Record<string, string>) => Promise<string>;
+  },
+  join: (...p: string[]) => string,
+): Promise<string[]> {
+  if (!scene.repo) return [];
+  await io.mkdir(scene.cwd, { recursive: true });
+  // `-b main` rather than whatever the machine's `init.defaultBranch` says: the branch name is
+  // read back by the surfaces, so leaving it to the local config makes the figure machine-specific.
+  await io.run(['init', '-q', '-b', 'main'], scene.cwd, FIXTURE_GIT_ENV);
+  const hashes: string[] = [];
+  for (const c of scene.repo.commits) {
+    for (const [rel, body] of Object.entries(c.files)) {
+      const slash = rel.lastIndexOf('/');
+      if (slash > 0) await io.mkdir(join(scene.cwd, rel.slice(0, slash)), { recursive: true });
+      await io.writeFile(join(scene.cwd, rel), body);
+    }
+    const env = { ...FIXTURE_GIT_ENV, GIT_AUTHOR_DATE: c.date, GIT_COMMITTER_DATE: c.date };
+    await io.run(['add', '-A'], scene.cwd, env);
+    await io.run(['commit', '-q', '-m', c.message], scene.cwd, env);
+    hashes.push((await io.run(['rev-parse', '--short', 'HEAD'], scene.cwd, env)).trim());
+  }
+  return hashes;
+}
+
+/**
+ * Replace every `{{commit:N}}` in a transcript with the hash the repository actually produced.
+ *
+ * Throws on a token with no commit behind it: the alternative is a figure whose Commits card is
+ * silently empty, which is exactly the failure the scene tests exist to make impossible.
+ */
+export function substituteHashes(lines: readonly string[], hashes: readonly string[]): string[] {
+  return lines.map((l) =>
+    l.replace(HASH_TOKEN, (_m, i) => {
+      const h = hashes[Number(i)];
+      if (!h) throw new Error(`scene names {{commit:${i}}} but the repo has ${hashes.length} commit(s)`);
+      return h;
+    }),
+  );
 }
 
 const OPUS = 'claude-opus-5';
@@ -918,11 +1016,158 @@ function commands(): Scene {
   };
 }
 
+/**
+ * What a session DELIVERED: commits, the tracker cards it moved, and a page it published.
+ *
+ * Written rather than recorded because none of the three can be provoked on request — a recorded
+ * demo has no repository to commit into, no tracker to call, and publishing a page would put a real
+ * artifact of the author's online. The repository is built for the shot and deleted after it; the
+ * tracker key and the artifact id are fictional.
+ */
+function shipping(): Scene {
+  const cwd = '/tmp/relay';
+  const sessionId = 'aa11bb22-cc33-4d44-8e55-ff6677889900';
+  const at = clock('2026-03-04T09:00:00.000Z');
+  const w = new Writer(sessionId, cwd, at);
+
+  w.typed('Fix the retry backoff and land it — then update the card and show me the shape.');
+
+  w.call({
+    text: 'Reading the two files that own the retry path.',
+    cacheRead: 41_000,
+    tools: [
+      { id: 't1', name: 'Read', input: { file_path: `${cwd}/src/retry.ts` } },
+      { id: 't2', name: 'Read', input: { file_path: `${cwd}/src/queue.ts` } },
+    ],
+  });
+  w.result('t1', 'export function backoff(n: number) {\n  return 2 ** n * 100;\n}\n');
+  w.result('t2', 'import { backoff } from "./retry.ts";\n');
+
+  // The tracker calls. `mcp__*` + `issue` is what makes a call a card at all, the id comes from the
+  // input FIELD (never from the body), and `save_` is what makes it a WRITE rather than a read.
+  w.call({
+    text: 'Reading the card before I touch anything.',
+    cacheRead: 44_200,
+    tools: [{ id: 't3', name: 'mcp__tracker__get_issue', input: { id: 'ORBIT-42' } }],
+  });
+  w.result(
+    't3',
+    '{"id":"ORBIT-42","title":"Retry backoff saturates at 100 attempts","url":"https://tracker.example/browse/ORBIT-42","state":"In Progress"}',
+  );
+
+  w.call({
+    text: 'The cap is the bug. Capping the exponent and adding the test.',
+    cacheRead: 46_800,
+    out: 640,
+    tools: [
+      { id: 't4', name: 'Edit', input: { file_path: `${cwd}/src/retry.ts` } },
+      { id: 't5', name: 'Write', input: { file_path: `${cwd}/tests/retry.test.ts` } },
+    ],
+  });
+  w.result('t4', 'The file /tmp/relay/src/retry.ts has been updated.');
+  w.result('t5', 'File created successfully at: /tmp/relay/tests/retry.test.ts');
+
+  // Two commits, and the hashes are the repository's own — the transcript is what makes them THIS
+  // session's, and `git show` is what turns them into a file count.
+  w.call({
+    text: 'Landing it in two commits: the fix, then the doc.',
+    cacheRead: 49_100,
+    tools: [
+      {
+        id: 't6',
+        name: 'Bash',
+        input: { command: 'git add -A && git commit -m "fix(retry): cap the backoff exponent"' },
+      },
+    ],
+  });
+  w.result(
+    't6',
+    '[main {{commit:0}}] fix(retry): cap the backoff exponent\n 3 files changed, 18 insertions(+), 4 deletions(-)',
+  );
+
+  w.call({
+    text: 'And the note in the README, so the cap is not folklore.',
+    cacheRead: 51_400,
+    tools: [{ id: 't7', name: 'Bash', input: { command: 'git commit -am "docs(retry): state the cap"' } }],
+  });
+  w.result('t7', '[main {{commit:1}}] docs(retry): state the cap\n 1 file changed, 6 insertions(+)');
+
+  w.call({
+    text: 'Moving the card, then drawing the shape you asked for.',
+    cacheRead: 53_900,
+    tools: [
+      { id: 't8', name: 'mcp__tracker__save_issue', input: { id: 'ORBIT-42', state: 'Done' } },
+      { id: 't9', name: 'mcp__tracker__get_issue', input: { id: 'ORBIT-58' } },
+    ],
+  });
+  w.result(
+    't8',
+    '{"id":"ORBIT-42","title":"Retry backoff saturates at 100 attempts","url":"https://tracker.example/browse/ORBIT-42","state":"Done"}',
+  );
+  w.result(
+    't9',
+    '{"id":"ORBIT-58","title":"Queue drains out of order under load","url":"https://tracker.example/browse/ORBIT-58","state":"Backlog"}',
+  );
+
+  // The publish. The URL keeps the real SHAPE — the parser recognises a page by the
+  // `/code/artifact/` path and nothing else — with an id that is plainly not one of anybody's.
+  w.call({
+    text: 'Published the backoff curve as a page.',
+    cacheRead: 56_200,
+    out: 480,
+    tools: [
+      {
+        id: 't10',
+        name: 'Artifact',
+        input: {
+          file_path: '~scratch/relay/backoff-curve.html',
+          description: 'The retry backoff before and after the cap, at the real attempt counts.',
+          favicon: '📈',
+        },
+      },
+    ],
+  });
+  w.result('t10', 'Published ~scratch/relay/backoff-curve.html at https://claude.ai/code/artifact/demo-prototype');
+
+  w.call({ text: 'Capped, landed in two commits, card moved, curve published.', cacheRead: 58_000, out: 210 });
+  w.turnEnd(96_000, 21);
+
+  return {
+    id: 'shipping',
+    cwd,
+    sessionId,
+    lines: w.lines,
+    now: '2026-03-04T09:22:00.000Z',
+    repo: {
+      // Dated INSIDE the session, each just before the call that reports it: the attribution proves
+      // a commit by "this call named its hash, and it was authored after the previous call". The
+      // clock advances 1.4s per transcript line, so these two sit between lines 10-11 and 12-13.
+      commits: [
+        {
+          message: 'fix(retry): cap the backoff exponent',
+          date: '2026-03-04T09:00:15Z',
+          files: {
+            'src/retry.ts': 'export function backoff(n: number) {\n  return 2 ** Math.min(n, 6) * 100;\n}\n',
+            'src/queue.ts': 'import { backoff } from "./retry.ts";\n',
+            'tests/retry.test.ts': 'import { backoff } from "../src/retry.ts";\n',
+          },
+        },
+        {
+          message: 'docs(retry): state the cap',
+          date: '2026-03-04T09:00:18Z',
+          files: { 'README.md': '# relay\n\nRetries cap at six doublings.\n' },
+        },
+      ],
+    },
+  };
+}
+
 export const SCENES: Record<string, () => Scene> = {
   commands,
   'busy-day': busyDay,
   broken: brokenSession,
   corpus,
+  shipping,
 };
 
 /**

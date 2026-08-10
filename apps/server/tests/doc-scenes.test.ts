@@ -10,13 +10,21 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { SCENES, slugOf } from '../scripts/doc-scenes.ts';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { materialiseRepo, SCENES, type Scene, slugOf, substituteHashes } from '../scripts/doc-scenes.ts';
+import { harvestHashes } from '../src/core/commit-attribution.ts';
 import { windowFor } from '../src/core/context-windows.ts';
 import { backgroundCommands } from '../src/core/selectors.ts';
+import { artifactLabel, mergeArtifacts } from '../src/core/session-artifacts.ts';
 import { createSessionTree } from '../src/core/session-tree.ts';
-import type { NormalizedEvent } from '../src/core/types.ts';
+import type { NormalizedEvent, SessionRecord } from '../src/core/types.ts';
 import { computeVerdict, turnBillable } from '../src/core/verdict.ts';
 import { parseLine } from '../src/server/parser.ts';
+import { cardsForSession } from '../src/server/session-cards.ts';
+import { commitsForSession } from '../src/server/session-commits.ts';
+import { scanLines } from '../src/server/transcript-scan.ts';
 
 /**
  * Run a scene exactly as the live pipeline does — parent transcript first, then each child's own
@@ -253,3 +261,122 @@ describe('the corpus scene', () => {
     expect(severities).toContain('crit');
   });
 });
+
+// The three figures this scene exists for photograph cards that do NOT read the session file for
+// their content: Cards reads the tracker calls' results, and Commits and Changed files read GIT.
+// So the assertions below go through the same server modules the page does — including a real
+// repository built from the scene's own declaration, since that join (transcript hash ↔ commit) is
+// the one thing a wrong scene would break into an empty picture nobody could catch.
+describe('the shipping scene — commits, cards and a published page', () => {
+  const scene = SCENES.shipping!();
+  const scan = scanLines(scene.lines);
+
+  const record = (path: string, sessionId: string): SessionRecord => ({
+    sessionId,
+    project: 'relay',
+    model: null,
+    lastActivity: 1,
+    isActive: false,
+    isOpen: false,
+    status: null,
+    waitingFor: null,
+    waitingSince: null,
+    subject: null,
+    entrypoint: null,
+    root: 'cli',
+    path,
+  });
+
+  test('the Cards figure has both kinds of row: one moved, one only read', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seedeep-scene-'));
+    const path = join(dir, `${scene.sessionId}.jsonl`);
+    await writeFile(path, `${scene.lines.join('\n')}\n`);
+    const { cards } = await cardsForSession(record(path, scene.sessionId));
+    expect(cards.map((c) => c.id).sort()).toEqual(['ORBIT-42', 'ORBIT-58']);
+    // A card the session CHANGED and one it merely read — a figure of two identical rows would
+    // demonstrate nothing the caption claims.
+    expect(cards.find((c) => c.id === 'ORBIT-42')?.evidence).toBe('wrote');
+    expect(cards.find((c) => c.id === 'ORBIT-58')?.evidence).toBe('read');
+    // The title is what the row shows; without it the card is a bare key.
+    expect(cards.find((c) => c.id === 'ORBIT-42')?.title).toContain('backoff');
+  });
+
+  test('the transcript names exactly the commits the repository makes', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'seedeep-repo-'));
+    // The scene's own cwd is where the CAPTURE builds it; here it is redirected into a temporary
+    // directory, so running the suite can never collide with a capture in flight.
+    const local: Scene = { ...scene, cwd };
+    const hashes = await materialiseRepo(local, { mkdir, writeFile, run: gitIn }, join);
+    expect(hashes.length).toBe(2);
+    expect(hashes[0]).not.toBe(hashes[1]);
+
+    const lines = substituteHashes(scene.lines, hashes);
+    expect(lines.join('\n')).not.toContain('{{commit:');
+    // Harvested the way the attribution does it: what the card shows is these hashes, or nothing.
+    const harvested = scanLines(lines).commits.flatMap((c) => c.outputHashes);
+    for (const h of hashes) expect(harvested).toContain(h);
+  });
+
+  // The assertion the Commits figure actually rests on, and the one that caught the scene being
+  // wrong: a hash in the transcript is not enough. Attribution PROVES a commit by "the call named
+  // it, and it was authored after the previous call" — so a fixture dated before the session is
+  // claimed by nobody and the card photographs empty. Driven end to end, git included.
+  test('both commits are attributed to the session that made them', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'seedeep-attr-'));
+    const hashes = await materialiseRepo({ ...scene, cwd }, { mkdir, writeFile, run: gitIn }, join);
+    // The transcript has to speak of the directory the repository is really in, since that is what
+    // resolves to a repo — the scene's own `/tmp/relay` belongs to the capture.
+    const lines = substituteHashes(scene.lines, hashes).map((l) => l.split(scene.cwd).join(cwd));
+    const path = join(cwd, `${scene.sessionId}.jsonl`);
+    await writeFile(path, `${lines.join('\n')}\n`);
+
+    const { commits } = await commitsForSession(record(path, scene.sessionId), []);
+    expect(commits.map((c) => c.short).sort()).toEqual([...hashes].sort());
+    expect(commits.every((c) => c.subject.length > 0)).toBe(true);
+  });
+
+  test('the hashes are the same on every run, or the figure can never be verified', async () => {
+    const a = await mkdtemp(join(tmpdir(), 'seedeep-repo-a-'));
+    const b = await mkdtemp(join(tmpdir(), 'seedeep-repo-b-'));
+    const one = await materialiseRepo({ ...scene, cwd: a }, { mkdir, writeFile, run: gitIn }, join);
+    const two = await materialiseRepo({ ...scene, cwd: b }, { mkdir, writeFile, run: gitIn }, join);
+    // Two builds, two directories, identical hashes: this is what the fixed identity and dates buy,
+    // and without it `--verify` would report the Commits figure as changed on every release.
+    expect(one).toEqual(two);
+  });
+
+  test('substituteHashes refuses a token the repository cannot back', () => {
+    expect(() => substituteHashes(['names {{commit:5}}'], ['abc1234'])).toThrow('{{commit:5}}');
+  });
+
+  test('the Changed files figure has all three of its rows to show', () => {
+    // Commits deliver the project files (the hero), the ledger the scratchpad row… and the publish
+    // the third. One page, not two publishes: the row counts pages.
+    expect(scene.repo?.commits.length).toBe(2);
+    const files = new Set(scene.repo?.commits.flatMap((c) => Object.keys(c.files)));
+    expect(files.size).toBeGreaterThanOrEqual(4);
+
+    const pages = mergeArtifacts(
+      scan.artifacts.map((a) => ({ url: a.url, label: artifactLabel(a.description, a.path), path: a.path, at: a.at })),
+    );
+    expect(pages.length).toBe(1);
+    expect(pages[0]?.url).toBe('https://claude.ai/code/artifact/demo-prototype');
+    expect(pages[0]?.label).toContain('backoff');
+  });
+
+  test('nothing in the scene names a real tracker, a real page or a real machine', () => {
+    const text = scene.lines.join('\n');
+    expect(harvestHashes('{{commit:0}}')).toEqual([]); // the token is not mistakable for a hash
+    expect(text).not.toMatch(/linear\.app|atlassian|jira/i);
+    // A uuid-shaped artifact id would be indistinguishable from somebody's real page.
+    expect(text).toContain('/code/artifact/demo-prototype');
+  });
+});
+
+/** `git` for the tests, with the scene's own fixed identity and clock passed through. */
+async function gitIn(args: string[], cwd: string, env: Record<string, string>): Promise<string> {
+  const p = Bun.spawn(['git', ...args], { cwd, env: { ...process.env, ...env }, stdout: 'pipe', stderr: 'pipe' });
+  const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  if (code !== 0) throw new Error(`git ${args.join(' ')} failed: ${err.trim() || out.trim()}`);
+  return out;
+}

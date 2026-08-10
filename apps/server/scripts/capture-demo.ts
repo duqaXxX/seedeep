@@ -23,7 +23,7 @@ import { basename, join, resolve } from 'node:path';
 import { openProbeSession, type ProbeSession, slugFor } from '../probe/driver.ts';
 import { cliRoot } from '../src/server/roots.ts';
 import { VERSION } from '../src/server/version.ts';
-import { SCENES as DOC_SCENES, writeScene } from './doc-scenes.ts';
+import { SCENES as DOC_SCENES, materialiseRepo, substituteHashes, writeScene } from './doc-scenes.ts';
 import { type DocShot, readManifest, verifyVerdicts } from './doc-shots-check.ts';
 
 /**
@@ -1239,6 +1239,18 @@ function makeTake(
 }
 
 /**
+ * One git command in a scene's fixture repository, with the fixed identity and clock the scene
+ * hands it. Throws on failure: a half-built repository would photograph as an empty card, which is
+ * the silent wrong picture this whole path exists to avoid.
+ */
+async function git(args: string[], cwd: string, env: Record<string, string>): Promise<string> {
+  const p = Bun.spawn(['git', ...args], { cwd, env: { ...process.env, ...env }, stdout: 'pipe', stderr: 'pipe' });
+  const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  if (code !== 0) throw new Error(`git ${args.join(' ')} failed in ${cwd}: ${err.trim() || out.trim()}`);
+  return out;
+}
+
+/**
  * Cut the shots of one SYNTHETIC scene: write the transcript Claude Code would have written, open
  * the session, take the crops. No pacing — every state a scene exists for is a settled one, so the
  * whole transcript lands at once and the page is photographed after it.
@@ -1261,10 +1273,39 @@ async function shootScene(
   const cfg = join(OUT, `cfg-${sceneId}${posture ? `-${posture.commonName}` : ''}`);
   await rm(cfg, { recursive: true, force: true });
   await mkdir(cfg, { recursive: true });
+  // A scene whose cards read GIT needs the repository before the transcript, because the transcript
+  // has to name the hashes it produced. Built fresh every run: a leftover from a previous cut would
+  // carry commits this session never made, and the card would attribute them to nobody.
+  if (scene.repo) {
+    if (!scene.cwd.startsWith('/tmp/')) throw new Error(`scene ${sceneId} builds a repo outside /tmp — refusing`);
+    await rm(scene.cwd, { recursive: true, force: true });
+    const hashes = await materialiseRepo(scene, { mkdir, writeFile, run: git }, join);
+    scene.lines = substituteHashes(scene.lines, hashes);
+    console.log(`[doc-shots] scene ${sceneId}: repo at ${scene.cwd} — ${hashes.join(' ')}`);
+  }
   const { sessionId, cwd } = await writeScene(cfg, scene, { mkdir, writeFile }, join);
   if (scene.status) await writeOpenRecord(cfg, sessionId, cwd, scene.status);
   console.log(`[doc-shots] scene ${sceneId}: ${scene.lines.length} lines, ${shots.length} shot(s)`);
 
+  try {
+    await shootSceneShots(scene, sessionId, shots, outDir, cut, cfg, posture);
+  } finally {
+    // The fixture repository does not outlive the shot: it sits at a path any other run would
+    // reuse, and a stale one is worse than none — its commits belong to no session.
+    if (scene.repo) await rm(scene.cwd, { recursive: true, force: true });
+  }
+}
+
+/** The page half of {@link shootScene}, split out so the repository can be cleaned up around it. */
+async function shootSceneShots(
+  scene: Scene,
+  sessionId: string,
+  shots: DocShot[],
+  outDir: string,
+  cut: string[],
+  cfg: string,
+  posture?: DocShot['server'],
+): Promise<void> {
   await withDocPage(
     cfg,
     async (page, url) => {

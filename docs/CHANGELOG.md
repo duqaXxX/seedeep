@@ -4,6 +4,56 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### A scene can build a repository, so three more cards have a figure (2026-08-11)
+
+Commits, Cards and Changed files were the three surfaces with a reference of their own and no
+picture beside it. Cards needed only a transcript; the other two could not be photographed at all,
+because they do not read the session file for their content — they read GIT, and the capture had
+never materialised a scene's working directory on disk.
+
+A scene can now declare a `repo`: the commits it must contain, each with its files and its date.
+The capture builds it at the scene's cwd before writing the transcript, hands the real short hashes
+back through the `{{commit:N}}` tokens the transcript writes, and deletes it after the shot. The
+identity and the dates are FIXED, which is what makes the hashes — printed inside the figure —
+identical on every machine: verified byte for byte across two consecutive cuts.
+
+The date is not decoration. Attribution proves a commit by "the call named its hash, and it was
+authored after the previous call", so a fixture dated before the session is claimed by nobody and
+the card photographs empty. That is what the first attempt did, and the test that now drives the
+scene through `commitsForSession` — git included — is what caught it.
+
+The new `shipping` scene ships two commits, a tracker card it moved and one it only read, and a
+published page; its figures show a fictional tracker key and an artifact id that is plainly not a
+real one. `The workspace` is the one section still without a figure, and it is listed as pending:
+the tab strip is worth a picture only with several tabs in different states, which a capture that
+opens one session cannot produce.
+
+### The surfaces that are not cards get written down (2026-08-10)
+
+An audit of `features.md` against `client/` found the tour complete for every widget that carries a
+title, and thin or misfiled for everything else. Four things a reader sees on the same screen were
+either absent or in the wrong chapter:
+
+- **NOW had no section.** The panel between the Live activity header and the feed — the first thing
+  the eye lands on during a turn — was named only inside "when a session is waiting for YOU", so its
+  ordinary states had no home. It now has one: what each label means, what it says when the agent
+  has left no words to quote, and why it never uses the word "waiting" for those.
+- **The toasts had three passing mentions and no description.** Written down now: two rails split by
+  what you do about them, five each, and the times they hold (1.5s a tool, 5s a spawn, 8s a
+  verdict). The one exclusion — `Agent` — is named as the routing decision it is, since the spawn
+  already has the richer toast on the other rail.
+- **The workspace was filed under the engine.** The tab strip and the session picker are how you
+  choose what you are looking at, not transport: they now open the tour as `## The workspace`, and
+  the engine bullet keeps only what is actually engine (replay, one shared connection).
+- **Four cards were never named the way their header names them.** `Context`, `Timeline`,
+  `Skills used` and `Running · live` had zero literal occurrences, so a reader searching the doc for
+  what was on screen found nothing. The content was there; the label now is too. `Running · live` —
+  the live monitor when the session has background commands instead of subagents — was undescribed
+  entirely.
+
+No figures were added: the three cards with a reference of their own that still lack one (Changed
+files, Commits, Cards) need a demo repository the capture harness does not create yet.
+
 ### Changed files carries the pages a session published (2026-08-10)
 
 A prototype published with the `Artifact` tool was reachable in exactly one place: the drawer of

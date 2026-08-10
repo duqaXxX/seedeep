@@ -133,6 +133,8 @@ describe('the real manifest', () => {
  */
 const SECTIONS_WITHOUT_A_FIGURE: Record<string, string> = {
   'The engine underneath': 'describes the watcher, the server and the shell — internals, with no surface to crop',
+  'The workspace — one tab per session':
+    'PENDING — the strip is only worth a figure with SEVERAL tabs in different states, and a capture opens one session',
 };
 
 describe('docs/features.md — a figure per surface', () => {

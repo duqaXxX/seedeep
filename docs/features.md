@@ -35,18 +35,69 @@ The README is the short version. The design behind these surfaces is in
 > makes nothing it claims false. The only thing that invalidates a figure is a change to
 > what it SHOWS.
 
+## The workspace — one tab per session
+
+seedeep is one page holding **a tab per session**, and the strip across the top is
+where you find one at a glance. A session that starts gets a tab by itself —
+**once**, so one you close stays closed — named `<project> · <first prompt>`, which
+is what keeps two sessions of the same project apart. The open set, its order and
+which tab is active all survive a refresh.
+
+State is shown rather than spelled, because the words would eat the room the
+subject needs: the dot **pulses** while the session is generating, turns **amber**
+when it has stopped and is waiting for YOU, and **red** when its last call to the
+model failed and nothing has succeeded since. A finished session goes quiet and its
+whole tab dims — that is a property of the tab, not a badge on it. The three states
+share one dot on purpose: they answer the same question, and a second marker would
+turn the strip into a dashboard. Hovering spells out what the classes say, and gives
+a cut label its full text back.
+
+To open one that has no tab, the **session picker** — a glass combobox at the end of
+the header. Type to filter over the prompt, the model, the project or the id; every
+row leads with the session's own first prompt, next to a model chip and how long ago
+it ran. Sessions already open are pinned, and the roster splits **Human** from
+**Automated**, each side carrying its live count: headless `sdk-*` runs are the bulk
+of what a working machine accumulates, and unsplit they bury the handful of sessions
+anyone actually picks.
+
+The fixed surfaces — Home, Compare and Search — are not tabs, because a tab is a
+session: they live in the header menu (☰), left of the wordmark.
+
 ## The live session view
 
-A live-first cockpit: a context dial and a real token breakdown next to a **live
-subagent monitor** (the running subagents, each with its context filling in real
-time and its current action), and the live activity feed filling the right — the
-two live signals at a glance.
+A live-first cockpit: the **Context** card — a dial and a real token breakdown —
+next to the live monitor (**Subagents · live**: the running subagents, each with its
+context filling in real time and its current action), and the **Live activity** feed
+filling the right — the two live signals at a glance. When what the session has
+running is background commands rather than subagents, that card is titled
+**Running · live** and monitors those instead: same place, same question, whichever
+kind of work is in flight.
 
 <img src="assets/shots/context-dial.png" width="459" alt="The context card: 263.1k of a 1.0M window, 26%, split by cache read, cache write and input">
 
 *The number is the whole point, so it is the biggest thing on the card. The bar
 below it is the same figure split by what it is made of — mostly context read back
 from cache, which is billed too.*
+
+### NOW — what it is doing, in one line
+
+Between the **Live activity** header and the feed sits the panel that answers the
+question you actually opened the tab for. Its label says which kind of answer it is:
+`now` while something is happening, `output` once the turn's final answer has
+landed, `intent` for the words a settled turn left behind, and **`waiting for you`**
+when the session has stopped on you.
+
+What it shows, in order of preference, is the agent's own words — the narration it
+just wrote, or the turn's result — held long enough to be read and clamped to two
+lines, with **more** opening the full text. When there are no words to quote it says
+what is true instead of going blank: which tools are running and for how long, or
+`Started — no output yet`, or that a subagent is running in the background, or that
+one has returned and the turn is working on the result. It deliberately never says
+"waiting" for any of those — that word is reserved for the opposite state, the one
+where the session is stopped on you.
+
+A turn that is neither running nor left any words behind has no *now* to report, and
+the panel is simply not there.
 
 ### The activity feed, and every call to the model
 
@@ -62,9 +113,22 @@ where Claude Code recorded one.
 fired sit under it, and anything a subagent did is tagged `SUBAGENT`. The panel at
 the top is the model's own last words — the turn's output as it arrives.*
 
-Cyan toasts announce new tools and subagents as they fire — a spawn's toast also
-names the **model** it runs on, filled in as soon as it is knowable, since three
-quarters of subagents run on a different model than the session did.
+### Toasts — what just happened, without looking away
+
+Two rails announce events as they fire, and they are split by what you do about
+them. **Tools and verdicts** rise in a column on the right; **subagent spawns** run
+along the bottom, where a fan-out reads as a row rather than as a stampede down one
+side. Each rail holds five at most and evicts its oldest, so a burst is bounded by
+construction.
+
+They are timed by how much there is to take in: a tool toast is a **1.5s** glance, a
+spawn stays **5s** — long enough to also name the **model** it runs on, filled in the
+moment that becomes knowable, since three quarters of subagents run on a different
+model than the session did — and a verdict announcement holds **8s**.
+
+**Every tool toasts.** The single exception is `Agent`, and it is routing rather
+than suppression: a spawn already has the richer toast on the bottom rail, so a bare
+`Agent` up top would be the same event twice.
 
 ### Which model, and how full that makes it
 
@@ -88,7 +152,7 @@ has **worked** — the sum of its turns, not the wall-clock span. The two differ
 ### The stats strip
 
 Three equal-height cards: **Session** (tokens by API category plus turn KPIs),
-**Skills + Commands**, and **Changed files**.
+**Skills used** beside **Commands**, and **Changed files**.
 
 In the Session card the main-thread categories are headed *main session*, and the
 **Subagents** figure below them opens into a **by-model** bar — the subagent tokens
@@ -131,6 +195,12 @@ that outlasts the session. Expand the card for the complete list, project first
 then scratchpad, narrowed by a path filter and by type, with the published pages
 listed under it as links. Full rules: [`changed-files.md`](changed-files.md).
 
+<img src="assets/shots/changed-files.png" width="459" alt="The Changed files card: four files in two commits, split by extension, and a row saying one artifact was published">
+
+*Four files, and the description names where the number came from — `Files in 2
+commits`, which you can check with `git show --stat`. Under the bars, the page this
+session published: not a file that changed, so never part of the count.*
+
 ### The output row — Main tools · Commits · Cards
 
 At 50/25/25: what the session ran to get there, what it shipped, and what it was
@@ -160,11 +230,22 @@ own empty state instead.
   GitLab, or marked `local` when it is not pushed. Attributed from the commit's own
   hash in the call that made it, so two sessions working on one repo never claim
   each other's work. Full rules: [`commits.md`](commits.md).
+
+  <img src="assets/shots/session-commits.png" width="344" alt="The Commits card: two commits, both marked local, each with its short hash and subject">
+
+  *Two commits, and neither has been pushed — so the card says `local` rather than
+  offering a link that would 404. The hash is the proof: it is the one the session's
+  own `git commit` printed.*
 - **Cards** — the tracker cards the session touched, each opening on its tracker.
   Read from the calls that named them, never from a key typed in a prompt: of the
   36 key-shaped prefixes appearing in prompts across a real corpus, 27 name no
   tracker at all (`GPT-4`, `UTF-8`). A row says whether the session **changed** the
   card or only **read** it. Full rules: [`cards.md`](cards.md).
+
+  <img src="assets/shots/tracker-cards.png" width="344" alt="The Cards card: two tracker cards with their titles, one badged read, the other changed by the session">
+
+  *Two cards, and the difference is the point: one the session moved, one it only
+  looked at — which the `read` badge says and the description counts.*
 
 ### The subagents grid
 
@@ -310,8 +391,9 @@ yields to a quiet "ended".
 
 ## The turn as a lens
 
-The timeline shows **everything you sent** — typed prompts and slash commands
-alike — and colours each entry by what it actually cost: a round of work (green
+The **Timeline**, the strip across the top of the session, shows **everything you
+sent** — typed prompts and slash commands alike — and colours each entry by what it
+actually cost: a round of work (green
 while it is burning tokens, red if you hit Esc), a context event (`/clear`,
 `/compact`, a compaction), or a local command that cost nothing.
 
@@ -698,15 +780,6 @@ re-solving it would only add a second, weaker way in. How to turn it on:
 - **Local server** — serves a page and streams live events to the browser over a
   single multiplexed SSE feed, plus a read-only session roster and a read-only
   replay stream for finished sessions.
-- **GUI shell** — one tabbed page, where the tabs are a workspace: a session that
-  starts gets a tab by itself — **once**, so one you close stays closed — named
-  `<project> · <first prompt>` so two sessions of the same project read apart, and
-  the open set, its order and the active tab all survive a refresh. State is shown
-  rather than spelled: the dot's pulse says a session is generating, it goes
-  **amber when the session is stopped waiting for you** (an approval, or an
-  answer), **red when its last API call failed**, and a finished tab goes quiet. A
-  **searchable session picker** (a glass combobox) labels each session by its first
-  prompt with a model chip and relative time, pins the ones already open, and
-  splits **Human / Automated** so headless `sdk-*` runs stay out of the way — with
-  replay for finished ones, and per-tab subscription over the shared feed with no
-  connection leak.
+- **GUI shell** — one tabbed page (the workspace above), with **replay** for
+  finished sessions and a per-tab subscription over the shared feed, so a dozen
+  open tabs still cost one connection and closing one leaks nothing.
