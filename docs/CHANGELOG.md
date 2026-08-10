@@ -4,6 +4,20 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.17.0 (2026-08-10)
 
+### A note reaches the complete history, not just the feed (2026-08-10)
+
+The feed keeps thirteen rows per turn, so a security review's findings — a row nobody can anchor to
+a call — were gone after ten more activities, and invisible to anyone opening the session later.
+They now also appear in **Expand all**, the turn's complete history and the only list with no cap,
+folded in by timestamp so the note lands right after the call that provoked it rather than at the
+end beside unrelated work. It is the one row there that is not a call: named in amber, no duration,
+and a click opens the full text.
+
+The same list was also the last surface still showing a warned call as an ordinary one — the ⚑ the
+Trace block carries now travels with the row. Davide chose the destination from a prototype: the
+three candidate surfaces, photographed on the real UI, with the proposed row injected into the real
+list so the choice was made by looking rather than by reading a description.
+
 ### What ends a Monitor is its TaskStop, and a running command says how long it has been running (2026-08-10)
 
 Marking a `Monitor` as a background command put it in front of the liveness probe, and the probe

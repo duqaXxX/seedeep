@@ -415,9 +415,12 @@ export interface TreeSnapshot {
    * Text something attached to the SESSION rather than to a call — today only the background
    * security review, which runs with no tool call of its own and reports what it found.
    *
-   * Session-scoped like `openCall`: it belongs to no turn, so `scopeToTurn` passes it through.
+   * Carries WHEN and in which turn, because the complete-history surface shows it in order among
+   * the calls: a note with no instant could only ever be appended at the end, next to work it has
+   * nothing to do with. Session-scoped like `openCall`, so `scopeToTurn` passes it through — the
+   * surface filters by `turnIndex` itself.
    */
-  notes: { source: string | null; hook: string | null; text: string }[];
+  notes: { source: string | null; hook: string | null; text: string; at: string; turnIndex: number | null }[];
 }
 
 type WindowFor = (model: string | null) => { window: number; estimated: boolean };
@@ -672,7 +675,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
   const pendingNotes = new Map<string, { source: string | null; hook: string | null; text: string }[]>();
   // Notes about the SESSION rather than about a call: work that ran with no tool call of its own
   // (the background security review) and reported what it found.
-  const sessionNotes: { source: string | null; hook: string | null; text: string }[] = [];
+  const sessionNotes: {
+    source: string | null;
+    hook: string | null;
+    text: string;
+    at: string;
+    turnIndex: number | null;
+  }[] = [];
   const regions = new Set<string>();
   const skillTurns = new Map<string, number>(); // skill name → assistant lines it drove
   const skillInvokes = new Map<string, number>(); // skill name → explicit Skill tool calls
@@ -1360,7 +1369,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       // there is nothing to anchor it to — inventing an owner would put it on whichever call
       // happened to be open.
       if (e.toolUseId === null) {
-        if (!sessionNotes.some((n) => n.text === note.text)) sessionNotes.push(note);
+        if (!sessionNotes.some((n) => n.text === note.text)) {
+          sessionNotes.push({ ...note, at: e.timestamp, turnIndex: currentTurn?.index ?? null });
+        }
       } else {
         const t = tools.get(e.toolUseId);
         const list = t ? (t.notes ??= []) : (pendingNotes.get(e.toolUseId) ?? []);

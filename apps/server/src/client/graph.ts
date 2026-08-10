@@ -6,7 +6,7 @@
 // output, tool arg/ctx, skill turns) is guarded and lands in later tasks (P1-P3).
 
 import { type NowState, nowLine, outcomeLine, runningSince } from '../core/activity-line.ts';
-import { activityMatches, flattenActivity } from '../core/activity-list.ts';
+import { type ActivityRow, activityMatches, flattenActivity } from '../core/activity-list.ts';
 import type { SessionCommits } from '../core/commit-attribution.ts';
 import type { FeedItem } from '../core/feed.ts';
 import { createFeed, tsMs } from '../core/feed.ts';
@@ -3884,12 +3884,50 @@ export function createGraph(
   // what differs is the SOURCE: the span store, which keeps every activity, where the feed
   // ring keeps only the last FEED_CAP per turn. Subagent rows are included — they live only
   // in the spawn lanes, so flattenActivity is what makes them reachable at all.
+  /**
+   * Fold the session's notes into the complete history, in time order.
+   *
+   * A note is the one thing here that is not a span: nothing a hook or a background review writes
+   * is a step of the session's work, so the Trace never draws one and `flattenActivity` never
+   * sees it. But it HAPPENED, at a known instant, in a known turn — and this list is the only
+   * surface with no cap, which is what makes it the note's home. The feed row is a glimpse; a
+   * finding you have to catch within ten activities is one you will miss.
+   *
+   * Inserted by timestamp rather than appended: a note dropped at the end would sit beside work it
+   * has nothing to do with, when the whole value is that it lands next to the call that provoked it.
+   */
+  function withSessionNotes(rows: ActivityRow[]): ActivityRow[] {
+    const notes = (lastSnap?.notes ?? []).filter((n) => selectedTurn === null || n.turnIndex === selectedTurn);
+    if (!notes.length) return rows;
+    const out = [...rows];
+    for (const [i, n] of notes.entries()) {
+      const t0 = Date.parse(n.at);
+      if (!Number.isFinite(t0)) continue;
+      const row: ActivityRow = {
+        id: 'note-' + i,
+        type: 'note',
+        name: 'Note',
+        detail: n.text,
+        t0,
+        ms: null,
+        status: 'ok',
+        agent: null,
+        lane: 0,
+        handle: null,
+        turnIndex: n.turnIndex ?? rows[0]?.turnIndex ?? 1,
+      };
+      const at = out.findIndex((r) => r.t0 > t0);
+      out.splice(at === -1 ? out.length : at, 0, row);
+    }
+    return out;
+  }
+
   function openAllActivity(): void {
     crumbs.length = 0;
     dbody.replaceChildren();
     renderCrumbs();
 
-    const rows = flattenActivity(spanStore.snapshot(selectedTurn));
+    const rows = withSessionNotes(flattenActivity(spanStore.snapshot(selectedTurn)));
     const scopedTurn =
       selectedTurn !== null && lastSnap ? lastSnap.turnList.find((t) => t.index === selectedTurn) : null;
     const title = selectedTurn !== null ? entryTitle(lastSnap, scopedTurn) || 'Entry' : 'Session';
@@ -3959,6 +3997,9 @@ export function createGraph(
         nm.append(E('span', 'tnum', '#' + (activityIndex.get(r.id) ?? 0)));
         nm.append(document.createTextNode(r.name));
         if (r.status === 'error') nm.append(E('span', 'terr', 'error'));
+        // The same mark the Trace block carries. Without it this list — the COMPLETE history —
+        // was the one surface that showed a warned call as an ordinary one.
+        if (r.flagged) nm.append(E('span', 'tflag', '⚑'));
         if (r.agent) nm.append(E('span', 'aagent', r.agent));
         if (r.detail) nm.append(E('span', 'targ', r.detail));
         // 'running…' is reserved for spans that ARE running. A span closed within the same
@@ -3974,6 +4015,11 @@ export function createGraph(
         if (r.handle) {
           const h = r.handle;
           row.onclick = () => openBlock(h, backToList);
+        } else if (r.type === 'note') {
+          // A note has no span to open, and its row shows one ellipsized line — so the click has
+          // to lead somewhere, exactly as it does from the feed.
+          const text = r.detail ?? '';
+          row.onclick = () => openNote(text);
         }
         box.append(row);
       }

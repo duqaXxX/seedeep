@@ -220,6 +220,16 @@
 .ttrow .run {
   color: var(--good);
 }
+/* A hook flagged this call — the same mark, and the same amber, the Trace block carries. */
+.ttrow .tflag {
+  color: var(--warn);
+  margin-left: 0.35rem;
+}
+/* A note is not a step of the work: it is named in the colour of the mark, so a reader scanning
+   the history can tell at a glance that this row is something somebody SAID, not something run. */
+.ttrow.t-note .tn {
+  color: var(--warn);
+}
 /* Chronological activity number — dim prefix inside the name cell. Stable across
    filter and sort so "#42" always refers to the same activity. */
 .ttrow .tnum {

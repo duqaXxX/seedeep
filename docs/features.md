@@ -439,7 +439,14 @@ It now shows up where it belongs, and *where* depends on what it is about:
 - **A note about the session** — work that ran with no call of its own, like the
   background security review — goes into the activity feed, because there is no row it
   could be attached to. Pinning it on whichever call happened to be open would be an
-  invention.
+  invention. The feed is a glimpse, though: it holds thirteen rows per turn, and a
+  finding you have to catch within ten activities is one you will miss. So the note is
+  **also in Expand all**, the turn's complete history and the one list with no cap — in
+  time order, which lands it right after the call that provoked it. It is the only row
+  there that is not a call, so it is named in amber and carries no duration.
+
+Either way the whole text is one click away: a row shows one ellipsized line, the
+drawer behind it shows what was written, verbatim.
 
 ![The drawer of a Write the security plugin objected to: a flagged chip beside the tool call, and the warning verbatim above the file the call wrote](assets/shots/hook-note.png)
 

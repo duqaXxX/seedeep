@@ -6,7 +6,10 @@ import { SPAWN_TOOL_NAMES } from './types.ts';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type SpanType = 'prompt' | 'api' | 'tool' | 'skill' | 'spawn' | 'subspan' | 'result';
+// `note` is the one member no SPAN ever has: nothing a hook or a background review writes is a
+// step of the session's work, so the Trace never draws one. It exists because the complete-history
+// list speaks this vocabulary, and a note belongs in that history — see `openAllActivity`.
+export type SpanType = 'prompt' | 'api' | 'tool' | 'skill' | 'spawn' | 'subspan' | 'result' | 'note';
 
 /** Identifies the drawer content for a span. The subagent handle also carries the
  * spawn's toolUseId so the drawer router can fall back to the spawn TOOL drawer

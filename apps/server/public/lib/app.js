@@ -613,8 +613,9 @@ function createSessionTree(opts) {
     } else if (e.type === "note") {
       const note = { source: e.source, hook: e.hook, text: e.text };
       if (e.toolUseId === null) {
-        if (!sessionNotes.some((n) => n.text === note.text))
-          sessionNotes.push(note);
+        if (!sessionNotes.some((n) => n.text === note.text)) {
+          sessionNotes.push({ ...note, at: e.timestamp, turnIndex: currentTurn?.index ?? null });
+        }
       } else {
         const t = tools.get(e.toolUseId);
         const list = t ? t.notes ??= [] : pendingNotes.get(e.toolUseId) ?? [];
@@ -3740,7 +3741,8 @@ function flattenActivity(snap) {
       agent: agentName(s.agent),
       lane: s.lane,
       handle: s.handle,
-      turnIndex: turnIdx
+      turnIndex: turnIdx,
+      ...s.flagged ? { flagged: true } : {}
     });
   };
   for (const turn of snap.turns) {
@@ -5460,7 +5462,8 @@ var CATV = {
   skill: "--sp-skill",
   spawn: "--sp-spawn",
   subspan: "--sp-spawn",
-  result: "--sp-result"
+  result: "--sp-result",
+  note: "--warn"
 };
 var _cssCache = new Map;
 function cssv(n) {
@@ -9002,11 +9005,38 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     dbody.append(filterBar, typeBar, countEl, blockD("All changed files", "Project files come from git — the commits this session made, plus what is still uncommitted while it runs — so they include shell writes and build output. Scratchpad files are this session's temporaries, outside the repo, and only Claude Code's own ledger sees them.", box));
     openDrawer();
   }
+  function withSessionNotes(rows) {
+    const notes = (lastSnap?.notes ?? []).filter((n) => selectedTurn === null || n.turnIndex === selectedTurn);
+    if (!notes.length)
+      return rows;
+    const out = [...rows];
+    for (const [i, n] of notes.entries()) {
+      const t0 = Date.parse(n.at);
+      if (!Number.isFinite(t0))
+        continue;
+      const row = {
+        id: "note-" + i,
+        type: "note",
+        name: "Note",
+        detail: n.text,
+        t0,
+        ms: null,
+        status: "ok",
+        agent: null,
+        lane: 0,
+        handle: null,
+        turnIndex: n.turnIndex ?? rows[0]?.turnIndex ?? 1
+      };
+      const at = out.findIndex((r) => r.t0 > t0);
+      out.splice(at === -1 ? out.length : at, 0, row);
+    }
+    return out;
+  }
   function openAllActivity() {
     crumbs.length = 0;
     dbody.replaceChildren();
     renderCrumbs();
-    const rows = flattenActivity(spanStore.snapshot(selectedTurn));
+    const rows = withSessionNotes(flattenActivity(spanStore.snapshot(selectedTurn)));
     const scopedTurn = selectedTurn !== null && lastSnap ? lastSnap.turnList.find((t) => t.index === selectedTurn) : null;
     const title = selectedTurn !== null ? entryTitle(lastSnap, scopedTurn) || "Entry" : "Session";
     dbody.append(dhead("activity", title, [rows.length + " activities", selectedTurn === null ? "all turns" : null]));
@@ -9054,6 +9084,8 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         nm.append(document.createTextNode(r.name));
         if (r.status === "error")
           nm.append(E("span", "terr", "error"));
+        if (r.flagged)
+          nm.append(E("span", "tflag", "⚑"));
         if (r.agent)
           nm.append(E("span", "aagent", r.agent));
         if (r.detail)
@@ -9065,6 +9097,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         if (r.handle) {
           const h = r.handle;
           row.onclick = () => openBlock(h, backToList);
+        } else if (r.type === "note") {
+          const text = r.detail ?? "";
+          row.onclick = () => openNote(text);
         }
         box.append(row);
       }

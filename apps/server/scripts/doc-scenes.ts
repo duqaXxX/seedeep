@@ -273,6 +273,19 @@ class Writer {
   }
 
   /**
+   * A note about the SESSION: a `<task-notification>` carrying nothing but a sentence — no task,
+   * no call, no status. What the background security review reports with, and the shape that has
+   * nothing it could be anchored to.
+   */
+  sessionNote(summary: string): string {
+    return this.push({
+      type: 'queue-operation',
+      operation: 'enqueue',
+      content: `<task-notification>\n<summary>${summary}</summary>\n</task-notification>`,
+    });
+  }
+
+  /**
    * One event a monitor forwarded while still running: a `<task-id>` and an `<event>`, and no
    * status — nothing has ended. Only the `enqueue` copy is ever written here, as Claude Code's
    * `remove` repeat would be the same event counted twice.
@@ -852,6 +865,12 @@ function commands(): Scene {
   w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 1/4 compile — 12.4s');
   w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 2/4 bundle — 3.1s');
   w.monitorEvent('b64ak9obp', 'Build log steps and errors', 'STEP 3/4 sign — skipped (unsigned build)');
+  // The background security review reporting on the write above: no task, no call, no status —
+  // the shape that has nothing to be anchored to, which is the whole point of showing it here.
+  w.sessionNote(
+    'Background security review found 2 issues: XSS via innerHTML in src/client/row.ts; ' +
+      'missing origin check on a state-changing endpoint in src/server.ts',
+  );
   // c4 is killed from outside — the case that produces the failure nobody is told about in words,
   // and c5 is simply never reported, which is what 8% of real launches do.
   w.notification(

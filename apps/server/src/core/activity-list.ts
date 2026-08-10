@@ -23,6 +23,8 @@ export interface ActivityRow {
   handle: DrawerHandle | null;
   /** The session turn (1-based index) this activity belongs to. Subagent spans are attributed to the parent turn. */
   turnIndex: number;
+  /** A hook attached a note to this call. The mark only — the text lives in the drawer. */
+  flagged?: true;
 }
 
 /**
@@ -64,6 +66,7 @@ export function flattenActivity(snap: TraceSnapshot): ActivityRow[] {
       agent: string | null;
       lane: number;
       handle: DrawerHandle | null;
+      flagged?: true;
     },
     turnIdx: number,
   ): void => {
@@ -81,6 +84,9 @@ export function flattenActivity(snap: TraceSnapshot): ActivityRow[] {
       lane: s.lane,
       handle: s.handle,
       turnIndex: turnIdx,
+      // Carried so the complete list marks a flagged call the same way the Trace block does —
+      // the two are the same history, and one of them staying silent is a disagreement.
+      ...(s.flagged ? { flagged: true as const } : {}),
     });
   };
 

@@ -5387,3 +5387,79 @@ test('a note about the session becomes a feed row', () => {
   view.destroy();
   g.document = prevDoc;
 });
+
+// Expand all is the COMPLETE history of the turn, and it is the only surface with no cap — which
+// is what makes it the home of a note nothing can be anchored to. Two things must hold: the note
+// is there, in time order among the calls; and a call somebody warned about carries the same mark
+// the Trace block does, instead of reading as an ordinary call.
+test('the complete history holds the session note, in order, and marks a flagged call', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = baseSnapshot();
+  const text = 'Background security review found 2 issues: XSS in row.ts; path traversal in read.ts';
+  (snap as any).notes = [{ source: null, hook: null, text, at: '2026-07-23T10:00:30.000Z', turnIndex: 1 }];
+  let emit: ((e: any, ctx: any) => void) | null = null;
+  const state = {
+    snapshot: () => snap,
+    onChange: () => () => {},
+    onEvent: (cb: (e: any, ctx: any) => void) => {
+      emit = cb;
+      return () => {};
+    },
+  };
+  const view = createGraph(container, state);
+  const base = { sessionId: 's1', root: 'cli', agentId: null };
+  // A turn with one call, one flagged Write and one plain Read — driven through the real event
+  // path, because the span store is what Expand all reads and only events fill it.
+  emit!(
+    { ...base, type: 'user-turn', timestamp: '2026-07-23T10:00:00.000Z', seq: 1, text: 'go', command: null },
+    { turnIndex: 1 },
+  );
+  emit!(
+    { ...base, type: 'tool-start', timestamp: '2026-07-23T10:00:10.000Z', seq: 2, id: 'toolu_w', name: 'Write' },
+    { turnIndex: 1, label: 'row.ts' },
+  );
+  emit!(
+    { ...base, type: 'tool-end', timestamp: '2026-07-23T10:00:11.000Z', seq: 3, toolUseId: 'toolu_w' },
+    { turnIndex: 1 },
+  );
+  emit!(
+    {
+      ...base,
+      type: 'note',
+      timestamp: '2026-07-23T10:00:12.000Z',
+      seq: 4,
+      toolUseId: 'toolu_w',
+      hook: 'PostToolUse:Write',
+      source: 'sec',
+      text: 'careful',
+    },
+    { turnIndex: 1 },
+  );
+  emit!(
+    { ...base, type: 'tool-start', timestamp: '2026-07-23T10:00:40.000Z', seq: 5, id: 'toolu_r', name: 'Read' },
+    { turnIndex: 1, label: 'app.ts' },
+  );
+  emit!(
+    { ...base, type: 'tool-end', timestamp: '2026-07-23T10:00:41.000Z', seq: 6, toolUseId: 'toolu_r' },
+    { turnIndex: 1 },
+  );
+
+  findByClass(container, 'xbtn')
+    .find((b: any) => textOf(b).includes('Expand all'))
+    ?.onclick?.();
+  const rows = findByClass(container, 'ttrow').map((r: any) => textOf(r));
+  const noteAt = rows.findIndex((r: string) => r.includes('security review'));
+  const writeAt = rows.findIndex((r: string) => r.includes('row.ts'));
+  const readAt = rows.findIndex((r: string) => r.includes('app.ts'));
+  assert.ok(noteAt >= 0, 'the note is in the complete history: ' + JSON.stringify(rows));
+  // 10:00:30 sits between the Write (10:00:10) and the Read (10:00:40) — appending it at the end
+  // would put a finding about the Write next to work it has nothing to do with.
+  assert.ok(writeAt < noteAt && noteAt < readAt, 'in time order, not appended: ' + JSON.stringify(rows));
+  assert.ok(rows[writeAt]!.includes('⚑'), 'the warned call carries the mark here too');
+  assert.ok(!rows[readAt]!.includes('⚑'), 'and the call nobody warned about does not');
+  view.destroy();
+  g.document = prevDoc;
+});

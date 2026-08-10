@@ -120,7 +120,9 @@ type TraceSpawnEl = HTMLDivElement & {
 };
 
 // Maps SpanType → CSS custom-property name for the span category colour.
-const CATV = {
+// Exhaustive by type: a new SpanType fails to compile until it has a colour here, instead of
+// silently binning as `undefined`.
+const CATV: Record<SpanType, string> = {
   prompt: '--sp-prompt',
   api: '--sp-api',
   tool: '--sp-tool',
@@ -128,6 +130,9 @@ const CATV = {
   spawn: '--sp-spawn',
   subspan: '--sp-spawn',
   result: '--sp-result',
+  // A `note` is never a span, so the Trace never bins one — the entry keeps the map total
+  // rather than leaving a type that resolves to `undefined` if that ever changes.
+  note: '--warn',
 };
 
 // A turn's left rule carries its STATE, not its index. The previous golden-ratio hue
