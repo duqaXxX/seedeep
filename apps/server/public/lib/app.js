@@ -2956,7 +2956,6 @@ var RESTART_SVG = `<svg width="12" height="12" viewBox="0 0 16 16" fill="current
 function createSettingsPanel(headerEl) {
   let pendingToken = "";
   let savedState = null;
-  let dirty = false;
   const btn = document.createElement("button");
   btn.className = "settings-btn";
   btn.title = "Settings";
@@ -3095,8 +3094,6 @@ function createSettingsPanel(headerEl) {
   <span id="s-restart" class="srestart-hint" style="display:none">${RESTART_SVG}Restart required</span>
   <span id="s-msg" class="smsg" style="display:none"></span>
   <button id="s-restart-now" class="xbtn s-restart-btn" style="display:none">Restart now</button>
-  <button id="s-discard" class="xbtn">Discard</button>
-  <button id="s-save" class="xbtn s-save-btn" disabled>Save</button>
 </div>`;
   document.body.append(drawer);
   const qd = (sel) => drawer.querySelector(sel);
@@ -3123,8 +3120,6 @@ function createSettingsPanel(headerEl) {
   const restartEl = qd("#s-restart");
   const msgEl = qd("#s-msg");
   const restartNowBtn = qd("#s-restart-now");
-  const discardBtn = qd("#s-discard");
-  const saveBtn = qd("#s-save");
   function setOpen(on) {
     openTrack.classList.toggle("on", on);
     openLabel.textContent = on ? "Yes" : "No";
@@ -3140,14 +3135,6 @@ function createSettingsPanel(headerEl) {
     } catch {
       updateRow.style.display = "none";
     }
-  }
-  function setDirty(d) {
-    dirty = d;
-    if (!d) {
-      saveBtn.disabled = true;
-      return;
-    }
-    saveBtn.disabled = !resolveFormState(hostEl.value, cnEl.value).canSave;
   }
   function setRestartAvailable(on) {
     restartNowBtn.style.display = on ? "" : "none";
@@ -3176,7 +3163,7 @@ function createSettingsPanel(headerEl) {
     return token ? `${base}/?token=${encodeURIComponent(token)}` : base;
   }
   function updateRemote() {
-    const { remote, canSave, cnError } = resolveFormState(hostEl.value, cnEl.value);
+    const { remote, cnError } = resolveFormState(hostEl.value, cnEl.value);
     banner.style.display = remote ? "" : "none";
     tlsSection.style.display = remote || cnError ? "" : "none";
     const portChanged = portEl.value !== (savedState?.port ?? "");
@@ -3187,7 +3174,6 @@ function createSettingsPanel(headerEl) {
     cnErr.style.display = cnError ? "" : "none";
     const replacing = remote && !!savedState?.cn && !cnError && cnEl.value.trim() !== savedState.cn;
     cnNote.style.display = replacing ? "" : "none";
-    saveBtn.disabled = !canSave || !dirty;
     urlEl.value = computeAccessUrl();
   }
   const hookUrlEl = drawer.querySelector("#s-hook-url");
@@ -3208,7 +3194,7 @@ function createSettingsPanel(headerEl) {
   for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
     track.parentElement?.addEventListener("click", () => {
       track.classList.toggle("on");
-      setDirty(true);
+      persist();
     });
   }
   const customBtn = drawer.querySelector("#s-hook-custom");
@@ -3270,7 +3256,6 @@ function createSettingsPanel(headerEl) {
       tokenNote.style.display = "none";
       setRestartAvailable(false);
       updateRemote();
-      setDirty(false);
     } catch {
       showMsg("Could not load config", true);
     }
@@ -3293,30 +3278,21 @@ function createSettingsPanel(headerEl) {
     if (e.key === "Escape" && drawer.classList.contains("on"))
       close();
   });
-  portEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
-  });
-  hostEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
-  });
+  portEl.addEventListener("input", () => updateRemote());
+  hostEl.addEventListener("input", () => updateRemote());
+  cnEl.addEventListener("input", () => updateRemote());
   openTrack.addEventListener("click", () => {
     openTrack.classList.toggle("on");
     openLabel.textContent = openTrack.classList.contains("on") ? "Yes" : "No";
-    setDirty(true);
-  });
-  cnEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
+    persist();
   });
   regenBtn.addEventListener("click", () => {
     pendingToken = randomToken();
     tokenEl.value = pendingToken;
     tokenEl.type = "text";
     tokenNote.style.display = "";
-    setDirty(true);
     urlEl.value = computeAccessUrl();
+    persist();
   });
   function wireCopy(btn2, input) {
     btn2.addEventListener("click", () => {
@@ -3331,29 +3307,16 @@ function createSettingsPanel(headerEl) {
   }
   wireCopy(copyUrlBtn, urlEl);
   wireCopy(copyFpBtn, fpEl);
-  discardBtn.addEventListener("click", () => {
-    if (!savedState)
-      return;
-    portEl.value = savedState.port;
-    hostEl.value = savedState.host;
-    setOpen(savedState.open);
-    cnEl.value = savedState.cn;
-    pendingToken = "";
-    tokenEl.value = "***";
-    tokenEl.type = "password";
-    tokenNote.style.display = "none";
-    cnErr.style.display = "none";
-    updateRemote();
-    setDirty(false);
-  });
-  saveBtn.addEventListener("click", async () => {
+  for (const field of [portEl, hostEl, cnEl, hookUrlEl, hookHeadersEl, hookTemplateEl]) {
+    field.addEventListener("change", () => void persist());
+  }
+  async function persist() {
     const host = hostEl.value.trim();
     if (!resolveFormState(host, cnEl.value).canSave) {
       updateRemote();
       cnEl.focus();
       return;
     }
-    saveBtn.disabled = true;
     const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm(), trayForm());
     try {
       const res = await authFetch("/api/config", {
@@ -3364,7 +3327,6 @@ function createSettingsPanel(headerEl) {
       const r = await res.json();
       if (!res.ok) {
         showMsg(r.error ?? "Save failed", true, 6000);
-        saveBtn.disabled = false;
         return;
       }
       savedState = {
@@ -3380,7 +3342,6 @@ function createSettingsPanel(headerEl) {
       tokenEl.type = "password";
       tokenNote.style.display = "none";
       updateRemote();
-      setDirty(false);
       if (r.restart_required) {
         setRestartAvailable(true);
         showMsg("Saved — restart to apply");
@@ -3389,9 +3350,8 @@ function createSettingsPanel(headerEl) {
       }
     } catch {
       showMsg("Save failed", true);
-      saveBtn.disabled = false;
     }
-  });
+  }
   restartNowBtn.addEventListener("click", async () => {
     restartNowBtn.disabled = true;
     restartNowBtn.textContent = "Restarting…";

@@ -182,7 +182,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   let pendingToken = '';
   // The state when the drawer was last loaded/saved — used by Discard.
   let savedState: SavedState | null = null;
-  let dirty = false;
 
   // ── header button ──────────────────────────────────────────────────────────
   const btn = document.createElement('button');
@@ -328,8 +327,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   <span id="s-restart" class="srestart-hint" style="display:none">${RESTART_SVG}Restart required</span>
   <span id="s-msg" class="smsg" style="display:none"></span>
   <button id="s-restart-now" class="xbtn s-restart-btn" style="display:none">Restart now</button>
-  <button id="s-discard" class="xbtn">Discard</button>
-  <button id="s-save" class="xbtn s-save-btn" disabled>Save</button>
 </div>`;
   document.body.append(drawer);
 
@@ -359,8 +356,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   const restartEl = qd<HTMLSpanElement>('#s-restart');
   const msgEl = qd<HTMLSpanElement>('#s-msg');
   const restartNowBtn = qd<HTMLButtonElement>('#s-restart-now');
-  const discardBtn = qd<HTMLButtonElement>('#s-discard');
-  const saveBtn = qd<HTMLButtonElement>('#s-save');
 
   // ── helpers ────────────────────────────────────────────────────────────────
   function setOpen(on: boolean): void {
@@ -395,17 +390,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     }
   }
 
-  function setDirty(d: boolean): void {
-    dirty = d;
-    if (!d) {
-      saveBtn.disabled = true;
-      return;
-    }
-    // A bad CN still blocks the save even when the form is dirty. Asked of `resolveFormState`
-    // rather than re-derived here — that duplication is how a panel and its tests drift apart.
-    saveBtn.disabled = !resolveFormState(hostEl.value, cnEl.value).canSave;
-  }
-
   function setRestartAvailable(on: boolean): void {
     restartNowBtn.style.display = on ? '' : 'none';
   }
@@ -435,11 +419,11 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   }
 
   function updateRemote(): void {
-    const { remote, canSave, cnError } = resolveFormState(hostEl.value, cnEl.value);
+    const { remote, cnError } = resolveFormState(hostEl.value, cnEl.value);
     banner.style.display = remote ? '' : 'none';
     // Also revealed when the name is bad, even in loopback mode where TLS is not in use: the name
-    // is still on its way to config.json, so it still blocks Save — and a disabled Save whose
-    // reason is inside a hidden section is a dead end with no way out of the panel.
+    // is still on its way to config.json, so it still blocks the write — and an error inside a
+    // hidden section is a dead end with no way out of the panel.
     tlsSection.style.display = remote || cnError ? '' : 'none';
     const portChanged = portEl.value !== (savedState?.port ?? '');
     const hostChanged = hostEl.value.trim() !== (savedState?.host ?? '');
@@ -451,7 +435,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     // to ignore before it ever matters.
     const replacing = remote && !!savedState?.cn && !cnError && cnEl.value.trim() !== savedState.cn;
     cnNote.style.display = replacing ? '' : 'none';
-    saveBtn.disabled = !canSave || !dirty;
     urlEl.value = computeAccessUrl();
   }
 
@@ -479,7 +462,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
     track.parentElement?.addEventListener('click', () => {
       track.classList.toggle('on');
-      setDirty(true);
+      void persist();
     });
   }
 
@@ -556,7 +539,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenNote.style.display = 'none';
       setRestartAvailable(false);
       updateRemote(); // also calls computeAccessUrl via urlEl.value update
-      setDirty(false);
     } catch {
       showMsg('Could not load config', true);
     }
@@ -584,22 +566,16 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   });
 
   // ── field interactions ─────────────────────────────────────────────────────
-  portEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
-  });
-  hostEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
-  });
+  // `input` still redraws what the form SAYS as you type — the remote banner, the CN error — while
+  // the `change` listeners above are what persist. Showing the consequence early and writing it
+  // late are two different jobs.
+  portEl.addEventListener('input', () => updateRemote());
+  hostEl.addEventListener('input', () => updateRemote());
+  cnEl.addEventListener('input', () => updateRemote());
   openTrack.addEventListener('click', () => {
     openTrack.classList.toggle('on');
     openLabel.textContent = openTrack.classList.contains('on') ? 'Yes' : 'No';
-    setDirty(true);
-  });
-  cnEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
+    void persist();
   });
 
   regenBtn.addEventListener('click', () => {
@@ -610,8 +586,10 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     // Shown only while a new token is pending: rotating it is the panel's other action that
     // breaks a client on a different machine, and nothing else here said so.
     tokenNote.style.display = '';
-    setDirty(true);
     urlEl.value = computeAccessUrl();
+    // Persisted at once like everything else: a token shown but not adopted is one the user would
+    // note down and then find refused.
+    void persist();
   });
 
   /** Copy an input's value to the clipboard and flash the button. No value → no-op, so the
@@ -631,29 +609,24 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   wireCopy(copyUrlBtn, urlEl);
   wireCopy(copyFpBtn, fpEl);
 
-  discardBtn.addEventListener('click', () => {
-    if (!savedState) return;
-    portEl.value = savedState.port;
-    hostEl.value = savedState.host;
-    setOpen(savedState.open);
-    cnEl.value = savedState.cn;
-    pendingToken = '';
-    tokenEl.value = '***';
-    tokenEl.type = 'password';
-    tokenNote.style.display = 'none';
-    cnErr.style.display = 'none';
-    updateRemote(); // also recomputes URL
-    setDirty(false);
-  });
+  for (const field of [portEl, hostEl, cnEl, hookUrlEl, hookHeadersEl, hookTemplateEl]) {
+    // `change`, not `input`: a keystroke is not a decision, and posting one would send the server a
+    // port of `4` on the way to `45999`.
+    field.addEventListener('change', () => void persist());
+  }
 
-  saveBtn.addEventListener('click', async () => {
+  /**
+   * Persist the whole form. Called by every control that changes it — there is no Save button:
+   * a switch that has to be confirmed elsewhere reads as done the moment it moves, and the panel
+   * spent one release lying about exactly that.
+   */
+  async function persist(): Promise<void> {
     const host = hostEl.value.trim();
     if (!resolveFormState(host, cnEl.value).canSave) {
       updateRemote(); // shows the reason under the field
       cnEl.focus();
       return;
     }
-    saveBtn.disabled = true;
     const body = buildSaveBody(
       Number(portEl.value),
       host,
@@ -675,7 +648,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // opposite of what happened, and the value the user typed was never stored.
       if (!res.ok) {
         showMsg(r.error ?? 'Save failed', true, 6000);
-        saveBtn.disabled = false;
         return;
       }
 
@@ -693,7 +665,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenNote.style.display = 'none'; // the lockout has happened; warning about it is now noise
 
       updateRemote(); // also recomputes URL via computeAccessUrl → getToken
-      setDirty(false);
       if (r.restart_required) {
         setRestartAvailable(true);
         showMsg('Saved — restart to apply');
@@ -702,9 +673,8 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       }
     } catch {
       showMsg('Save failed', true);
-      saveBtn.disabled = false;
     }
-  });
+  }
 
   restartNowBtn.addEventListener('click', async () => {
     restartNowBtn.disabled = true;
