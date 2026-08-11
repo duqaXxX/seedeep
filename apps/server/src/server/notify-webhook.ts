@@ -20,16 +20,27 @@ export const PLACEHOLDERS = ['title', 'body', 'project', 'subject', 'kind'] as c
  * contains braces must not have them eaten, and a typo the user can see in the notification they
  * received is one they can fix.
  */
-export function renderTemplate(template: string, a: Announcement): string {
+export function renderTemplate(template: string, a: Announcement, contentType = ''): string {
   if (template === '') return a.body;
+  // A JSON body needs its values escaped, and the values here are the least safe text in seedeep:
+  // a prompt, and a shell command the user is being asked to approve. A quote or a newline in
+  // either would produce a payload the service rejects — silently, since nothing here retries.
+  // The content type the user declared is what says which escaping is right.
+  const json = contentType.toLowerCase().includes('application/json');
+  const enc = (v: string) => (json ? JSON.stringify(v).slice(1, -1) : v);
   const values: Record<string, string> = {
-    title: a.title,
-    body: a.body,
-    project: a.project,
-    subject: a.subject ?? '',
+    title: enc(a.title),
+    body: enc(a.body),
+    project: enc(a.project),
+    subject: enc(a.subject ?? ''),
     kind: a.kind,
   };
   return template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => values[name] ?? whole);
+}
+
+/** The declared content type, whatever case the user typed the header name in. */
+function findContentType(headers: Record<string, string>): string {
+  return Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1] ?? '';
 }
 
 /**
@@ -52,7 +63,7 @@ export async function sendWebhook(
     const res = await fetchImpl(cfg.url, {
       method: 'POST',
       headers: { ...cfg.headers },
-      body: renderTemplate(cfg.template, a),
+      body: renderTemplate(cfg.template, a, findContentType(cfg.headers)),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     return { ok: res.ok, status: res.status };

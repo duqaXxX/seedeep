@@ -86,3 +86,19 @@ test('an unconfigured webhook is never called at all', async () => {
   assert.deepEqual(await sendWebhook(hook({ url: '' }), announcement, fake), { ok: false, status: null });
   assert.equal(called, false);
 });
+
+test('a JSON body has its values escaped, so a quoted command cannot break the payload', () => {
+  // The least safe text in seedeep goes through here: a prompt, and a shell command the user is
+  // being asked to approve. Telegram takes JSON, and an unescaped quote makes it reject the call —
+  // silently, because nothing retries.
+  const risky = { ...announcement, body: 'Waiting for your approval — Bash\nrm -rf "build"' };
+  const out = renderTemplate('{"chat_id":"1","text":"{{body}}"}', risky, 'application/json');
+  const parsed = JSON.parse(out) as { text: string };
+  assert.equal(parsed.text, risky.body, 'and it round-trips to exactly what the banner said');
+});
+
+test('a plain body is left alone — escaping it would post backslashes to ntfy', () => {
+  const risky = { ...announcement, body: 'a "quoted" thing' };
+  assert.equal(renderTemplate('{{body}}', risky, 'text/plain'), 'a "quoted" thing');
+  assert.equal(renderTemplate('{{body}}', risky), 'a "quoted" thing');
+});
