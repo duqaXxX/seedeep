@@ -2301,7 +2301,7 @@ custom headers, so `AuthEventSource` appends `?token=<token>` to the stream URL 
 the server accepts the token from either the `Authorization` header or the `?token=` query
 parameter on every `/api/*` route except `GET /api/config`.
 
-When the user generates a new token via Regen + Save, the server adopts it immediately
+When the user generates a new token via Regen, the server adopts it immediately
 (no restart required). The save handler calls `setToken(pendingToken)` before clearing the
 pending value so `localStorage` stays in sync and subsequent `authFetch` calls continue to
 work.
@@ -2312,15 +2312,24 @@ The settings drawer (gear icon in the header) lets the user change configuration
 editing `config.json` directly. It loads the current config on open (`GET /api/config`)
 and POSTs changes on save.
 
+**The panel has no Save button.** Every control writes as it changes: a toggle on the click, a text
+field on `change` — leaving it or pressing Enter — and never on each keystroke, or typing `45999`
+would post `4`, then `45`, then `459`. A switch reads as done the moment it moves, and one that had
+to be confirmed elsewhere was lying: it looked flipped, the reload showed it back, and nothing had
+been posted. A port the server could not bind is omitted from the body rather than sent, so an empty
+field cannot write `port: 0` on the way past.
+
 | Field | Shown when | Behaviour |
 |-------|------------|-----------|
 | Port | Always | Requires restart |
 | Host | Always | `127.0.0.1` = loopback (default), `0.0.0.0` = LAN; requires restart |
 | Open browser on start | Always | Toggles `config.open` |
+| Notifications — Tray | Always | The four events the menu-bar app may interrupt for. They live in `notifications.tray`, so the tray reads whichever server it is connected to rather than a file of its own |
+| Notifications — Webhook | Behind **Send to a webhook…** | URL, headers and body template, plus its own three switches. Empty URL means the channel is off, which is how it ships — nothing leaves the machine unasked. The URL is redacted like the token: for Slack, Discord and ntfy it IS the credential |
 | Auth token | Always | Always displayed as `***`; **Regen** generates a new token client-side, and warns that saving it locks out every other client |
 | Access URL | Always | Computed live from the current form values; includes `?token=` in remote mode; **Copy** writes the full URL to the clipboard |
-| Common name | Remote mode only | The name the certificate certifies; required before Save is enabled in remote mode, and refused unless it is a hostname or an IPv4 address. Changing a name that already produced a certificate warns that the certificate — and its fingerprint — will be replaced |
-| Fingerprint | Remote mode only | Read-only SHA-256 of the certificate the server is presenting; **Copy** writes it to the clipboard. Server state, so Discard does not revert it and Save cannot change it — a new certificate needs a restart. Empty (placeholder) when the running server has no certificate, i.e. a remote host was typed into the form but not yet restarted into |
+| Common name | Remote mode only | The name the certificate certifies; required in remote mode, and refused unless it is a hostname or an IPv4 address — while it is missing or unusable nothing in the panel is written at all. Changing a name that already produced a certificate warns that the certificate — and its fingerprint — will be replaced |
+| Fingerprint | Remote mode only | Read-only SHA-256 of the certificate the server is presenting; **Copy** writes it to the clipboard. Server state, so nothing in the panel can change it — a new certificate needs a restart. Empty (placeholder) when the running server has no certificate, i.e. a remote host was typed into the form but not yet restarted into |
 | Version (About) | Always | Read-only. The release the RUNNING server reports (`version` on `GET /api/config`), never the number this bundle was built from — a stale `build:client` would otherwise make the portal claim a version the server is not. A server that reports none leaves the dash: this is the one string a bug report quotes verbatim, so a guess here is worse than an admission |
 
 The Access URL field derives its token from (in priority order): the `pendingToken` just
@@ -2342,8 +2351,8 @@ parsed as a config and announced as "Saved".
 
 One consequence of validating the name is worth stating, because it is the only reason the TLS
 section is ever shown outside remote mode: **an invalid Common name reveals the section even in
-loopback mode.** The name is still on its way to `config.json`, so it still blocks Save, and a
-disabled Save whose reason sits inside a hidden section is a dead end with no way out of the
+loopback mode.** The name is still on its way to `config.json`, so it still blocks every write, and
+a refusal whose reason sits inside a hidden section is a dead end with no way out of the
 panel.
 
 Restart semantics: changes to `port`, `host`, or `tls` set `restart_required: true` in

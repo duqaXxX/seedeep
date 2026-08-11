@@ -752,7 +752,7 @@ you installed.*
 
 *The same panel with the host named — the whole second posture in one picture. The
 banner is the warning that the browser will meet a self-signed certificate; the
-**Common name** is what that certificate is issued for and is required before Save
+**Common name** is what that certificate is issued for and is required
 will accept the host; the **Fingerprint** is what a client that cannot click a
 warning away has to pin. It is the RUNNING server's certificate, so it fills in only
 after the restart, and the access URL turns `https` and carries the token. Turning it
