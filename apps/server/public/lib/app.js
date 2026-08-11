@@ -7594,6 +7594,11 @@ function createGraph(container, state, opts = {}) {
         scopeBanner.append(E("span", "sbstats", cs.escCount + " interrupted"));
       if (fullSnap.turns > 0)
         scopeBanner.append(E("span", "sbnum", nTurns(fullSnap.turns)));
+      if (fullSnap.apiCalls > 0)
+        scopeBanner.append(E("span", "sbnum", kc(fullSnap.apiCalls) + " calls"));
+      const toolCount = summarizeTools(fullSnap.mainTools).count;
+      if (toolCount > 0)
+        scopeBanner.append(E("span", "sbnum", kc(toolCount) + " tools"));
       const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
       if (open)
         scopeBanner.append(liveElapsed(open));
@@ -7643,6 +7648,9 @@ function createGraph(container, state, opts = {}) {
       statParts.push(formatDuration(turn.durationMs));
     if (turn.apiCalls > 0)
       statParts.push(turn.apiCalls + " API");
+    const turnTools = fullSnap.mainTools.filter((t) => t.turnIndex === turn.index).length;
+    if (turnTools > 0)
+      statParts.push(turnTools + " tools");
     if (statParts.length)
       scopeBanner.append(E("span", "sbstats", statParts.join(" · ")));
     const v = verdicts.get(turn.index);

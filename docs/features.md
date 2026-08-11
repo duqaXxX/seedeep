@@ -130,6 +130,19 @@ model than the session did — and a verdict announcement holds **8s**.
 than suppression: a spawn already has the richer toast on the bottom rail, so a bare
 `Agent` up top would be the same event twice.
 
+### How much work it took, before you look for it
+
+The bar above the widgets answers the size of the session in one line: **turns,
+API calls, tool calls**, how long the current turn has been running, and how long
+every turn has taken together. Selecting a turn re-scopes it to that turn, with the
+same two counts scoped along.
+
+Both counts already existed — the calls under the token ledger, the tools under
+four file paths in Main tools — and neither could be found, which is a placement
+problem and not a missing figure. The breakdowns stay where they are: `Bash 255 ·
+Edit 104 · Read 23` means something next to the tools that consumed the context,
+and nothing at all in a summary line.
+
 ### Which model, and how full that makes it
 
 Whatever scope you are looking at **names the model it ran on** — the banner and

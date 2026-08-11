@@ -5978,3 +5978,55 @@ test('the complete history holds the session note, in order, and marks a flagged
   view.destroy();
   g.document = prevDoc;
 });
+
+// Reported as "there is no summary of API calls and tool calls" — the counts existed, both of them,
+// but at the BOTTOM of two different cards (under the token ledger, and under four long file paths
+// in Main tools). Neither needed expanding and neither was findable, which is a placement bug, not
+// a missing figure. The banner is where "how much work" is already asked, beside the turn count.
+test('scope banner: the whole-session summary carries the call and tool counts', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1), makeTurn(2)]);
+  snap.apiCalls = 403;
+  snap.mainTools = [
+    { id: 't1', name: 'Bash', turnIndex: 1 },
+    { id: 't2', name: 'Edit', turnIndex: 1 },
+    { id: 't3', name: 'Read', turnIndex: 2 },
+  ];
+  const view = createGraph(container, { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} });
+
+  const banner = findByClass(container, 'scope-banner')[0];
+  const nums = findByClass(banner, 'sbnum').map((n: any) => n.textContent);
+  assert.ok(nums.includes('403 calls'), `the call count is in the banner — got ${JSON.stringify(nums)}`);
+  assert.ok(nums.includes('3 tools'), `the tool count is beside it — got ${JSON.stringify(nums)}`);
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+// Scope consistency: a figure offered for the session must be offered for a turn, or the reader is
+// taught where it lives and then finds it missing at the scope they moved into.
+test('scope banner: a selected turn carries the same two counts, scoped to it', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1), makeTurn(2)]);
+  snap.mainTools = [
+    { id: 't1', name: 'Bash', turnIndex: 1 },
+    { id: 't2', name: 'Edit', turnIndex: 1 },
+    { id: 't3', name: 'Read', turnIndex: 2 },
+  ];
+  const view = createGraph(container, { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} });
+
+  selectTurnViaStrip(container, 0); // turn 1 — two of the three tools are its
+
+  const stats = textOf(findByClass(findByClass(container, 'scope-banner')[0], 'sbstats')[0]);
+  assert.match(stats, /5 API/, "the turn's own call count");
+  assert.match(stats, /2 tools/, 'and only the tools that turn ran');
+
+  view.destroy();
+  g.document = prevDoc;
+});

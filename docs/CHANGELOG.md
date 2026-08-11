@@ -4,6 +4,13 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The session's two work counts moved into the summary bar.** `18 turns · 422 calls · 437 tools`,
+beside the durations, at both scopes. The counts were already on the page — the API calls at the
+bottom of the Session card under the token ledger, the tool total inside Main tools under four long
+file paths — so nothing was missing and nothing needed expanding; they were simply in the tail of
+two cards that answer other questions. The per-type breakdown stays in Main tools, where it has a
+context.
+
 **A turn that never called the model no longer announces a finish.** The report was a banner saying
 only `Turn finished`, arriving long after the session had stopped: Esc pressed before the first
 reply leaves NOTHING in the transcript — no marker, no `interruptedMessageId`, no assistant line —
