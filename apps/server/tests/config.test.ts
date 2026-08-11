@@ -10,9 +10,11 @@ import {
   applyPrecedence,
   configFilePath,
   defaultConfig,
+  overriddenFields,
   readConfig,
   resolveConfig,
   restartPending,
+  savePending,
   seedDeepDir,
   writeConfig,
 } from '../src/server/config.ts';
@@ -302,13 +304,12 @@ test('restartPending: a port, host or common-name difference is pending', () => 
   assert.equal(restartPending(base, { ...base, tls: { ...base.tls, commonName: 'box.local' } }), true, 'common name');
 });
 
-test('restartPending: open, token and cert paths are not pending', () => {
+test('restartPending: open and the cert paths are not pending', () => {
   const home = tmpHome();
   const base = { ...defaultConfig(home), auth: { token: 'tok' } };
-  // A running process can honour all three without being replaced, and announcing them would
-  // train the user to ignore the announcement.
+  // A running process can honour both without being replaced, and announcing them would train the
+  // user to ignore the announcement. The token is NOT among them — see the token test below.
   assert.equal(restartPending(base, { ...base, open: !base.open }), false, 'open');
-  assert.equal(restartPending(base, { ...base, auth: { token: 'other' } }), false, 'token');
   assert.equal(
     restartPending(base, { ...base, tls: { ...base.tls, cert: '/elsewhere/cert.pem' } }),
     false,
@@ -353,4 +354,52 @@ test('restartPending: a hand edit to a field no flag covers IS pending', () => {
   // here can come from nothing but the edit.
   const edited = { ...file, host: '0.0.0.0' };
   assert.equal(restartPending(running, applyPrecedence({ port: 5555 }, {}, edited)), true);
+});
+
+// ── savePending / overriddenFields ───────────────────────────────────────────
+
+test('savePending: a switch the process has not taken up', () => {
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'old' } };
+  // The token is deliberately NOT here: the panel reads it redacted, so a save cannot carry one
+  // edited into the file. That is `restartPending`'s.
+  assert.equal(savePending(running, { ...running, auth: { token: 'new' } }), false, 'token');
+  const switched = {
+    ...running,
+    notifications: { ...running.notifications, tray: { ...running.notifications.tray, finishes: true } },
+  };
+  assert.equal(savePending(running, switched), true, 'a notification switch');
+  assert.equal(savePending(running, { ...running }), false, 'nothing to apply');
+});
+
+test('savePending: the fields a restart cures are not its business', () => {
+  // The two states name different cures, and naming the wrong one is worse than naming none.
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'tok' } };
+  assert.equal(savePending(running, { ...running, port: 9090, host: '0.0.0.0' }), false);
+});
+
+test('overriddenFields: only what a flag or a variable actually changes', () => {
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, host: '10.0.0.1', auth: { token: 'tok' } };
+  assert.deepEqual(overriddenFields({ port: 5555 }, {}, file), { port: 'flag' });
+  assert.deepEqual(overriddenFields({}, { SEEDEEP_HOST: '0.0.0.0' }, file), { host: 'env' });
+  // A flag that repeats the file overrides nothing anyone can observe, so it is not reported.
+  assert.deepEqual(overriddenFields({ port: 9090 }, {}, file), {});
+  assert.deepEqual(overriddenFields({}, {}, file), {});
+});
+
+test('overriddenFields: a flag wins over a variable in what it reports', () => {
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, auth: { token: 'tok' } };
+  assert.deepEqual(overriddenFields({ port: 5555 }, { SEEDEEP_PORT: '7070' }, file), { port: 'flag' });
+});
+
+test('restartPending: an empty desired token is not a change', () => {
+  // A missing config.json reads as "no token configured, one will be generated" — never as a
+  // request to replace the one in use. Compared literally it pinned a restart nobody could clear.
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'generated-at-start' } };
+  assert.equal(restartPending(running, { ...running, auth: { token: '' } }), false);
+  assert.equal(restartPending(running, { ...running, auth: { token: 'written-by-hand' } }), true);
 });

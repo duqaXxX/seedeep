@@ -1405,3 +1405,96 @@ test('GET /api/config answers with what is running when the file cannot be read'
     srv.stop();
   }
 });
+
+test('GET /api/config: a token edited by hand asks for a restart, not a save', async () => {
+  // Found by driving the button, not by reading the code: a save cannot carry a token the panel
+  // never sees — it reads it redacted — so `Apply now` left the state exactly where it was. A
+  // restart is what applies a token written straight into the file.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-savep-'));
+  const configPath = join(dir, 'config.json');
+  const config = { ...defaultConfig(), auth: { token: 'old-token' } };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(configPath, JSON.stringify({ ...config, auth: { token: 'rotated-by-hand' } }));
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.restart_pending, true, 'a restart applies it');
+    assert.equal(body.save_pending, false, 'and a save cannot');
+
+    // A token the PANEL generates is adopted live, so it must NOT ask for a restart.
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ auth: { token: 'rotated-by-panel' } }),
+    });
+    const after = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(after.restart_pending, false, 'a rotation from the panel needs no restart');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config: notification switches edited by hand are save_pending', async () => {
+  // The one kind of change the panel really can re-post: the switches are in the form.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-switch-'));
+  const configPath = join(dir, 'config.json');
+  const config = { ...defaultConfig(), auth: { token: 'tok' } };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    const edited = {
+      ...config,
+      notifications: { ...config.notifications, tray: { ...config.notifications.tray, finishes: true } },
+    };
+    writeFileSync(configPath, JSON.stringify(edited));
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.save_pending, true, 'a save applies it');
+    assert.equal(body.restart_pending, false, 'a restart is not the cure named');
+
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ notifications: { tray: edited.notifications.tray } }),
+    });
+    assert.equal((await (await fetch(`${srv.url}/api/config`)).json()).save_pending, false, 'and clears it');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config names the fields a flag is overriding', async () => {
+  // Without it, a user edits the port, sees "Saved", and watches the field snap back on the next
+  // open with nothing on screen explaining why.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-ov-'));
+  const configPath = join(dir, 'config.json');
+  writeFileSync(configPath, JSON.stringify({ ...defaultConfig(), port: 9090, auth: { token: 'tok' } }));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config: { ...defaultConfig(), port: 5555, auth: { token: 'tok' } },
+    cliFlags: { port: 5555 },
+    configPath,
+    env: {},
+  });
+  try {
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.deepEqual(body.overrides, { port: 'flag' });
+  } finally {
+    srv.stop();
+  }
+});

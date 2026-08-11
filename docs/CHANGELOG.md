@@ -28,6 +28,18 @@ process's flags), and a save merges onto the file re-read at that moment, leavin
 not mention alone. A value a CLI flag pins is still shown as the flag sets it — that is what runs,
 and offering an edit to the file's number there would be offering one with no effect.
 
+**A second state, for the changes a restart is the wrong cure for.** `save_pending` says
+`config.json` carries notification settings this server has not taken up, with an **Apply now**
+button — the panel has no Save button, so a state cured by saving needed an action of its own. The
+token is deliberately not in it: the panel reads it redacted, so a save cannot carry one edited into
+the file, and `restart_pending` covers it. Found by pressing the button, which left the state exactly
+where it was.
+
+**The panel says which fields a flag is holding.** `overrides` names each field a CLI flag or an
+environment variable is overriding, and by which; the panel prints it under the field. The value
+stays editable and still writes — it is the configuration for the day this server starts without the
+flag — but an edit that silently snaps back on the next open now has its explanation on screen.
+
 **`restart_required` is gone**, replaced by `restart_pending` on both `/api/config` verbs and
 derived from that one comparison, taken after the write. A save that restores a running value
 reports nothing; a save on top of an earlier hand edit keeps the signal up. One consequence: editing

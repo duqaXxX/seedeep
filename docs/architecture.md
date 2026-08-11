@@ -2324,6 +2324,13 @@ A value pinned by a CLI flag or an environment variable is shown as the flag set
 file says: that is what this server runs and what every restart will keep running, so offering an
 edit to the file's number would be offering one with no effect.
 
+The field stays editable and still writes — it is the configuration for the day this server starts
+without the flag — but `overrides` on the same response names which fields are held and by what
+(`flag` or `env`), and the panel says so under each one. Without it the user edits the port, reads
+"Saved", and finds the field back at another value on the next open with nothing on screen
+explaining it. Only fields whose override actually DIFFERS from the file are reported: a flag
+repeating what the file says overrides nothing anyone can observe.
+
 The `***` redactions (the auth token, the webhook URL and its headers) mean "keep what you have",
 resolved against that same file — the source the panel read them from, so the mask can only ever put
 back the value it stood for.
@@ -2383,9 +2390,18 @@ panel.
 ### A restart the process itself knows is due
 
 Three values are BOUND at startup and cannot be revisited by the process holding them: `port`,
-`host`, and the certificate's common name. `open` is spent the moment the browser opened and a
-token is adopted live, so neither counts — announcing them would teach the reader to ignore the
-announcement.
+`host`, and the certificate's common name. `auth.token` joins them for a reason found by driving
+the button rather than by reading the code: a save can rotate a token live, but only one the PANEL
+generated — a token edited straight into `config.json` is never in a request, because the panel
+reads it redacted. A restart is what applies that one.
+
+`open` is in neither state: it is spent the moment the browser opened, so nothing can apply it, and
+announcing it would teach the reader to ignore the announcement.
+
+**Two states, because there are two cures.** `save_pending` is the notification settings: the
+switches are in the form, so pressing **Apply now** genuinely re-posts them, and telling the user to
+restart for those would name an instruction that is not the fix. Naming the wrong cure is worse than
+naming none — which is why the token sits under `restart_pending` and not here.
 
 The server is the only party that can say whether a restart is due, because the answer is not
 "does `config.json` differ from what I am running". Configuration arrives through a four-layer
@@ -2402,7 +2418,10 @@ at request time. Both sides go through one function, so the two can never drift 
   an editor stays invisible.
 - It rides `GET /api/config`, so every surface reads one verdict: the portal (a dot on the
   Settings button, a banner in the drawer, the `Restart now` button), the tray (a line above the
-  bands, asked when the popover opens), and `seedeep status` (a line under `serving`).
+  bands, asked when the popover opens), and `seedeep status` (a line under `serving`). The dot is
+  ONE mark for both states — it is the only thing visible with the drawer closed, and two dots on
+  one button could not be told apart; which state it is belongs to the drawer, whose job the dot is
+  to get opened.
 - `POST /api/config` derives its answer from the same comparison, taken AFTER the write. A save
   that puts a value back to what is already running reports nothing; a save landing on top of an
   earlier hand edit keeps the signal up. The old diff-on-save could only describe the last

@@ -319,3 +319,15 @@
 .scustom[hidden] {
   display: none;
 }
+
+/* Inside the banner, not in the save bar: the action belongs to the sentence that asked for it, and
+   the save bar's slot is already the restart's. */
+.s-apply-btn {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.35);
+  margin-top: 0.5rem;
+}
+.s-apply-btn:hover:not(:disabled) {
+  color: var(--hi);
+  border-color: var(--warn);
+}

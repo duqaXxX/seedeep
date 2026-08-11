@@ -18,9 +18,12 @@ import {
   applyPrecedence,
   defaultConfig,
   type NotifyConfig,
+  type OverrideSource,
+  overriddenFields,
   readConfigStrict,
   restartPending,
   type SeedDeepConfig,
+  savePending,
   writeConfig,
 } from './config.ts';
 import { type DigestEntry, digestEntry } from './digest.ts';
@@ -392,19 +395,40 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   };
 
   /**
-   * The configuration a start would come up with RIGHT NOW: `config.json` as it stands, under the
-   * flags and environment this process was given. Recomputed per request and never cached — a
-   * cached answer is how a file edited by hand stays invisible, which is the failure this exists
-   * to end.
-   *
-   * This, not the running copy, is what `GET /api/config` answers with: the panel is an editor of
-   * the configuration, and showing values the process happens to hold made a save write them back
-   * over an edit the user had made in a file. `version` and the fingerprint stay the process's own
-   * — they describe what is answering, and no edit can change them.
-   *
-   * An unreadable file falls back to what is running: that reports nothing pending, rather than
-   * sending the user to restart into exactly what they already have.
+   * What the process is USING right now, per field — which is not one object anywhere else.
+   * `port`, `host` and the certificate name are bound at startup and cannot change while it lives,
+   * so they come from `startedWith`; the token CAN be rotated live by a save, so it comes from the
+   * running copy. Take it all from `startedWith` and rotating the token from the panel reports a
+   * restart nobody needs.
    */
+  const runningNow = (): SeedDeepConfig => ({ ...startedWith, auth: { ...currentConfig.auth } });
+
+  /**
+   * What `GET`/`POST /api/config` say about the process beyond the values themselves: the two
+   * pending states, each naming the cure that actually applies it, and the fields a flag or an
+   * environment variable is overriding — the one thing the panel cannot work out on its own, and
+   * without which an edit that snaps back has no explanation.
+   */
+  const configState = async (
+    desired: SeedDeepConfig,
+  ): Promise<{ restart_pending: boolean; save_pending: boolean; overrides: Record<string, OverrideSource> }> => {
+    let overrides: Record<string, OverrideSource> = {};
+    try {
+      overrides = overriddenFields(
+        deps.cliFlags ?? {},
+        deps.env ?? process.env,
+        await readConfigStrict(deps.configPath),
+      );
+    } catch {
+      // Same rule as `desiredConfig`: a file that cannot be read is not evidence of an override.
+    }
+    return {
+      restart_pending: restartPending(runningNow(), desired),
+      save_pending: savePending(currentConfig, desired),
+      overrides,
+    };
+  };
+
   const desiredConfig = async (): Promise<SeedDeepConfig> => {
     try {
       return applyPrecedence(deps.cliFlags ?? {}, deps.env ?? process.env, await readConfigStrict(deps.configPath));
@@ -742,10 +766,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         // what is already running reports nothing; a save landing on top of an earlier hand edit
         // keeps the signal up. The old diff-on-save could only describe the request that carried it.
         const desired = await desiredConfig();
-        return json(req, {
-          ...redactConfig(desired, tlsFingerprint, true),
-          restart_pending: restartPending(startedWith, desired),
-        });
+        return json(req, { ...redactConfig(desired, tlsFingerprint, true), ...(await configState(desired)) });
       }
 
       if (pathname === '/api/restart' && req.method === 'POST') {
@@ -769,10 +790,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       // (portal, tray, `seedeep status`) is already here for the version.
       if (pathname === '/api/config') {
         const desired = await desiredConfig();
-        return json(req, {
-          ...redactConfig(desired, tlsFingerprint, authorised()),
-          restart_pending: restartPending(startedWith, desired),
-        });
+        return json(req, { ...redactConfig(desired, tlsFingerprint, authorised()), ...(await configState(desired)) });
       }
 
       // GET /api/update — what npm says is current, from a cache that refreshes once an hour. The

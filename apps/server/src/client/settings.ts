@@ -182,6 +182,19 @@ interface ConfigResponse {
    * never opened.
    */
   restart_pending?: boolean;
+  /**
+   * `config.json` holds notification settings the running process has not taken up. The cure is a
+   * SAVE, not a restart — a distinct state because an instruction that does not fix the thing is
+   * worse than no instruction. The token is not here: the panel reads it redacted, so a save
+   * cannot carry one edited into the file, and `restart_pending` covers it.
+   */
+  save_pending?: boolean;
+  /**
+   * Fields a CLI flag or an environment variable is overriding, keyed as this panel names them.
+   * The one thing the panel cannot work out on its own, and without it an edit that snaps back to
+   * another value has no explanation on screen.
+   */
+  overrides?: Record<string, 'flag' | 'env'>;
 }
 
 interface SavedState {
@@ -231,8 +244,17 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   ${RESTART_SVG}
   <div>
     <strong>Running an older configuration</strong>
-    This server is still bound to the port, host and certificate name it started
-    with — <code>config.json</code> has changed since. Restart to serve it.
+    This server is still using the port, host, certificate name and token it
+    started with — <code>config.json</code> has changed since. Restart to serve it.
+  </div>
+</div>
+<div class="sbanner spending" id="s-save-pending" style="display:none">
+  ${WARN_SVG}
+  <div>
+    <strong>Changes waiting to be applied</strong>
+    <code>config.json</code> carries notification settings this server has not
+    taken up. These need no restart — saving applies them.
+    <button id="s-apply-now" class="xbtn s-apply-btn">Apply now</button>
   </div>
 </div>
 <div class="sbanner" id="s-banner" style="display:none">
@@ -247,17 +269,26 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   <div class="blabel">Network</div>
   <div class="srow">
     <div class="slabel">Port<small>Requires restart</small></div>
-    <input id="s-port" class="sinput" type="number" min="1" max="65535">
+    <div>
+      <input id="s-port" class="sinput" type="number" min="1" max="65535">
+      <div id="s-ov-port" class="sinput-note" style="display:none"></div>
+    </div>
   </div>
   <div class="srow">
     <div class="slabel">Host<small>Requires restart</small></div>
-    <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
+    <div>
+      <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
+      <div id="s-ov-host" class="sinput-note" style="display:none"></div>
+    </div>
   </div>
   <div class="srow">
     <div class="slabel">Open browser on start</div>
-    <div class="stoggle-wrap">
-      <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-      <span id="s-open-label" class="stoggle-label">Yes</span>
+    <div>
+      <div class="stoggle-wrap">
+        <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span id="s-open-label" class="stoggle-label">Yes</span>
+      </div>
+      <div id="s-ov-open" class="sinput-note" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -291,6 +322,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       <div id="s-cn-err" class="sinput-err" style="display:none">Required to enable remote access</div>
       <div id="s-cn-note" class="sinput-note" style="display:none">Saving this replaces the certificate
         on the next start: the fingerprint below changes and any pinned client must be re-pinned.</div>
+      <div id="s-ov-tls.commonName" class="sinput-note" style="display:none"></div>
     </div>
   </div>
   <div class="srow">
@@ -362,6 +394,8 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   const dclose = qd<HTMLButtonElement>('.close');
   const banner = qd<HTMLDivElement>('#s-banner');
   const pendingBanner = qd<HTMLDivElement>('#s-pending');
+  const savePendingBanner = qd<HTMLDivElement>('#s-save-pending');
+  const applyNowBtn = qd<HTMLButtonElement>('#s-apply-now');
   const portEl = qd<HTMLInputElement>('#s-port');
   const hostEl = qd<HTMLInputElement>('#s-host');
   const openTrack = qd<HTMLDivElement>('#s-open-track');
@@ -426,10 +460,48 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
    * the footer hint was correct and simply not where anyone was looking.
    */
   function setRestartPending(on: boolean): void {
-    btn.classList.toggle('pending', on);
-    btn.title = on ? 'Settings — restart to apply config.json' : 'Settings';
     pendingBanner.style.display = on ? '' : 'none';
     restartNowBtn.style.display = on ? '' : 'none';
+    markPending();
+  }
+
+  function setSavePending(on: boolean): void {
+    savePendingBanner.style.display = on ? '' : 'none';
+    markPending();
+  }
+
+  /**
+   * The dot is ONE mark for "there is something to do here", because it is the only thing visible
+   * with the drawer closed and two dots on one button could not be told apart. Which of the two it
+   * is, and what fixes it, is the drawer's job — the dot's job is to get the drawer opened.
+   */
+  function markPending(): void {
+    const on = pendingBanner.style.display !== 'none' || savePendingBanner.style.display !== 'none';
+    btn.classList.toggle('pending', on);
+    btn.title = on ? 'Settings — config.json is not fully applied' : 'Settings';
+  }
+
+  /** Which fields a flag or an environment variable is holding, said under the field itself. */
+  function setOverrides(overrides: Record<string, 'flag' | 'env'> | undefined): void {
+    const ENV_OF: Record<string, string> = {
+      port: 'SEEDEEP_PORT',
+      host: 'SEEDEEP_HOST',
+      open: 'SEEDEEP_OPEN',
+      'tls.commonName': 'SEEDEEP_TLS_CN',
+    };
+    for (const field of Object.keys(ENV_OF)) {
+      const el = drawer.querySelector<HTMLDivElement>(`#s-ov-${CSS.escape(field)}`);
+      if (!el) continue;
+      const source = overrides?.[field];
+      // The value is still editable and still written: it is the configuration for the day this
+      // server starts without the flag. What the note prevents is the unexplained snap-back.
+      el.textContent = source
+        ? source === 'flag'
+          ? 'A command-line flag overrides this while this server runs — saving it takes effect on a start without that flag.'
+          : `${ENV_OF[field]} overrides this while this server runs — saving it takes effect on a start without that variable.`
+        : '';
+      el.style.display = source ? '' : 'none';
+    }
   }
 
   function showMsg(text: string, isErr = false, durationMs = 3000): void {
@@ -573,6 +645,8 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenEl.type = 'password';
       tokenNote.style.display = 'none';
       setRestartPending(cfg.restart_pending ?? false);
+      setSavePending(cfg.save_pending ?? false);
+      setOverrides(cfg.overrides);
       updateRemote(); // also calls computeAccessUrl via urlEl.value update
     } catch {
       showMsg('Could not load config', true);
@@ -604,6 +678,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     try {
       const cfg = (await authFetch('/api/config').then((r) => r.json())) as ConfigResponse;
       setRestartPending(cfg.restart_pending ?? false);
+      setSavePending(cfg.save_pending ?? false);
     } catch {
       // A server that cannot be reached is a different failure, and one the page states elsewhere.
     }
@@ -725,11 +800,18 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // earlier hand edit keeps it up.
       const pending = r.restart_pending ?? false;
       setRestartPending(pending);
+      setSavePending(r.save_pending ?? false);
+      setOverrides(r.overrides);
       showMsg(pending ? 'Saved — restart to apply' : 'Saved');
     } catch {
       showMsg('Save failed', true);
     }
   }
+
+  // The panel has no Save button — every control writes as it changes — so a state whose cure is
+  // "save" needs an action of its own. This posts the form as it stands, which is what the fields
+  // already show: the file's values, including the ones an editor put there.
+  applyNowBtn.addEventListener('click', () => void persist());
 
   restartNowBtn.addEventListener('click', async () => {
     restartNowBtn.disabled = true;

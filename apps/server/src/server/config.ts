@@ -230,15 +230,15 @@ export function applyPrecedence(
  * `true` when a fresh start, resolved from the SAME flags and env against `config.json` as it
  * stands now, would come up differently.
  *
- * Three fields, and only three: `port`, `host` and the certificate's common name are what a
- * process BINDS at startup and cannot revisit. `open` is spent the moment the browser opened, and
- * announcing it would teach the user to ignore the announcement — which is how a server left on
- * loopback went unnoticed in the first place.
+ * Four fields. Three are what a process BINDS at startup and cannot revisit — `port`, `host` and
+ * the certificate's common name. The fourth is `auth.token`: a save can rotate it live, but only
+ * with a token the PANEL generated, and one edited straight into the file is never in a request —
+ * the panel reads it redacted. A restart is what applies that one, which is why it is here and not
+ * in {@link savePending}.
  *
- * LIMIT: the token and the notification switches are adopted live by a SAVE, and not at all by an
- * edit made directly to `config.json` — the running process keeps using the ones it was started
- * with until something posts. That is a gap this predicate deliberately does not fill: they need a
- * save, not a restart, so reporting them here would name the wrong cure.
+ * `open` is in neither: it is spent the moment the browser opened, and announcing it would teach
+ * the user to ignore the announcement — which is how a server left on loopback went unnoticed in
+ * the first place.
  *
  * Both sides come through {@link applyPrecedence}, never from the file alone: a server started
  * with `--port 9000` is not stale because `config.json` says 44842. `POST /api/restart` respawns
@@ -252,9 +252,68 @@ export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConf
     // never produce.
     !Object.is(running.port, wouldStart.port) ||
     running.host !== wouldStart.host ||
+    // An EMPTY desired token is not a request to change anything: it means "none configured, one
+    // will be generated on the next start", which is what a missing file says. Comparing it
+    // literally reports a pending restart against a token nobody wrote.
+    (wouldStart.auth.token !== '' && running.auth.token !== wouldStart.auth.token) ||
     // Absent and empty are the same certificate name — neither can be put in one.
     (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '')
   );
+}
+
+/**
+ * Whether `config.json` holds notification settings the running process has not taken up — the one
+ * kind of change a SAVE can apply and a restart is not needed for.
+ *
+ * The counterpart to {@link restartPending}, separate because the cure is different, and it holds
+ * exactly what the panel can genuinely re-post: the switches are in the form, so pressing Apply
+ * sends them. The TOKEN is deliberately NOT here, and that was found by driving the button: the
+ * panel reads the token redacted, so a save cannot carry a value edited into the file — a restart
+ * is what applies it, and {@link restartPending} is where it belongs.
+ *
+ * `open` is in neither: it is spent the moment the browser opened, so nothing can apply it.
+ */
+export function savePending(running: SeedDeepConfig, desired: SeedDeepConfig): boolean {
+  return JSON.stringify(running.notifications) !== JSON.stringify(desired.notifications);
+}
+
+/** Where a value that beats `config.json` came from. */
+export type OverrideSource = 'flag' | 'env';
+
+/**
+ * The fields a CLI flag or an environment variable is overriding, keyed as the panel names them
+ * (`port`, `host`, `open`, `tls.commonName`).
+ *
+ * Only fields whose override actually DIFFERS from the file: a flag repeating what the file says
+ * overrides nothing anyone can observe, and saying so would be noise. What this is for is the one
+ * thing the panel could not otherwise explain — a field the user edits, saves, and sees snap back,
+ * because this process was started with a value that wins on every restart.
+ */
+export function overriddenFields(
+  cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
+  env: Record<string, string | undefined>,
+  fileConfig: SeedDeepConfig,
+): Record<string, OverrideSource> {
+  const resolved = applyPrecedence(cliFlags, env, fileConfig);
+  const out: Record<string, OverrideSource> = {};
+  const mark = (key: string, differs: boolean, byFlag: boolean, byEnv: boolean): void => {
+    if (differs && (byFlag || byEnv)) out[key] = byFlag ? 'flag' : 'env';
+  };
+  mark(
+    'port',
+    !Object.is(resolved.port, fileConfig.port),
+    cliFlags.port !== undefined,
+    env['SEEDEEP_PORT'] !== undefined,
+  );
+  mark('host', resolved.host !== fileConfig.host, cliFlags.host !== undefined, env['SEEDEEP_HOST'] !== undefined);
+  mark('open', resolved.open !== fileConfig.open, cliFlags.open !== undefined, env['SEEDEEP_OPEN'] !== undefined);
+  mark(
+    'tls.commonName',
+    (resolved.tls.commonName ?? '') !== (fileConfig.tls.commonName ?? ''),
+    false, // no CLI flag carries it
+    env['SEEDEEP_TLS_CN'] !== undefined,
+  );
+  return out;
 }
 
 /**
