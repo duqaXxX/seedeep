@@ -84,23 +84,6 @@ function section(title: string): HTMLElement {
   return node;
 }
 
-/**
- * A switch, as a button rather than a checkbox: `onclick` is this codebase's idiom and the one the
- * view-level tests invoke, and `aria-checked` is a state a test can read — a styled checkbox at this
- * size would be neither.
- */
-function toggle(on: boolean, label: string, onChange: (on: boolean) => void): HTMLElement {
-  const row = el('div', 'set-row');
-  const button = el('button', `set-toggle${on ? ' set-toggle--on' : ''}`);
-  button.type = 'button';
-  button.setAttribute('role', 'switch');
-  button.setAttribute('aria-checked', String(on));
-  button.setAttribute('aria-label', label);
-  button.append(el('i', 'set-knob'));
-  button.onclick = () => onChange(!on);
-  row.append(el('span', 'set-row-label', label), button);
-  return row;
-}
 
 /**
  * What the server section says, which is three different facts and not one with holes in it.
@@ -171,16 +154,14 @@ function serverSection(
  * success even when nothing is shown (`docs/tray.md`) — so the only check that exists is to send one
  * and look.
  */
-function notificationSection(prefs: Prefs, actions: SettingsActions): HTMLElement {
-  const node = section('Notify me when');
-  node.append(
-    toggle(prefs.notify, 'A session needs you', (on) => actions.setNotify(on)),
-    toggle(prefs.notifyFailed, 'A session fails', (on) => actions.setNotifyFailed(on)),
-    // Not "finishes": the session has not ended — the turn closed and it became yours again, which
-    // is what the banner says too.
-    toggle(prefs.notifyFinished, 'A session is back to you', (on) => actions.setNotifyFinished(on)),
-    toggle(prefs.notifyUpdate, 'A new server version is out', (on) => actions.setNotifyUpdate(on)),
-  );
+function notificationSection(actions: SettingsActions): HTMLElement {
+  const node = section('Notifications');
+  // WHICH events notify is not asked here any more: the server decides them, and its own settings
+  // panel is where both channels are configured. Four switches on this surface were a second place
+  // to answer one question, and a toggle that has to reach the server is one that can fail — a
+  // failure a menu-bar popover has no good way to report.
+  const where = el('div', 'set-note', 'Configured in seedeep\u2019s settings, in the browser.');
+  node.append(where);
   // Not the accent button `Connect` uses: this is a diagnostic, and drawn as the primary action of
   // the surface it read as the thing the screen is FOR.
   const test = el('button', 'set-test', 'Send a test notification');
@@ -284,7 +265,7 @@ export function renderSettings(
   // appended at the end is a message about the click that just happened, below the fold. Next to the
   // control that produced it it would instead move everything under it on each action.
   if (note) body.append(el('p', note.bad ? 'conn-error' : 'set-said', note.text));
-  body.append(serverSection(status, actions, local), notificationSection(prefs, actions));
+  body.append(serverSection(status, actions, local), notificationSection(actions));
   if (versions.tray) body.append(aboutSection(versions));
   root.append(head, body);
   return root;

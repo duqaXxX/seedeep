@@ -60,6 +60,7 @@ export function buildSaveBody(
   cn: string,
   pendingToken: string,
   webhook?: WebhookForm,
+  tray?: NotifyChannelSwitches,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { port, host, open };
   if (cn.trim()) body['tls'] = { commonName: cn.trim() };
@@ -70,7 +71,19 @@ export function buildSaveBody(
     const { headersText, ...rest } = webhook;
     body['notifications'] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
   }
+  if (tray) {
+    const n = (body['notifications'] ?? {}) as Record<string, unknown>;
+    body['notifications'] = { ...n, tray };
+  }
   return body;
+}
+
+/** Which events one channel is allowed to interrupt for. Both channels carry the same four. */
+export interface NotifyChannelSwitches {
+  needsYou: boolean;
+  fails: boolean;
+  finishes: boolean;
+  updates: boolean;
 }
 
 /** The webhook half of the form, as the panel holds it before it becomes a request body. */
@@ -138,6 +151,7 @@ interface ConfigResponse {
   tls?: { commonName?: string; fingerprint?: string };
   /** Header VALUES arrive redacted — this endpoint answers without auth. See `load()`. */
   notifications?: {
+    tray?: { needsYou?: boolean; fails?: boolean; finishes?: boolean; updates?: boolean };
     webhook?: {
       url?: string;
       headers?: Record<string, string>;
@@ -264,6 +278,15 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
 </div>
 <div class="block">
   <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Tray notifies you when<small>The menu-bar app on this machine. Its icon is never silenced by these — it costs nothing to ignore.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-tray-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-tray-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session is back to you</span></div>
+      <div class="shook-row"><div id="s-tray-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
+    </div>
+  </div>
   <div class="srow">
     <div class="slabel">Where notifications go<small>The tray shows them on this machine. Nothing else is sent anywhere unless you add an endpoint below.</small></div>
     <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Send to a webhook…</button>
@@ -436,6 +459,12 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   const hookUrlEl = drawer.querySelector<HTMLInputElement>('#s-hook-url')!;
   const hookHeadersEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-headers')!;
   const hookTemplateEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-template')!;
+  const traySwitches = {
+    needsYou: drawer.querySelector<HTMLDivElement>('#s-tray-needsYou')!,
+    fails: drawer.querySelector<HTMLDivElement>('#s-tray-fails')!,
+    finishes: drawer.querySelector<HTMLDivElement>('#s-tray-finishes')!,
+    updates: drawer.querySelector<HTMLDivElement>('#s-tray-updates')!,
+  };
   const hookSwitches = {
     needsYou: drawer.querySelector<HTMLDivElement>('#s-hook-needsYou')!,
     fails: drawer.querySelector<HTMLDivElement>('#s-hook-fails')!,
@@ -443,7 +472,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     updates: drawer.querySelector<HTMLDivElement>('#s-hook-updates')!,
   };
   // The same control the rest of the drawer uses; `on` IS the state, as it is for Open browser.
-  for (const [, track] of Object.entries(hookSwitches)) {
+  for (const [, track] of Object.entries({ ...traySwitches, ...hookSwitches })) {
     track.parentElement?.addEventListener('click', () => {
       track.classList.toggle('on');
       setDirty(true);
@@ -460,6 +489,14 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   });
 
   /** The webhook fields as a request body's worth of form state. */
+  /** The tray channel's four switches, read off the toggles. */
+  const trayForm = () => ({
+    needsYou: traySwitches.needsYou.classList.contains('on'),
+    fails: traySwitches.fails.classList.contains('on'),
+    finishes: traySwitches.finishes.classList.contains('on'),
+    updates: traySwitches.updates.classList.contains('on'),
+  });
+
   const webhookForm = (): WebhookForm => ({
     url: hookUrlEl.value.trim(),
     headersText: hookHeadersEl.value,
@@ -487,6 +524,11 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // so Discard must not revert it and a Save cannot change it (a new cert needs a restart).
       // Empty leaves the placeholder visible, which is the honest answer while there is none.
       fpEl.value = cfg.tls?.fingerprint ?? '';
+      const tray = cfg.notifications?.tray;
+      traySwitches.needsYou.classList.toggle('on', tray?.needsYou ?? true);
+      traySwitches.fails.classList.toggle('on', tray?.fails ?? true);
+      traySwitches.finishes.classList.toggle('on', tray?.finishes ?? false);
+      traySwitches.updates.classList.toggle('on', tray?.updates ?? true);
       const hook = cfg.notifications?.webhook;
       hookUrlEl.value = hook?.url ?? '';
       // Values arrive redacted (`***`) because this endpoint answers without auth. Showing them is
@@ -615,6 +657,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       cnEl.value,
       pendingToken,
       webhookForm(),
+      trayForm(),
     );
 
     try {

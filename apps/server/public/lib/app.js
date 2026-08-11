@@ -2905,7 +2905,7 @@ function resolveFormState(host, cn) {
   }
   return { remote, canSave: !cnError, cnError };
 }
-function buildSaveBody(port, host, open, cn, pendingToken, webhook) {
+function buildSaveBody(port, host, open, cn, pendingToken, webhook, tray) {
   const body = { port, host, open };
   if (cn.trim())
     body["tls"] = { commonName: cn.trim() };
@@ -2914,6 +2914,10 @@ function buildSaveBody(port, host, open, cn, pendingToken, webhook) {
   if (webhook) {
     const { headersText, ...rest } = webhook;
     body["notifications"] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
+  }
+  if (tray) {
+    const n = body["notifications"] ?? {};
+    body["notifications"] = { ...n, tray };
   }
   return body;
 }
@@ -3041,6 +3045,15 @@ function createSettingsPanel(headerEl) {
 </div>
 <div class="block">
   <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Tray notifies you when<small>The menu-bar app on this machine. Its icon is never silenced by these — it costs nothing to ignore.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-tray-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-tray-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session is back to you</span></div>
+      <div class="shook-row"><div id="s-tray-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
+    </div>
+  </div>
   <div class="srow">
     <div class="slabel">Where notifications go<small>The tray shows them on this machine. Nothing else is sent anywhere unless you add an endpoint below.</small></div>
     <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Send to a webhook…</button>
@@ -3180,13 +3193,19 @@ function createSettingsPanel(headerEl) {
   const hookUrlEl = drawer.querySelector("#s-hook-url");
   const hookHeadersEl = drawer.querySelector("#s-hook-headers");
   const hookTemplateEl = drawer.querySelector("#s-hook-template");
+  const traySwitches = {
+    needsYou: drawer.querySelector("#s-tray-needsYou"),
+    fails: drawer.querySelector("#s-tray-fails"),
+    finishes: drawer.querySelector("#s-tray-finishes"),
+    updates: drawer.querySelector("#s-tray-updates")
+  };
   const hookSwitches = {
     needsYou: drawer.querySelector("#s-hook-needsYou"),
     fails: drawer.querySelector("#s-hook-fails"),
     finishes: drawer.querySelector("#s-hook-finishes"),
     updates: drawer.querySelector("#s-hook-updates")
   };
-  for (const [, track] of Object.entries(hookSwitches)) {
+  for (const [, track] of Object.entries({ ...traySwitches, ...hookSwitches })) {
     track.parentElement?.addEventListener("click", () => {
       track.classList.toggle("on");
       setDirty(true);
@@ -3200,6 +3219,12 @@ function createSettingsPanel(headerEl) {
     customBtn.textContent = open2 ? "Send to a webhook…" : "Hide webhook settings";
     for (const row of customRows)
       row.hidden = open2;
+  });
+  const trayForm = () => ({
+    needsYou: traySwitches.needsYou.classList.contains("on"),
+    fails: traySwitches.fails.classList.contains("on"),
+    finishes: traySwitches.finishes.classList.contains("on"),
+    updates: traySwitches.updates.classList.contains("on")
   });
   const webhookForm = () => ({
     url: hookUrlEl.value.trim(),
@@ -3224,6 +3249,11 @@ function createSettingsPanel(headerEl) {
       setOpen(savedState.open);
       cnEl.value = savedState.cn;
       fpEl.value = cfg.tls?.fingerprint ?? "";
+      const tray = cfg.notifications?.tray;
+      traySwitches.needsYou.classList.toggle("on", tray?.needsYou ?? true);
+      traySwitches.fails.classList.toggle("on", tray?.fails ?? true);
+      traySwitches.finishes.classList.toggle("on", tray?.finishes ?? false);
+      traySwitches.updates.classList.toggle("on", tray?.updates ?? true);
       const hook = cfg.notifications?.webhook;
       hookUrlEl.value = hook?.url ?? "";
       hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
@@ -3324,7 +3354,7 @@ function createSettingsPanel(headerEl) {
       return;
     }
     saveBtn.disabled = true;
-    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm());
+    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm(), trayForm());
     try {
       const res = await authFetch("/api/config", {
         method: "POST",

@@ -55,15 +55,17 @@ const find = (node: unknown, cls: string) => findByClass(node, cls);
 const text = (node: unknown) => textOf(node);
 const all = (node: unknown) => text(node);
 
-// The card's four things, on one surface. Asserted together because "the settings panel" is the
-// claim — a view missing one of them is not a smaller version of it, it is a different screen.
-test('the four things the card asks for are all on the surface', () => {
+// What this surface is for, asserted together because "the settings panel" is the claim — a view
+// missing one of them is not a smaller version of it, it is a different screen. WHICH events notify
+// is no longer among them: the server decides that, and its own panel configures both channels.
+test('the things the panel is for are all on the surface', () => {
   const { node } = mount(REMOTE, { notify: true });
 
   assert.ok(find(node, 'set-host').length, 'the server it is talking to');
   assert.ok(find(node, 'fp-value').length, 'the certificate fingerprint');
   assert.ok(find(node, 'conn-input').length, 'the one field a remote server needs');
-  assert.ok(find(node, 'set-toggle').length, 'the notification toggle');
+  assert.ok(find(node, 'set-test').length, 'the one honest check that notifications arrive at all');
+  assert.equal(find(node, 'set-toggle').length, 0, 'and no switch: two places to answer one question');
 });
 
 // An abbreviated hash teaches the habit of comparing the first three groups, which is not a
@@ -93,65 +95,6 @@ test('a plaintext server that is not the default says what is not verified', () 
   assert.match(all(node), /nothing here is verified/);
   assert.doesNotMatch(all(node), /Pinned certificate/, 'there is nothing to pin');
 });
-
-// The toggle draws the stored value and asks for the opposite — the two halves of a switch that
-// cannot end up showing one thing and meaning another.
-test('the toggle shows what is stored and asks for the other', () => {
-  for (const notify of [true, false]) {
-    const { node, calls } = mount(REMOTE, { notify });
-    const button = find(node, 'set-toggle')[0] as {
-      onclick: () => void;
-      getAttribute(k: string): string | null;
-    };
-
-    assert.equal(button.getAttribute('aria-checked'), String(notify));
-    assert.equal(button.getAttribute('role'), 'switch');
-
-    button.onclick();
-
-    assert.deepEqual(calls, [`setNotify:${!notify}`]);
-  }
-});
-
-// Four switches, and each one has to reach its OWN setting. Written because the cheap way to add
-// the second — one handler for all of them — sends the wrong command with no visible symptom until
-// a user finds that turning one off turned another off too.
-test('each notification switch stores its own setting', () => {
-  const { node, calls } = mount(REMOTE, {
-    notify: true,
-    notifyFailed: true,
-    notifyFinished: false,
-    notifyUpdate: true,
-  });
-  const switches = find(node, 'set-toggle') as Array<{
-    onclick: () => void;
-    getAttribute(k: string): string | null;
-  }>;
-
-  assert.equal(switches.length, 4);
-  // The order is the urgency the whole app is built on: what stopped a session first, what merely
-  // finished one next — and last the one switch that is not about a session at all.
-  assert.equal(switches[0]!.getAttribute('aria-label'), 'A session needs you');
-  // "fails", never "breaks": the label is about a model call that FAILED, and "a session breaks"
-  // reads just as easily as a session taking a break — which is how it was misread in review.
-  assert.equal(switches[1]!.getAttribute('aria-label'), 'A session fails');
-  // The interruption rule is NOT on the label: a turn you stopped yourself never notifies, and
-  // saying so only made a reader wonder what the exception was for. If you pressed Esc you know.
-  // Not "finishes": the session has not ended — the turn closed and it became yours again, which is
-  // the event, and the same words the banner itself now carries.
-  assert.equal(switches[2]!.getAttribute('aria-label'), 'A session is back to you');
-  assert.equal(switches[3]!.getAttribute('aria-label'), 'A new server version is out');
-  assert.equal(switches[1]!.getAttribute('aria-checked'), 'true', 'a broken session notifies by default');
-  assert.equal(switches[2]!.getAttribute('aria-checked'), 'false', 'finished turns are off by default');
-  assert.equal(switches[3]!.getAttribute('aria-checked'), 'true', 'a new release notifies by default');
-
-  switches[2]!.onclick();
-  switches[1]!.onclick();
-  switches[3]!.onclick();
-
-  assert.deepEqual(calls, ['setNotifyFinished:true', 'setNotifyFailed:false', 'setNotifyUpdate:false']);
-});
-
 // The About section stays silent about updates until there IS one: a line saying an install is
 // current would say nothing on every day but release day.
 test('the available update is named only when one exists', () => {
@@ -216,17 +159,6 @@ test('the panel says how to update the server, and never guesses when it was not
   assert.doesNotMatch(unknown, /Replace the server executable/, 'never the download sentence by default');
   assert.doesNotMatch(unknown, /Run `/, 'and never an invented command');
 });
-
-// It is not a label with a colour: assistive tech and the CSS read the same state, so the class the
-// knob is positioned by cannot disagree with what the switch announces.
-test('the switch looks like what it announces', () => {
-  const on = find(mount(REMOTE, { notify: true }).node, 'set-toggle')[0] as { className: string };
-  const off = find(mount(REMOTE, { notify: false }).node, 'set-toggle')[0] as { className: string };
-
-  assert.ok(on.className.includes('set-toggle--on'));
-  assert.ok(!off.className.includes('set-toggle--on'));
-});
-
 test('the field hands the pasted URL over, and the back button goes back', () => {
   const { node, calls } = mount(REMOTE);
   const form = find(node, 'conn-form')[0] as { onsubmit: (e: { preventDefault(): void }) => void };
