@@ -2328,6 +2328,15 @@ The `***` redactions (the auth token, the webhook URL and its headers) mean "kee
 resolved against that same file — the source the panel read them from, so the mask can only ever put
 back the value it stood for.
 
+**A file that cannot be understood is not a config.** `readConfig` is deliberately lenient — a
+malformed `config.json` becomes the defaults so a server still starts — and that is exactly wrong
+for a caller that WRITES: merging onto the defaults put built-ins over the user's token, port and
+certificate name on the first save they made for any other reason. Both paths here use
+`readConfigStrict`, which throws on a file that exists and cannot be parsed (a MISSING file is still
+the defaults — absent legitimately means "every default"). On that throw the panel shows what is
+running and reports nothing pending, and a save merges onto the running config, which repairs the
+file rather than emptying it.
+
 **The panel has no Save button.** Every control writes as it changes: a toggle on the click, a text
 field on `change` — leaving it or pressing Enter — and never on each keystroke, or typing `45999`
 would post `4`, then `45`, then `459`. A switch reads as done the moment it moves, and one that had

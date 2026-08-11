@@ -6,10 +6,24 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { mergeRoster } from '../src/core/roster.ts';
 import type { SessionRecord } from '../src/core/types.ts';
-import { defaultConfig } from '../src/server/config.ts';
+import { defaultConfig, type SeedDeepConfig } from '../src/server/config.ts';
 import { isLoopback, parseMarks, startServer } from '../src/server/server.ts';
 import type { Channel } from '../src/server/update-cmd.ts';
 import { VERSION } from '../src/server/version.ts';
+
+/**
+ * A config both injected AND written to a temp `config.json`, as `startServer` fields.
+ *
+ * `GET /api/config` answers with the FILE — the panel edits the configuration, not the copy the
+ * process is holding — so a test that only injects is asserting against whatever `config.json` the
+ * machine running the suite happens to have. Left out, that is the contributor's own: the token
+ * test passed while never reading the token it claimed to redact.
+ */
+function onDisk(cfg: SeedDeepConfig): { config: SeedDeepConfig; configPath: string } {
+  const configPath = join(mkdtempSync(join(tmpdir(), 'seedeep-cfg-')), 'config.json');
+  writeFileSync(configPath, JSON.stringify(cfg));
+  return { config: cfg, configPath };
+}
 
 const roster: SessionRecord[] = [
   {
@@ -373,7 +387,7 @@ test('host 0.0.0.0 is passed to Bun.serve and the socket accepts connections', a
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -394,7 +408,7 @@ test('remote host: missing token → 401', async () => {
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -412,7 +426,7 @@ test('remote host: wrong token → 401', async () => {
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -432,7 +446,7 @@ test('remote host: correct token → 200', async () => {
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -452,7 +466,7 @@ test('remote host: GET /api/config is exempt from auth (no token needed)', async
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -476,7 +490,7 @@ test('remote host: GET /api/config tells an anonymous caller nothing about the b
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -502,7 +516,7 @@ test('loopback: GET /api/config carries the build mark', async () => {
     watcher: new EventEmitter(),
     discover: async () => [],
     port: 0,
-    config: defaultConfig(),
+    ...onDisk(defaultConfig()),
   });
   try {
     const body = await (await fetch(`${srv.url}/api/config`)).json();
@@ -520,7 +534,7 @@ test('GET /api/config: token is redacted as "***"', async () => {
     watcher: new EventEmitter(),
     discover: async () => [],
     port: 0,
-    config: cfg,
+    ...onDisk(cfg),
   });
   try {
     const body = await (await fetch(`${srv.url}/api/config`)).json();
@@ -541,7 +555,7 @@ test('GET /api/config carries the running server’s version', async () => {
     watcher: new EventEmitter(),
     discover: async () => [],
     port: 0,
-    config: defaultConfig(),
+    ...onDisk(defaultConfig()),
   });
   try {
     const body = await (await fetch(`${srv.url}/api/config`)).json();
@@ -558,7 +572,7 @@ test('GET /api/config: tls.cert and tls.key paths are omitted', async () => {
     watcher: new EventEmitter(),
     discover: async () => [],
     port: 0,
-    config: cfg,
+    ...onDisk(cfg),
   });
   try {
     const body = await (await fetch(`${srv.url}/api/config`)).json();
@@ -699,7 +713,7 @@ test('loopback mode reports no fingerprint — there is no certificate to pin', 
     watcher: new EventEmitter(),
     discover: async () => [],
     port: 0,
-    config: defaultConfig(),
+    ...onDisk(defaultConfig()),
   });
   try {
     assert.equal(srv.tlsFingerprint, null);
@@ -830,7 +844,7 @@ test('POST /api/config without token on remote host → 401', async () => {
     discover: async () => [],
     port: 0,
     host: '0.0.0.0',
-    config: cfg,
+    ...onDisk(cfg),
     _skipTls: true,
   });
   try {
@@ -1324,6 +1338,69 @@ test('GET /api/config: a CLI flag wins over the file in what the panel shows', a
     const body = await (await fetch(`${srv.url}/api/config`)).json();
     assert.equal(body.port, 5555, 'the flag, not the file');
     assert.equal(body.restart_pending, false, 'and nothing pending, because a restart keeps it');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config repairs a malformed file instead of emptying it', async () => {
+  // Found in review, reproduced against a real server: with the file merged onto BLINDLY, a stray
+  // comma in config.json turned the next save — a toggle, made for another reason entirely — into
+  // a rewrite with built-in defaults, discarding the auth token, the port and the certificate name.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-broken-'));
+  const configPath = join(dir, 'config.json');
+  const config = {
+    ...defaultConfig(),
+    port: 9101,
+    auth: { token: 'real-secret-token' },
+    tls: { ...defaultConfig().tls, commonName: 'box.local' },
+  };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(configPath, '{ "port": 9101, "host": "0.0.0.0",'); // an editor, mid-edit
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ open: false }),
+    });
+    const written = JSON.parse(readFileSync(configPath, 'utf8')) as typeof config;
+    assert.equal(written.auth.token, 'real-secret-token', 'the token survived');
+    assert.equal(written.port, 9101, 'the port survived');
+    assert.equal(written.tls.commonName, 'box.local', 'the certificate name survived');
+    assert.equal(written.open, false, 'and the save applied');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config answers with what is running when the file cannot be read', async () => {
+  // Never the defaults: they are settings nobody chose, and pairing them with a pending state
+  // would invite a restart INTO them.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-broken-get-'));
+  const configPath = join(dir, 'config.json');
+  const config = { ...defaultConfig(), port: 9101, auth: { token: 'tok' } };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(configPath, 'not json at all');
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.port, 9101, 'what the process is running, not a built-in');
+    assert.equal(body.restart_pending, false, 'and nothing to restart into');
   } finally {
     srv.stop();
   }

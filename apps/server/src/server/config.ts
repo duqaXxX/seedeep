@@ -123,43 +123,57 @@ function mergeNotifications(defs: NotifyConfig, raw: unknown): NotifyConfig {
  * rewritten on its own. Unknown keys from a newer version are preserved (not stripped).
  */
 export async function readConfig(path?: string, home = homedir()): Promise<SeedDeepConfig> {
+  try {
+    return await readConfigStrict(path, home);
+  } catch (e) {
+    console.warn(`seedeep: ${(e as Error).message} — using defaults`);
+    return defaultConfig(home);
+  }
+}
+
+/**
+ * {@link readConfig}, except that a file which exists and cannot be understood THROWS instead of
+ * quietly becoming the defaults. A missing file still returns them — absent legitimately means
+ * "every default", which a malformed one does not.
+ *
+ * The distinction is not academic: a caller that WRITES must never take the defaults for the user's
+ * settings. It did, briefly, and one save after a stray comma in `config.json` replaced the auth
+ * token, the port and the certificate name with built-ins — a running server repairs that file, it
+ * does not overwrite it. Callers that only need a config to start with want {@link readConfig}.
+ */
+export async function readConfigStrict(path?: string, home = homedir()): Promise<SeedDeepConfig> {
   const filePath = path ?? configFilePath(home);
   const defs = defaultConfig(home);
   let raw: string;
   try {
     raw = await readFile(filePath, 'utf8');
   } catch (e) {
-    // ENOENT is normal on first run — no warning needed.
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`seedeep: could not read config (${(e as Error).message}) — using defaults`);
-    }
-    return defs;
+    // ENOENT is normal on first run, and is the one read failure that is not a loss of information.
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return defs;
+    throw new Error(`could not read config (${(e as Error).message})`);
   }
+  let p: unknown;
   try {
-    const p: unknown = JSON.parse(raw);
-    if (!p || typeof p !== 'object') {
-      console.warn(`seedeep: config is not a JSON object — using defaults`);
-      return defs;
-    }
-    const parsed = p as Record<string, unknown>;
-    return {
-      ...defs,
-      ...parsed,
-      // Nested objects are merged, not replaced, so a file with only `auth.token` set
-      // does not lose the built-in `tls` defaults.
-      auth: {
-        ...defs.auth,
-        ...(parsed['auth'] && typeof parsed['auth'] === 'object' ? (parsed['auth'] as object) : {}),
-      },
-      tls: { ...defs.tls, ...(parsed['tls'] && typeof parsed['tls'] === 'object' ? (parsed['tls'] as object) : {}) },
-      // One level deeper than `auth` and `tls`, because the channels are objects too: a file that
-      // sets only `webhook.url` must keep every switch it never mentioned, on BOTH channels.
-      notifications: mergeNotifications(defs.notifications, parsed['notifications']),
-    };
+    p = JSON.parse(raw);
   } catch {
-    console.warn(`seedeep: config has invalid JSON — using defaults`);
-    return defs;
+    throw new Error('config has invalid JSON');
   }
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('config is not a JSON object');
+  const parsed = p as Record<string, unknown>;
+  return {
+    ...defs,
+    ...parsed,
+    // Nested objects are merged, not replaced, so a file with only `auth.token` set
+    // does not lose the built-in `tls` defaults.
+    auth: {
+      ...defs.auth,
+      ...(parsed['auth'] && typeof parsed['auth'] === 'object' ? (parsed['auth'] as object) : {}),
+    },
+    tls: { ...defs.tls, ...(parsed['tls'] && typeof parsed['tls'] === 'object' ? (parsed['tls'] as object) : {}) },
+    // One level deeper than `auth` and `tls`, because the channels are objects too: a file that
+    // sets only `webhook.url` must keep every switch it never mentioned, on BOTH channels.
+    notifications: mergeNotifications(defs.notifications, parsed['notifications']),
+  };
 }
 
 /**
@@ -217,9 +231,14 @@ export function applyPrecedence(
  * stands now, would come up differently.
  *
  * Three fields, and only three: `port`, `host` and the certificate's common name are what a
- * process BINDS at startup and cannot revisit. `open` is spent the moment the browser opened, a
- * token is adopted live, and announcing either would teach the user to ignore the announcement —
- * which is how a server left on loopback went unnoticed in the first place.
+ * process BINDS at startup and cannot revisit. `open` is spent the moment the browser opened, and
+ * announcing it would teach the user to ignore the announcement — which is how a server left on
+ * loopback went unnoticed in the first place.
+ *
+ * LIMIT: the token and the notification switches are adopted live by a SAVE, and not at all by an
+ * edit made directly to `config.json` — the running process keeps using the ones it was started
+ * with until something posts. That is a gap this predicate deliberately does not fill: they need a
+ * save, not a restart, so reporting them here would name the wrong cure.
  *
  * Both sides come through {@link applyPrecedence}, never from the file alone: a server started
  * with `--port 9000` is not stale because `config.json` says 44842. `POST /api/restart` respawns
@@ -228,7 +247,10 @@ export function applyPrecedence(
  */
 export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConfig): boolean {
   return (
-    running.port !== wouldStart.port ||
+    // `Object.is`, not `!==`: a non-numeric `SEEDEEP_PORT` makes both sides NaN, and NaN differs
+    // from itself — a pending state on both sides of a restart, which is the one thing this must
+    // never produce.
+    !Object.is(running.port, wouldStart.port) ||
     running.host !== wouldStart.host ||
     // Absent and empty are the same certificate name — neither can be put in one.
     (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '')

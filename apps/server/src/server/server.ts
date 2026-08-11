@@ -18,7 +18,7 @@ import {
   applyPrecedence,
   defaultConfig,
   type NotifyConfig,
-  readConfig,
+  readConfigStrict,
   restartPending,
   type SeedDeepConfig,
   writeConfig,
@@ -407,8 +407,11 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
    */
   const desiredConfig = async (): Promise<SeedDeepConfig> => {
     try {
-      return applyPrecedence(deps.cliFlags ?? {}, deps.env ?? process.env, await readConfig(deps.configPath));
+      return applyPrecedence(deps.cliFlags ?? {}, deps.env ?? process.env, await readConfigStrict(deps.configPath));
     } catch {
+      // `readConfigStrict`, so this catch is REACHABLE: the lenient reader turns a malformed file
+      // into the defaults, and answering with those would show settings nobody chose and invite a
+      // restart into them. What is running is the honest answer, and it reports nothing pending.
       return currentConfig;
     }
   };
@@ -722,7 +725,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         // process was bound to. What goes to disk is the file plus this request; what stays in
         // memory is what the process can honour without a restart.
         try {
-          await writeConfig(mergeConfigBody(await readConfig(deps.configPath), body), deps.configPath);
+          // A file that cannot be understood is NOT a config: falling back to the defaults here
+          // would write built-ins over the user's token, port and certificate name on the first
+          // save they make for any other reason. What is running is intact, so a save onto that
+          // repairs the file instead of emptying it.
+          const base = await readConfigStrict(deps.configPath).catch(() => currentConfig);
+          await writeConfig(mergeConfigBody(base, body), deps.configPath);
         } catch {
           /* non-fatal: in-memory state below is still updated */
         }
