@@ -2979,6 +2979,23 @@ function createSettingsPanel(headerEl) {
   <div class="deyebrow"><span class="dchip">config</span></div>
   <h3>Settings</h3>
 </div>
+<div class="sbanner spending" id="s-pending" style="display:none">
+  ${RESTART_SVG}
+  <div>
+    <strong>Running an older configuration</strong>
+    This server is still using the port, host, certificate name and token it
+    started with — <code>config.json</code> has changed since. Restart to serve it.
+  </div>
+</div>
+<div class="sbanner spending" id="s-save-pending" style="display:none">
+  ${WARN_SVG}
+  <div>
+    <strong>Changes waiting to be applied</strong>
+    <code>config.json</code> carries notification settings this server has not
+    taken up. These need no restart — saving applies them.
+    <button id="s-apply-now" class="xbtn s-apply-btn">Apply now</button>
+  </div>
+</div>
 <div class="sbanner" id="s-banner" style="display:none">
   ${WARN_SVG}
   <div>
@@ -2991,17 +3008,26 @@ function createSettingsPanel(headerEl) {
   <div class="blabel">Network</div>
   <div class="srow">
     <div class="slabel">Port<small>Requires restart</small></div>
-    <input id="s-port" class="sinput" type="number" min="1" max="65535">
+    <div>
+      <input id="s-port" class="sinput" type="number" min="1" max="65535">
+      <div id="s-ov-port" class="sinput-note" style="display:none"></div>
+    </div>
   </div>
   <div class="srow">
     <div class="slabel">Host<small>Requires restart</small></div>
-    <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
+    <div>
+      <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
+      <div id="s-ov-host" class="sinput-note" style="display:none"></div>
+    </div>
   </div>
   <div class="srow">
     <div class="slabel">Open browser on start</div>
-    <div class="stoggle-wrap">
-      <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-      <span id="s-open-label" class="stoggle-label">Yes</span>
+    <div>
+      <div class="stoggle-wrap">
+        <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span id="s-open-label" class="stoggle-label">Yes</span>
+      </div>
+      <div id="s-ov-open" class="sinput-note" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -3035,6 +3061,7 @@ function createSettingsPanel(headerEl) {
       <div id="s-cn-err" class="sinput-err" style="display:none">Required to enable remote access</div>
       <div id="s-cn-note" class="sinput-note" style="display:none">Saving this replaces the certificate
         on the next start: the fingerprint below changes and any pinned client must be re-pinned.</div>
+      <div id="s-ov-tls.commonName" class="sinput-note" style="display:none"></div>
     </div>
   </div>
   <div class="srow">
@@ -3102,6 +3129,9 @@ function createSettingsPanel(headerEl) {
   const qd = (sel) => drawer.querySelector(sel);
   const dclose = qd(".close");
   const banner = qd("#s-banner");
+  const pendingBanner = qd("#s-pending");
+  const savePendingBanner = qd("#s-save-pending");
+  const applyNowBtn = qd("#s-apply-now");
   const portEl = qd("#s-port");
   const hostEl = qd("#s-host");
   const openTrack = qd("#s-open-track");
@@ -3139,8 +3169,35 @@ function createSettingsPanel(headerEl) {
       updateRow.style.display = "none";
     }
   }
-  function setRestartAvailable(on) {
+  function setRestartPending(on) {
+    pendingBanner.style.display = on ? "" : "none";
     restartNowBtn.style.display = on ? "" : "none";
+    markPending();
+  }
+  function setSavePending(on) {
+    savePendingBanner.style.display = on ? "" : "none";
+    markPending();
+  }
+  function markPending() {
+    const on = pendingBanner.style.display !== "none" || savePendingBanner.style.display !== "none";
+    btn.classList.toggle("pending", on);
+    btn.title = on ? "Settings — config.json is not fully applied" : "Settings";
+  }
+  function setOverrides(overrides) {
+    const ENV_OF = {
+      port: "SEEDEEP_PORT",
+      host: "SEEDEEP_HOST",
+      open: "SEEDEEP_OPEN",
+      "tls.commonName": "SEEDEEP_TLS_CN"
+    };
+    for (const field of Object.keys(ENV_OF)) {
+      const el5 = drawer.querySelector(`#s-ov-${CSS.escape(field)}`);
+      if (!el5)
+        continue;
+      const source = overrides?.[field];
+      el5.textContent = source ? source === "flag" ? "A command-line flag overrides this while this server runs — saving it takes effect on a start without that flag." : `${ENV_OF[field]} overrides this while this server runs — saving it takes effect on a start without that variable.` : "";
+      el5.style.display = source ? "" : "none";
+    }
   }
   function showMsg(text, isErr = false, durationMs = 3000) {
     msgEl.textContent = text;
@@ -3254,7 +3311,9 @@ function createSettingsPanel(headerEl) {
       tokenEl.value = "***";
       tokenEl.type = "password";
       tokenNote.style.display = "none";
-      setRestartAvailable(false);
+      setRestartPending(cfg.restart_pending ?? false);
+      setSavePending(cfg.save_pending ?? false);
+      setOverrides(cfg.overrides);
       updateRemote();
     } catch {
       showMsg("Could not load config", true);
@@ -3271,6 +3330,18 @@ function createSettingsPanel(headerEl) {
     scrim.classList.remove("on");
     drawer.classList.remove("on");
   }
+  async function refreshPending() {
+    try {
+      const cfg = await authFetch("/api/config").then((r) => r.json());
+      setRestartPending(cfg.restart_pending ?? false);
+      setSavePending(cfg.save_pending ?? false);
+    } catch {}
+  }
+  refreshPending();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden)
+      refreshPending();
+  });
   btn.addEventListener("click", () => drawer.classList.contains("on") ? close() : open());
   scrim.addEventListener("click", close);
   dclose.addEventListener("click", close);
@@ -3342,23 +3413,26 @@ function createSettingsPanel(headerEl) {
       tokenEl.type = "password";
       tokenNote.style.display = "none";
       updateRemote();
-      if (r.restart_required) {
-        setRestartAvailable(true);
-        showMsg("Saved — restart to apply");
-      } else {
-        showMsg("Saved");
-      }
+      const pending = r.restart_pending ?? false;
+      setRestartPending(pending);
+      setSavePending(r.save_pending ?? false);
+      setOverrides(r.overrides);
+      showMsg(pending ? "Saved — restart to apply" : "Saved");
     } catch {
       showMsg("Save failed", true);
     }
   }
+  applyNowBtn.addEventListener("click", async () => {
+    await load();
+    await persist();
+  });
   restartNowBtn.addEventListener("click", async () => {
     restartNowBtn.disabled = true;
     restartNowBtn.textContent = "Restarting…";
     try {
       await authFetch("/api/restart", { method: "POST" });
     } catch {}
-    restartNowBtn.style.display = "none";
+    setRestartPending(false);
     restartEl.style.display = "none";
     msgEl.textContent = "Restarting…";
     msgEl.className = "smsg";
@@ -7518,12 +7592,25 @@ function createGraph(container, state, opts = {}) {
       const cs = turnCostStats(fullSnap);
       if (cs.escCount > 0)
         scopeBanner.append(E("span", "sbstats", cs.escCount + " interrupted"));
+      const work = [];
       if (fullSnap.turns > 0)
-        scopeBanner.append(E("span", "sbnum", nTurns(fullSnap.turns)));
+        work.push(nTurns(fullSnap.turns));
+      if (fullSnap.apiCalls > 0)
+        work.push(kc(fullSnap.apiCalls) + " calls");
+      const toolCount = summarizeTools(fullSnap.mainTools).count;
+      if (toolCount > 0)
+        work.push(kc(toolCount) + " tools");
+      if (work.length)
+        scopeBanner.append(E("span", "sbnum", work.join(" · ")));
       const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
+      const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
+      if (work.length && (open || worked))
+        scopeBanner.append(E("span", "sbsep group", "|"));
       if (open)
         scopeBanner.append(liveElapsed(open));
-      if (fullSnap.turnList.some((t) => t.durationMs !== null))
+      if (open && worked)
+        scopeBanner.append(E("span", "sbsep", "·"));
+      if (worked)
         scopeBanner.append(sessionWorked(fullSnap));
       const finalTurn = open && !ended2 ? null : finalResultTurn(fullSnap);
       if (finalTurn) {
@@ -7569,6 +7656,9 @@ function createGraph(container, state, opts = {}) {
       statParts.push(formatDuration(turn.durationMs));
     if (turn.apiCalls > 0)
       statParts.push(turn.apiCalls + " API");
+    const turnTools = fullSnap.mainTools.filter((t) => t.turnIndex === turn.index).length;
+    if (turnTools > 0)
+      statParts.push(turnTools + " tools");
     if (statParts.length)
       scopeBanner.append(E("span", "sbstats", statParts.join(" · ")));
     const v = verdicts.get(turn.index);

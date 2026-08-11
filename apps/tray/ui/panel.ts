@@ -99,6 +99,31 @@ let updateView: {
 let note: Note | undefined;
 
 /**
+ * Whether the connected server is running a configuration `config.json` no longer describes.
+ *
+ * Read each time the popover opens, not on the poll: it moves only when a human edits that file or
+ * saves the portal's panel, and the click that opens the popover is the moment it is read. Kept
+ * across ticks so the once-a-second redraw does not have to ask again.
+ */
+let restartPending = false;
+
+/** Whether the popover was open on the previous reading — see the edge in {@link apply}. */
+let wasOpen = false;
+
+/**
+ * Ask the server whether it is honouring `config.json`, and redraw only if the answer changed.
+ *
+ * Never over the settings view: nothing there moves on this clock, and a redraw would wipe a
+ * half-typed URL out of the field — the same rule a tick obeys.
+ */
+async function askRestartPending(): Promise<void> {
+  const pending = await invoke<boolean>('restart_pending').catch(() => false);
+  if (pending === restartPending) return;
+  restartPending = pending;
+  if (view === 'live') show();
+}
+
+/**
  * What this build of the tray is, for the settings view's About section.
  *
  * Read once at startup and kept: it is fixed for the life of the process, and the value is the one
@@ -191,7 +216,7 @@ function draw(error?: string): void {
   if (status.kind === 'connected') {
     // The error goes THROUGH the renderer, not appended after it: the two surfaces put a message in
     // different places (above the bands, below the form) and only the renderer knows where its own is.
-    surface.put(renderLive(rows, status, bands, error));
+    surface.put(renderLive(rows, status, bands, error, Date.now(), restartPending));
     const list = root.querySelector('.bands');
     if (list) list.scrollTop = scrolled;
     return;
@@ -232,6 +257,13 @@ function apply(tick: Tick): void {
   status = tick.status;
   local = tick.local;
   rows = fold(rows, tick);
+  // Asked on the EDGE of the popover opening, never every tick: the answer moves only when a human
+  // edits config.json or saves the portal's panel, and one request per click is the whole cost.
+  if (tick.open && !wasOpen) void askRestartPending();
+  wasOpen = tick.open;
+  // A pending state belongs to the server that reported it. Pointed elsewhere — or at nothing —
+  // the tray holds no claim about the new one until it has asked it.
+  if (status.kind !== 'connected') restartPending = false;
   // While nobody is looking, the panel is a mirror — and WHICH SURFACE is up is part of what it
   // mirrors. The popover is hidden and shown, never reloaded, so without this a settings screen left
   // open yesterday is what the next click on the icon shows. That is the ended-row bug in another

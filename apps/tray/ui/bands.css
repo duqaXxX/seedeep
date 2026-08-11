@@ -53,6 +53,18 @@
   line-height: 1.5;
 }
 
+/* Amber down the side, the same device a waiting row uses: something needs a person, and the panel
+   already says that in one language. Not red — nothing has failed, and the sessions listed below
+   are all still running. */
+.bands-stale {
+  border-left: 3px solid var(--warn);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+  padding-left: 9px;
+}
+
 /* Outlined, not filled like the connect screen's Start: nothing is wrong here and nothing is being
    decided — the panel is simply empty, and a solid accent button would read as the thing the user
    is expected to do. Full width because it is alone on the screen and anything narrower would sit

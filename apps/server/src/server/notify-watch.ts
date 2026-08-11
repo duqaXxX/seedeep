@@ -4,7 +4,21 @@ import type { DigestEntry } from './digest.ts';
 /** Which switch an announcement answers to. */
 export type NotifyKind = 'needsYou' | 'fails' | 'finishes';
 
-/** What one notification says. */
+/**
+ * What one notification says: which session, and what happened. Nothing else.
+ *
+ * **A notification answers "do I get up", not "what do I do"** (Davide's call, 2026-08-11). The
+ * bodies used to carry a second line — the command awaiting approval, the API error verbatim, the
+ * turn's NOW line — and it was the wrong place for all three. You cannot act on any of them from a
+ * banner: approving still means going back to the terminal, and everything the second line said is
+ * one click away in the panel, which is where the detail belongs and where it is not truncated.
+ *
+ * The webhook settled it. It exists to reach a phone, and it is the one channel whose payload
+ * LEAVES the machine — so a body carrying shell commands and error text was shipping the contents
+ * of a work session to a third-party service to say something the first line already said.
+ *
+ * The two channels are deliberately identical now, so there is one thing to reason about.
+ */
 export interface Announcement {
   kind: NotifyKind;
   sessionId: string;
@@ -12,6 +26,7 @@ export interface Announcement {
   subject: string | null;
   /** `project — subject`, or the project alone when the session has no subject yet. */
   title: string;
+  /** One line: the event, and for an approval the tool it is about. Never the detail. */
   body: string;
 }
 
@@ -58,15 +73,16 @@ function ids(entries: DigestEntry[], is: (e: DigestEntry) => boolean): Set<strin
  * The phrasing is the portal's and the panel's — `Waiting for your approval` / `for your answer`,
  * `in the terminal` when the transcript has not named the call — because a notification that
  * describes the same event in different words from the panel it belongs to teaches the user to
- * trust neither.
+ * trust neither. Now that the body IS that one line, the two cannot drift at all.
+ *
+ * The tool's NAME stays and its ARGUMENT does not, which is the whole rule in miniature: `Bash`
+ * says whether something is about to run or a question is waiting, and that changes how fast you
+ * get up. The command itself is what you go and read.
  */
 function waitingAnnouncement(e: DigestEntry): Announcement {
   const what = pendingInput(e) === 'input' ? 'Waiting for your answer' : 'Waiting for your approval';
   const tool = e.pendingTool;
-  let body = tool?.name ? `${what} — ${tool.name}` : `${what} in the terminal`;
-  // Its own line, and left to the OS to truncate: this is the one thing that answers "do I say
-  // yes", and a command elided by us is a command nobody can judge.
-  if (tool?.arg) body += `\n${tool.arg}`;
+  const body = tool?.name ? `${what} — ${tool.name}` : `${what} in the terminal`;
   return {
     kind: 'needsYou',
     sessionId: e.sessionId,
@@ -80,15 +96,14 @@ function waitingAnnouncement(e: DigestEntry): Announcement {
 /**
  * The words one failed session gets.
  *
- * The body is the message Claude Code showed the user, verbatim. Naming the error ourselves would
- * mean inventing a taxonomy on top of one the CLI already wrote, and the user has to recognise the
- * same words they would see in the terminal. A subagent's failure says so, because "a subagent
- * failed" and "your session failed" call for different reactions.
+ * A subagent's failure says so, because "a subagent failed" and "your session failed" call for
+ * different reactions — and that distinction is the one thing here that changes what you do next.
+ * Claude Code's own message is NOT carried: it is the longest and least summarisable text in the
+ * whole feed, it is what a banner truncates first, and reading it is what the panel is for.
  */
 function failedAnnouncement(e: DigestEntry): Announcement {
   const error = e.error!;
-  let body = error.agentId == null ? 'The last API call failed' : "A subagent's API call failed";
-  if (error.message) body += `\n${error.message}`;
+  const body = error.agentId == null ? 'The last API call failed' : "A subagent's API call failed";
   return {
     kind: 'fails',
     sessionId: e.sessionId,
@@ -103,20 +118,26 @@ function failedAnnouncement(e: DigestEntry): Announcement {
  * The words one finished turn gets, or `null` when the turn is one the user ended themselves.
  *
  * **An interrupted turn is not news**: pressing Esc is the user standing at that terminal, and
- * telling them what they just did is the definition of a banner that gets muted. The body carries
- * the turn's own NOW line — literally what the Idle band draws — so the banner and the row it
- * belongs to cannot word the same event differently. A turn with nothing on record still gets a
- * banner, because the event is the session becoming yours again, not the text.
+ * telling them what they just did is the definition of a banner that gets muted. What the turn
+ * actually did is not carried either — the event IS the session becoming yours again, and the
+ * account of it is the Idle band's, three words away in the panel.
+ *
+ * **Neither is a turn that never called the model.** That covers the half of Esc the transcript
+ * cannot state: pressed before the first reply, Claude Code writes NOTHING — no marker, no
+ * `interruptedMessageId`, no assistant line — so the turn is never marked interrupted and used to
+ * announce itself as finished, minutes later, when liveness read from the process finally said
+ * idle. A turn that never started is not a turn that finished. Measured 2026-08-11 over 533 real
+ * sessions: 24 turns of 2526 (1.0%) are that shape. The other zero-call turns are local slash
+ * commands (264, 10.5%), which never make the session look busy in the first place, so nothing
+ * about them reaches this function anyway.
  */
 function finishedAnnouncement(e: DigestEntry): Announcement | null {
   if (e.turn?.state === 'interrupted') return null;
+  if ((e.turn?.apiCalls ?? 0) === 0) return null;
   // `Turn finished`, and both words earn their place. `Finished` alone read as the SESSION having
   // ended, which it has not; `Back to you` said the right thing and nobody could tell what it meant
-  // out of context. Naming the turn is what makes it unambiguous — and in the case where the turn
-  // left nothing on record, this line is the whole notification.
-  let body = 'Turn finished';
-  const said = e.turn?.now?.text;
-  if (said) body += `\n${said}`;
+  // out of context. Naming the turn is what makes it unambiguous.
+  const body = 'Turn finished';
   return {
     kind: 'finishes',
     sessionId: e.sessionId,

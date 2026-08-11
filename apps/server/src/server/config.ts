@@ -123,43 +123,71 @@ function mergeNotifications(defs: NotifyConfig, raw: unknown): NotifyConfig {
  * rewritten on its own. Unknown keys from a newer version are preserved (not stripped).
  */
 export async function readConfig(path?: string, home = homedir()): Promise<SeedDeepConfig> {
+  try {
+    return await readConfigStrict(path, home);
+  } catch (e) {
+    console.warn(`seedeep: ${(e as Error).message} — using defaults`);
+    return defaultConfig(home);
+  }
+}
+
+/**
+ * {@link readConfig}, except that a file which exists and cannot be understood THROWS instead of
+ * quietly becoming the defaults. A missing file still returns them — absent legitimately means
+ * "every default", which a malformed one does not.
+ *
+ * The distinction is not academic: a caller that WRITES must never take the defaults for the user's
+ * settings. It did, briefly, and one save after a stray comma in `config.json` replaced the auth
+ * token, the port and the certificate name with built-ins — a running server repairs that file, it
+ * does not overwrite it. Callers that only need a config to start with want {@link readConfig}.
+ */
+export async function readConfigStrict(path?: string, home = homedir()): Promise<SeedDeepConfig> {
+  return (await readConfigFile(path, home)) ?? defaultConfig(home);
+}
+
+/**
+ * The file as it stands: `null` when it does not exist, and a THROW when it exists and cannot be
+ * understood.
+ *
+ * Three states, not two, because a caller that WRITES has to treat them differently. Absent is not
+ * "every default" for such a caller either: merging onto the defaults wrote `token: ""` and an
+ * empty webhook over a running server's real ones the moment anything was saved — measured, by
+ * deleting `config.json` under a live server and toggling one switch. Only a reader can take the
+ * defaults for a missing file; a writer has to fall back to what the process holds.
+ */
+export async function readConfigFile(path?: string, home = homedir()): Promise<SeedDeepConfig | null> {
   const filePath = path ?? configFilePath(home);
   const defs = defaultConfig(home);
   let raw: string;
   try {
     raw = await readFile(filePath, 'utf8');
   } catch (e) {
-    // ENOENT is normal on first run — no warning needed.
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`seedeep: could not read config (${(e as Error).message}) — using defaults`);
-    }
-    return defs;
+    // ENOENT is normal on first run, and is the one read failure that is not a loss of information.
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new Error(`could not read config (${(e as Error).message})`);
   }
+  let p: unknown;
   try {
-    const p: unknown = JSON.parse(raw);
-    if (!p || typeof p !== 'object') {
-      console.warn(`seedeep: config is not a JSON object — using defaults`);
-      return defs;
-    }
-    const parsed = p as Record<string, unknown>;
-    return {
-      ...defs,
-      ...parsed,
-      // Nested objects are merged, not replaced, so a file with only `auth.token` set
-      // does not lose the built-in `tls` defaults.
-      auth: {
-        ...defs.auth,
-        ...(parsed['auth'] && typeof parsed['auth'] === 'object' ? (parsed['auth'] as object) : {}),
-      },
-      tls: { ...defs.tls, ...(parsed['tls'] && typeof parsed['tls'] === 'object' ? (parsed['tls'] as object) : {}) },
-      // One level deeper than `auth` and `tls`, because the channels are objects too: a file that
-      // sets only `webhook.url` must keep every switch it never mentioned, on BOTH channels.
-      notifications: mergeNotifications(defs.notifications, parsed['notifications']),
-    };
+    p = JSON.parse(raw);
   } catch {
-    console.warn(`seedeep: config has invalid JSON — using defaults`);
-    return defs;
+    throw new Error('config has invalid JSON');
   }
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('config is not a JSON object');
+  const parsed = p as Record<string, unknown>;
+  return {
+    ...defs,
+    ...parsed,
+    // Nested objects are merged, not replaced, so a file with only `auth.token` set
+    // does not lose the built-in `tls` defaults.
+    auth: {
+      ...defs.auth,
+      ...(parsed['auth'] && typeof parsed['auth'] === 'object' ? (parsed['auth'] as object) : {}),
+    },
+    tls: { ...defs.tls, ...(parsed['tls'] && typeof parsed['tls'] === 'object' ? (parsed['tls'] as object) : {}) },
+    // One level deeper than `auth` and `tls`, because the channels are objects too: a file that
+    // sets only `webhook.url` must keep every switch it never mentioned, on BOTH channels.
+    notifications: mergeNotifications(defs.notifications, parsed['notifications']),
+  };
 }
 
 /**
@@ -176,16 +204,19 @@ export async function writeConfig(config: SeedDeepConfig, path?: string, home = 
 }
 
 /**
- * Apply the precedence chain: CLI flags → env vars → `fileConfig` → built-in defaults.
- * Generates a random `auth.token` when absent and persists it to `configPath` (non-fatal on
- * write failure — the token is regenerated on the next start rather than crashing this one).
+ * Apply the precedence chain — CLI flags → env vars → `fileConfig` → built-in defaults — and
+ * nothing else: no token, no write, no clock. Pure, so it can answer "what would a start resolve
+ * to right now?" as often as a request asks (see {@link restartPending}) without a GET ever
+ * rewriting `config.json`.
+ *
+ * It is the one place the chain is spelled out. A second copy is exactly how a stale-process
+ * signal would come to disagree with the process it is describing.
  */
-export async function resolveConfig(
+export function applyPrecedence(
   cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
   env: Record<string, string | undefined>,
   fileConfig: SeedDeepConfig,
-  configPath?: string,
-): Promise<SeedDeepConfig> {
+): SeedDeepConfig {
   const resolved: SeedDeepConfig = {
     ...fileConfig,
     // env layer
@@ -205,6 +236,139 @@ export async function resolveConfig(
   if (cliFlags.port !== undefined) resolved.port = cliFlags.port;
   if (cliFlags.host !== undefined) resolved.host = cliFlags.host;
   if (cliFlags.open !== undefined) resolved.open = cliFlags.open;
+  return resolved;
+}
+
+/**
+ * Whether the process running `running` is serving a configuration a restart would replace —
+ * `true` when a fresh start, resolved from the SAME flags and env against `config.json` as it
+ * stands now, would come up differently.
+ *
+ * Two groups. Three fields are what a process BINDS at startup and cannot revisit — `port`, `host`
+ * and the certificate's common name. The rest are the values the panel is shown REDACTED (the auth
+ * token, the webhook's address and its headers): a save can change any of them, but only carrying a
+ * value the panel HAS, and one edited straight into the file is never in a request — the panel
+ * posts `***`, which resolves back to what was already there. A restart is what applies those,
+ * which is why they are here and not in {@link savePending}: a pending state cleared by no button
+ * at all is worse than no signal.
+ *
+ * `open` is in neither: it is spent the moment the browser opened, and announcing it would teach
+ * the user to ignore the announcement — which is how a server left on loopback went unnoticed in
+ * the first place.
+ *
+ * Both sides come through {@link applyPrecedence}, never from the file alone: a server started
+ * with `--port 9000` is not stale because `config.json` says 44842. `POST /api/restart` respawns
+ * with `process.argv.slice(2)` intact, so that flag survives the restart and the file would still
+ * not win — a pending state the button cannot clear is worse than no signal at all.
+ */
+export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConfig): boolean {
+  return (
+    // `Object.is`, not `!==`: a non-numeric `SEEDEEP_PORT` makes both sides NaN, and NaN differs
+    // from itself — a pending state on both sides of a restart, which is the one thing this must
+    // never produce.
+    !Object.is(running.port, wouldStart.port) ||
+    running.host !== wouldStart.host ||
+    // Absent and empty are the same certificate name — neither can be put in one.
+    (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '') ||
+    // An EMPTY desired token is not a request to change anything: it means "none configured, one
+    // will be generated on the next start", which is what a missing file says. Comparing it
+    // literally reports a pending restart against a token nobody wrote. The webhook's fields carry
+    // no such rule — an emptied URL is a channel deliberately switched off, which IS a change.
+    (wouldStart.auth.token === '' ? false : running.auth.token !== wouldStart.auth.token) ||
+    running.notifications.webhook.url !== wouldStart.notifications.webhook.url ||
+    JSON.stringify(running.notifications.webhook.headers) !== JSON.stringify(wouldStart.notifications.webhook.headers)
+  );
+}
+
+/**
+ * Whether `config.json` holds notification settings the running process has not taken up — the one
+ * kind of change a SAVE can apply and a restart is not needed for.
+ *
+ * The counterpart to {@link restartPending}, separate because the cure is different, and it holds
+ * exactly what the panel can genuinely re-post: the switches are in the form, so pressing Apply
+ * sends them. The TOKEN is deliberately NOT here, and that was found by driving the button: the
+ * panel reads the token redacted, so a save cannot carry a value edited into the file — a restart
+ * is what applies it, and {@link restartPending} is where it belongs.
+ *
+ * `open` is in neither: it is spent the moment the browser opened, so nothing can apply it.
+ */
+export function savePending(running: SeedDeepConfig, desired: SeedDeepConfig): boolean {
+  return JSON.stringify(applicableBySave(running)) !== JSON.stringify(applicableBySave(desired));
+}
+
+/**
+ * The notification settings the PANEL holds in clear, and can therefore post back unchanged: every
+ * switch, and the webhook's template.
+ *
+ * The webhook's URL and its headers are excluded for the same reason the token is — the panel is
+ * shown `***` and posts `***`, which the merge resolves back to what was already there. A pending
+ * state raised on one of those could never be cleared by pressing the button that claims to clear
+ * it, which is measurably worse than not raising it: the banner and the header dot simply stayed up
+ * forever. They are covered by {@link restartPending} instead, which names a cure that works.
+ */
+function applicableBySave(c: SeedDeepConfig): unknown {
+  const { url: _url, headers: _headers, ...webhook } = c.notifications.webhook;
+  return { tray: c.notifications.tray, webhook };
+}
+
+/** Where a value that beats `config.json` came from. */
+export type OverrideSource = 'flag' | 'env';
+
+/**
+ * The fields a CLI flag or an environment variable is overriding, keyed as the panel names them
+ * (`port`, `host`, `open`, `tls.commonName`).
+ *
+ * Only fields whose override actually DIFFERS from the file: a flag repeating what the file says
+ * overrides nothing anyone can observe, and saying so would be noise. What this is for is the one
+ * thing the panel could not otherwise explain — a field the user edits, saves, and sees snap back,
+ * because this process was started with a value that wins on every restart.
+ */
+export function overriddenFields(
+  cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
+  env: Record<string, string | undefined>,
+  fileConfig: SeedDeepConfig,
+): Record<string, OverrideSource> {
+  const resolved = applyPrecedence(cliFlags, env, fileConfig);
+  const out: Record<string, OverrideSource> = {};
+  const mark = (key: string, differs: boolean, byFlag: boolean, byEnv: boolean): void => {
+    if (differs && (byFlag || byEnv)) out[key] = byFlag ? 'flag' : 'env';
+  };
+  mark(
+    'port',
+    !Object.is(resolved.port, fileConfig.port),
+    cliFlags.port !== undefined,
+    env['SEEDEEP_PORT'] !== undefined,
+  );
+  mark('host', resolved.host !== fileConfig.host, cliFlags.host !== undefined, env['SEEDEEP_HOST'] !== undefined);
+  mark('open', resolved.open !== fileConfig.open, cliFlags.open !== undefined, env['SEEDEEP_OPEN'] !== undefined);
+  mark(
+    'tls.commonName',
+    (resolved.tls.commonName ?? '') !== (fileConfig.tls.commonName ?? ''),
+    false, // no CLI flag carries it
+    env['SEEDEEP_TLS_CN'] !== undefined,
+  );
+  return out;
+}
+
+/**
+ * {@link applyPrecedence}, plus the one thing a start does that a comparison must not: generate a
+ * random `auth.token` when absent and persist it to `configPath` (non-fatal on write failure — the
+ * token is regenerated on the next start rather than crashing this one).
+ */
+export async function resolveConfig(
+  cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
+  env: Record<string, string | undefined>,
+  fileConfig: SeedDeepConfig,
+  configPath?: string,
+  /**
+   * Whether `fileConfig` really came from the file. `false` when it could not be parsed, and then
+   * NOTHING is written: the token is generated for this run alone and the user's file is left for
+   * them to repair. Writing it back is how a stray comma cost a token, a port and a certificate
+   * name — at startup, before any request, which is the half the POST-side guard does not cover.
+   */
+  fileIsUsable = true,
+): Promise<SeedDeepConfig> {
+  const resolved = applyPrecedence(cliFlags, env, fileConfig);
 
   // Generate and persist `auth.token` when absent. Write back when the file was absent
   // (ENOENT) OR when it existed but carried no token — both cases mean the token we just
@@ -216,7 +380,9 @@ export async function resolveConfig(
     const absent = await readFile(configPath ?? configFilePath())
       .then(() => false)
       .catch((e) => (e as NodeJS.ErrnoException).code === 'ENOENT');
-    if (absent || !fileConfig.auth.token) {
+    // `fileIsUsable` first: a file we could not parse holds settings we would be erasing, and a
+    // token regenerated on every start until the user repairs it is the smaller harm by far.
+    if (fileIsUsable && (absent || !fileConfig.auth.token)) {
       try {
         await writeConfig(resolved, configPath);
       } catch {

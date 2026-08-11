@@ -406,7 +406,7 @@ looking at them:
 | Band | What a session shows |
 | -- | -- |
 | **Broken** | whose call failed — the session's own or a subagent's — and **the message Claude Code showed**, verbatim and monospace (`Not logged in · Please run /login`), plus how long it has been quiet and the context block |
-| **Needs you** | the request VERBATIM — `Waiting for your approval — Bash`, the command on its own line, monospace — and how long it has been stopped, to the second |
+| **Needs you** | the request VERBATIM — `Waiting for your approval — Bash`, the command on its own line, monospace — and how long it has been stopped, to the second (the PANEL keeps the command; the banner does not — see *A banner is one title and one line*) |
 | **Working** | project · subject, the turn's prompt quoted, **NOW** — the one thing to say about the turn — **how many background commands it has launched** and any **still running**, **how many subagents it has launched**, the agents at work, and the context block, which carries model · effort |
 | **Idle** | the same, minus what a settled session does not have: project · subject · how long it has been quiet, **NOW**, **how many background commands it launched** and any **still running**, **how many subagents it launched**, and the context block |
 
@@ -691,6 +691,24 @@ Measured on a real run against a logging server: two unconditional requests at s
 discovery, then the first read), then one conditional request every **1.00 s** with the panel open
 and every **5.00 s** with it closed. A digest request is ~12.5 ms of CPU over 912 sessions on disk —
 about 1.2% of one core at the faster cadence.
+
+### A server not honouring its own configuration
+
+Above the bands, when the connected server is bound to a port, host or certificate name
+`config.json` no longer asks for: *"This server started before config.json was last changed."* It is
+the server's own verdict (`restart_pending` on `/api/config`) and never the tray's — the answer
+depends on the flags and the environment that process was started with, which are not readable from
+another process, let alone from another machine. A server too old to carry the field reads as
+nothing pending, because the tray states what it was told and never what it inferred.
+
+**Not a band, and not an icon state.** A band is a session and the icon summarises sessions; this is
+a property of the process, and giving it either would have said "a session needs you" about
+something no session is doing.
+
+It is asked **once per popover opening** — on the edge, not on the poll. The value moves only when a
+human edits that file or saves the portal's panel, so the click that opens the popover is both the
+moment it can have changed and the moment it is read. One request per click, and nothing on the 1 s
+clock.
 
 ## Reaching the server
 
@@ -1093,9 +1111,9 @@ from `capabilities/default.json`.
 
 | Trigger | Setting | Default | What the banner says |
 | -- | -- | -- | -- |
-| A session stops on the human (`waiting`, and only the two labels below) | *A session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` + the command |
-| A session's model call fails (`error` becomes non-null) | *A session fails* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` — + the message the CLI showed |
-| A session that was `busy` becomes `idle` | *A session finishes* | **off** | `project — subject` / `Finished` + the agent's own last words |
+| A session stops on the human (`waiting`, and only the two labels below) | *A session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` |
+| A session's model call fails (`error` becomes non-null) | *A session fails* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` |
+| A session that was `busy` becomes `idle`, having called the model at least once | *A session finishes* | **off** | `project — subject` / `Turn finished` |
 | The connected SERVER is behind npm (`standing`, from `/api/update`) | *A new server version is out* | **on** | `seedeep <latest> is available` / `The server is running <its version>.` |
 
 **Why one switch per trigger, and not one reason for one switch.** The events are not the same bargain: a
@@ -1175,6 +1193,15 @@ were stopped on the human, and which were at work, last time it could see; it an
 was not there before. Three rules follow, and each of them is a way of not lying about when
 something happened:
 
+- **A turn that never called the model did not finish.** Esc pressed BEFORE the first reply leaves
+  nothing in the transcript — no marker, no `interruptedMessageId`, no assistant line — so the turn
+  is never marked interrupted, and the finish used to be announced minutes later, when liveness read
+  from the process finally said idle. Esc that Claude Code DOES record was already covered: the
+  marker line carries `interruptedMessageId`, the parser turns it into `turn-interrupted` before the
+  next turn opens, and an interrupted turn has never notified. Measured 2026-08-11 over 533 real
+  sessions: 24 turns of 2526 (1.0%) are the silent shape. The other zero-call turns are local slash
+  commands (264, 10.5%), which never make a session look busy, so no finish was ever in flight for
+  them.
 - **A session already waiting — or already idle — when the tray connects is not an event.** The
   first digest after a start, or after a reconnect, SEEDS both sets and announces nothing. Without
   that, every restart would replay every open prompt as if it had just happened.
@@ -1184,12 +1211,21 @@ something happened:
   **never** announced — the next reading seeds it. The tray does not know when it happened, and the
   icon and the panel are what say where it now stands.
 
-The wording is the panel's and the portal's — `Waiting for your approval — Bash`, the command on the
-next line, `in the terminal` when the transcript has not named the call; and for a finished turn the
-agent's own last words, which is what the Idle band shows and for the same measured reason (a
-settled turn has a `result` and no activity line). A finished turn with nothing on record still
-notifies: the event is the session becoming yours again, not the text. The title is the session
-(`project — subject`), because the banner already carries the app's name.
+**A banner is one title and one line, and never the detail** (decided 2026-08-11). The line names
+the event — `Waiting for your approval — Bash`, `in the terminal` when the transcript has not named
+the call, `The last API call failed`, `Turn finished` — and stops there. The command awaiting
+approval, the CLI's error text and the turn's own last words used to follow on a second line, and
+none of them belonged: you cannot act on a banner (approving still means going back to the
+terminal), a banner truncates exactly that line first, and every one of them is one click away in
+the panel, where it is not truncated. The webhook settled it — it is the one channel whose payload
+leaves the machine, so those second lines were shipping the contents of a work session to a
+third-party service to say what the first line already said. The two channels carry the identical
+text, so there is one thing to reason about.
+
+The wording is still the panel's and the portal's, and now trivially so: the body IS that one line.
+A finished turn with nothing on record notifies the same as any other — the event is the session
+becoming yours again, not the text. The title is the session (`project — subject`), because the
+banner already carries the app's name.
 
 **A toggle silences its banner, not the bookkeeping.** With notifications off the transitions are
 still tracked, so turning them back on does not then announce every session that had been waiting all
@@ -1213,7 +1249,9 @@ not from here: the tray's panel governs the tray.
 `docs/tray.md`'s own rule says a dev run cannot confirm this feature. A stub digest was flipped from
 `busy` to `waiting` under a tray polling at the closed cadence, and Notification Center's own store
 holds the record: `titl` = `atlas — add a retry to the uploader`, `body` = `Waiting for your approval
-— Bash` + the command. **One** record across five consecutive waiting readings, which is the
+— Bash` (the command followed it on a second line until 2026-08-11, when the body became one line —
+what that run PROVED, a single record per transition, is unaffected). **One** record across five
+consecutive waiting readings, which is the
 transition rule proven rather than argued. Repeated with `settings.json` at `notify: false`: the same
 flip, no record at all.
 

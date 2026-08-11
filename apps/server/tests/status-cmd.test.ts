@@ -25,6 +25,8 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
       record: { pid: 91116, baseUrl: 'https://box.local:44842' },
       remote: true,
       serving: '0.10.1',
+
+      restartPending: false,
     },
     update: upToDate,
     command: { kind: 'present', ownership: { kind: 'ours', version: '0.10.1', stale: false } },
@@ -56,6 +58,7 @@ test('a server serving an older version than the one installed says so, and what
         record: { pid: 67256, baseUrl: 'https://box.local:44842' },
         remote: true,
         serving: '0.9.0',
+        restartPending: false,
       },
     }),
     NOW,
@@ -74,7 +77,13 @@ test('a server that is down is a state, with the way to start one', () => {
 test('a server that will not name its version says that, never a guess', () => {
   const out = statusReport(
     facts({
-      server: { kind: 'up', record: { pid: 1, baseUrl: 'http://localhost:44842' }, remote: false, serving: null },
+      server: {
+        kind: 'up',
+        record: { pid: 1, baseUrl: 'http://localhost:44842' },
+        remote: false,
+        serving: null,
+        restartPending: false,
+      },
     }),
     NOW,
   );
@@ -136,4 +145,28 @@ test('the age of the check is said in the coarsest unit that is still true', () 
   assert.match(at('2026-08-05T11:15:00.000Z'), /45m ago/);
   assert.match(at('2026-08-05T09:00:00.000Z'), /3h ago/);
   assert.match(at('2026-08-03T12:00:00.000Z'), /2d ago/);
+});
+
+// The other axis of the same staleness: the process is older than the CONFIG on disk. It was
+// diagnosed with lsof, exactly as the version case above was diagnosed with ps.
+test('a server running a configuration config.json no longer describes says so', () => {
+  const out = statusReport(
+    facts({
+      server: {
+        kind: 'up',
+        record: { pid: 67256, baseUrl: 'http://localhost:44842' },
+        remote: false,
+        serving: '0.10.1',
+        restartPending: true,
+      },
+    }),
+    NOW,
+  );
+  assert.match(out, /config\.json has changed since it started/);
+  assert.match(out, /`seedeep restart` applies it/);
+});
+
+test('a server whose config matches says nothing about it', () => {
+  // Only when true: a line printed on every run is one nobody reads on the run that matters.
+  assert.doesNotMatch(statusReport(facts(), NOW), /config\.json has changed/);
 });

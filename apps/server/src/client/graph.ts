@@ -1474,15 +1474,38 @@ export function createGraph(
       appendModelChips(scopeBanner, fullSnap.main.models, sessionEfforts(fullSnap));
       const cs = turnCostStats(fullSnap);
       if (cs.escCount > 0) scopeBanner.append(E('span', 'sbstats', cs.escCount + ' interrupted'));
-      if (fullSnap.turns > 0) scopeBanner.append(E('span', 'sbnum', nTurns(fullSnap.turns)));
+      // How much work the session did, in ONE element rather than three side by side. The counts
+      // used to live at the BOTTOM of two different cards (the calls under the token ledger, the
+      // tools under four long paths in Main tools) — reachable without expanding anything and
+      // findable by nobody, which is what the report was really about. Brought up here they were
+      // briefly three separate spans, and `20 turns 447 calls 461 tools` reads as one number with
+      // stray words in it: same colour, same weight, no separator, and two more times right after.
+      // Joined, they are one group answering one question — and it is what the turn scope already
+      // did with `5 API · 2 tools`. The per-type breakdown stays in Main tools, where it has a
+      // context.
+      const work: string[] = [];
+      if (fullSnap.turns > 0) work.push(nTurns(fullSnap.turns));
+      if (fullSnap.apiCalls > 0) work.push(kc(fullSnap.apiCalls) + ' calls');
+      const toolCount = summarizeTools(fullSnap.mainTools).count;
+      if (toolCount > 0) work.push(kc(toolCount) + ' tools');
+      if (work.length) scopeBanner.append(E('span', 'sbnum', work.join(' · ')));
       // The live counter answers "how long has the current turn been running" — the only
       // live duration a whole-session scope has. Same guard as the turn scope below.
       const open = fullSnap.turnList.find((t) => working(t, fullSnap));
-      if (open) scopeBanner.append(liveElapsed(open));
       // How long the whole session has worked. Not redundant with the counter beside it:
       // that one is THIS turn, this one is every turn summed. A session with no finished
       // turn yet has nothing to total.
-      if (fullSnap.turnList.some((t) => t.durationMs !== null)) scopeBanner.append(sessionWorked(fullSnap));
+      const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
+      // Two separators doing two different jobs, which is why they are not the same character.
+      // Between the GROUPS a bar: whitespace alone left the boundary too weak to see, and the
+      // interior dot used there would have dissolved the grouping back into one run of five
+      // figures — rendered all three on the real banner to compare, and that is what it looks
+      // like. Between the two DURATIONS the same dot as the counts, and a span rather than a
+      // string because both tick on their own counter and cannot be one piece of text.
+      if (work.length && (open || worked)) scopeBanner.append(E('span', 'sbsep group', '|'));
+      if (open) scopeBanner.append(liveElapsed(open));
+      if (open && worked) scopeBanner.append(E('span', 'sbsep', '·'));
+      if (worked) scopeBanner.append(sessionWorked(fullSnap));
       // The answer the session ended on. A scope selector promises that the same surface
       // answers the same questions at every scope: Result exists when a turn is selected, so
       // it exists when none is — reading it off the NOW panel instead is not the same thing,
@@ -1550,6 +1573,11 @@ export function createGraph(
     if (turn.deltaFill !== 0) statParts.push((turn.deltaFill >= 0 ? '+' : '') + kc(turn.deltaFill) + ' ctx');
     if (turn.durationMs !== null) statParts.push(formatDuration(turn.durationMs));
     if (turn.apiCalls > 0) statParts.push(turn.apiCalls + ' API');
+    // Beside the call count, in this scope too: a banner that answers "how much work" for the whole
+    // session and only half of it for one turn makes the reader hunt for the other half exactly
+    // where they have just been taught it does not live.
+    const turnTools = fullSnap.mainTools.filter((t) => t.turnIndex === turn.index).length;
+    if (turnTools > 0) statParts.push(turnTools + ' tools');
     if (statParts.length) scopeBanner.append(E('span', 'sbstats', statParts.join(' · ')));
 
     // The verdict of the turn you are scoped into. Before this, a flagged turn said nothing here

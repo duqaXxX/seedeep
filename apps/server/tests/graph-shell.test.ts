@@ -5978,3 +5978,93 @@ test('the complete history holds the session note, in order, and marks a flagged
   view.destroy();
   g.document = prevDoc;
 });
+
+// Reported as "there is no summary of API calls and tool calls" — the counts existed, both of them,
+// but at the BOTTOM of two different cards (under the token ledger, and under four long file paths
+// in Main tools). Neither needed expanding and neither was findable, which is a placement bug, not
+// a missing figure. The banner is where "how much work" is already asked, beside the turn count.
+test('scope banner: the whole-session summary carries the call and tool counts', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1), makeTurn(2)]);
+  snap.apiCalls = 403;
+  snap.mainTools = [
+    { id: 't1', name: 'Bash', turnIndex: 1 },
+    { id: 't2', name: 'Edit', turnIndex: 1 },
+    { id: 't3', name: 'Read', turnIndex: 2 },
+  ];
+  const view = createGraph(container, { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} });
+
+  const banner = findByClass(container, 'scope-banner')[0];
+  const nums = findByClass(banner, 'sbnum').map((n: any) => n.textContent);
+  // ONE element, not three side by side: `2 turns 403 calls 3 tools` reads as a single number with
+  // stray words in it — same colour, same weight, no separator. The separators are the whole point.
+  assert.ok(
+    nums.includes('2 turns · 403 calls · 3 tools'),
+    `the three counts are one group with separators — got ${JSON.stringify(nums)}`,
+  );
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+// Scope consistency: a figure offered for the session must be offered for a turn, or the reader is
+// taught where it lives and then finds it missing at the scope they moved into.
+test('scope banner: a selected turn carries the same two counts, scoped to it', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = snapWithTurns([makeTurn(1), makeTurn(2)]);
+  snap.mainTools = [
+    { id: 't1', name: 'Bash', turnIndex: 1 },
+    { id: 't2', name: 'Edit', turnIndex: 1 },
+    { id: 't3', name: 'Read', turnIndex: 2 },
+  ];
+  const view = createGraph(container, { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} });
+
+  selectTurnViaStrip(container, 0); // turn 1 — two of the three tools are its
+
+  const stats = textOf(findByClass(findByClass(container, 'scope-banner')[0], 'sbstats')[0]);
+  assert.match(stats, /5 API/, "the turn's own call count");
+  assert.match(stats, /2 tools/, 'and only the tools that turn ran');
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
+// The durations are the banner's second group, and they are joined by an ELEMENT rather than by a
+// string: both tick on their own live counter, so neither can be folded into one piece of text.
+test('scope banner: the two durations are separated, and only when both are there', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+
+  // A live turn beside a finished one: the running counter AND the session total.
+  const both = snapWithTurns([makeTurn(1), makeTurn(2, { state: 'live', durationMs: null })]);
+  const live = createGraph(container, { snapshot: () => both, onChange: () => () => {}, onEvent: () => () => {} });
+  const seps = findByClass(findByClass(container, 'scope-banner')[0], 'sbsep');
+  // Two separators, two jobs: a bar closing the counts, a dot between the two durations. Same
+  // character for both and the grouping dissolves — which is the whole reason there are two.
+  assert.equal(seps.length, 2, 'the group bar and the duration dot');
+  assert.equal(seps.filter((n: any) => n.className?.includes('group')).length, 1, 'exactly one group bar');
+  live.destroy();
+
+  // Nothing running: one duration, so nothing to separate — a dangling `·` is worse than none.
+  const container2 = g.document.createElement();
+  const settled = createGraph(container2, {
+    snapshot: () => snapWithTurns([makeTurn(1), makeTurn(2)]),
+    onChange: () => () => {},
+    onEvent: () => () => {},
+  });
+  // The counts are still there, so the group bar is; the durations are one, so no dot joins them.
+  const settledSeps = findByClass(findByClass(container2, 'scope-banner')[0], 'sbsep');
+  assert.equal(settledSeps.length, 1, 'the group bar alone');
+  assert.ok(settledSeps[0].className?.includes('group'), 'and it is the group one, not a lone dot');
+  settled.destroy();
+
+  g.document = prevDoc;
+});

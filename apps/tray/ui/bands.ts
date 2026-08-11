@@ -687,12 +687,29 @@ export function renderLive(
    * once per row would let them disagree about when "now" was.
    */
   now: number = Date.now(),
+  /**
+   * The server is bound to a configuration `config.json` no longer describes — its own verdict,
+   * read when the popover opens. Defaults to false, so a caller that cannot ask says nothing.
+   */
+  restartPending = false,
 ): HTMLElement {
   const root = el('div', 'conn conn--live');
   const bands = el('div', 'bands');
   // First, not appended at the end: the bands scroll and an uncapped list would put a message about
   // the click that just failed somewhere below the fold.
   if (error) bands.append(renderError(error));
+  // Above the sessions and below an error, because it is neither: the sessions are what the server
+  // is doing, the error is what a click did not do, and this is what the server itself is not
+  // honouring. It is NOT a band — a band is a session, and this is a property of the process.
+  if (restartPending) {
+    bands.append(
+      el(
+        'p',
+        'bands-stale',
+        'This server started before config.json was last changed. Restart it to serve the new port, host or certificate name.',
+      ),
+    );
+  }
   const byBand = new Map<Band, Row[]>();
   for (const row of rows) {
     const band = bandOf(row.entry);

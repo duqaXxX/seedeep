@@ -130,6 +130,21 @@ model than the session did — and a verdict announcement holds **8s**.
 than suppression: a spawn already has the richer toast on the bottom rail, so a bare
 `Agent` up top would be the same event twice.
 
+### How much work it took, before you look for it
+
+The bar above the widgets answers the size of the session in one line, in **two
+groups**: how much work — turns, API calls, tool calls — and how long — the current
+turn, and every turn summed. The grouping is the readable part: five figures with
+four different units, set side by side without separators, read as one number with
+stray words in it. Selecting a turn re-scopes the bar to that turn, with the same
+two counts scoped along.
+
+Both counts already existed — the calls under the token ledger, the tools under
+four file paths in Main tools — and neither could be found, which is a placement
+problem and not a missing figure. The breakdowns stay where they are: `Bash 255 ·
+Edit 104 · Read 23` means something next to the tools that consumed the context,
+and nothing at all in a summary line.
+
 ### Which model, and how full that makes it
 
 Whatever scope you are looking at **names the model it ran on** — the banner and
@@ -773,6 +788,14 @@ tunnel ships with `seedeep`: an SSH port-forward or a VPN already solves that, a
 re-solving it would only add a second, weaker way in. How to turn it on:
 [`install.md`](install.md#remote-access).
 
+**A server keeps the port, host and certificate name it started with**, so a config
+changed since — in the panel or in an editor — is a file saying one thing and a
+process doing another. An amber dot on the Settings button says so with the panel
+closed, and the panel explains it with the button that ends it; the tray says it above
+its sessions and `seedeep status` prints it. It is the SERVER's comparison, against
+what a fresh start would resolve to rather than against the file alone: a port pinned
+by `--port` is not pending, because a restart would go on ignoring the file there too.
+
 ## The engine underneath
 
 - **Core engine** — read-only, runtime-agnostic watcher + parser: session
@@ -805,6 +828,14 @@ address with your headers and your template — `{{title}}`, `{{body}}`,
 of your own all work without seedeep knowing any of them. A URL on its own is
 already a working webhook: an empty template posts the body. It never retries: a
 missed notification is better than one replayed minutes late.
+
+**A notification is one title and one line**: which session, and what happened —
+`atlas — add a retry to the uploader` / `Waiting for your approval — Bash`. Not the
+command awaiting approval, not the error text, not what the turn did. You cannot act
+on a banner anyway (approving still means going back to the terminal), a banner
+truncates that second line first, and all of it is one click away in the panel. It
+also keeps the webhook honest: that is the one channel whose payload leaves your
+machine, and it now carries no more than the banner beside you does.
 
 A turn that ends says **`Turn finished`**, not "finished" — the session has not
 ended, it has become yours again. A turn **you** interrupted is never announced:

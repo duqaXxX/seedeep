@@ -65,6 +65,14 @@ export interface DigestTurn {
    * lines (measured 2026-07-30 over 28 313), so a client that names it will nearly always have one,
    * and an empty array is "the transcript does not say", never "no effort". */
   efforts: string[];
+  /**
+   * How many calls to the model this turn made. Zero is a turn that produced NOTHING — Esc pressed
+   * before the first reply, or a purely local command — and it is what tells the notification
+   * engine there is no finish worth announcing. It is the count and not a verdict, because the
+   * reducer's own rule for marking a superseded turn interrupted (`session-tree.ts`) is the same
+   * quantity, and one place should not be reading a rewording of the other.
+   */
+  apiCalls: number;
   /** The one thing to say about this turn right now — see {@link DigestNow}. */
   now: DigestNow | null;
 }
@@ -331,6 +339,7 @@ export function digestEntry(
             startedAt: turn.startedAt,
             prompt: turn.prompt.slice(0, PROMPT_HEAD),
             efforts: turn.efforts,
+            apiCalls: turn.apiCalls,
             // `delegated` comes from the same rule the browser's panel and the Subagents card
             // use — see delegatedWork.
             now: digestNow(

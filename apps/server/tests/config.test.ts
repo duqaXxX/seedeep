@@ -7,10 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { defaultCacheFile } from '../src/server/aggregate-cache.ts';
 import { defaultCardsIndexFile } from '../src/server/cards-index.ts';
 import {
+  applyPrecedence,
   configFilePath,
   defaultConfig,
+  overriddenFields,
   readConfig,
   resolveConfig,
+  restartPending,
+  savePending,
   seedDeepDir,
   writeConfig,
 } from '../src/server/config.ts';
@@ -277,4 +281,125 @@ test('readConfig merges notifications per key, so a partial file keeps the other
   assert.equal(c.notifications.webhook.needsYou, true, 'a webhook switch kept its default');
   assert.equal(c.notifications.tray.needsYou, true, 'the tray channel survived a webhook-only file');
   assert.deepEqual(c.notifications.webhook.headers, {});
+});
+
+// ── applyPrecedence / restartPending ─────────────────────────────────────────
+
+test('applyPrecedence neither generates a token nor writes the file', async () => {
+  const home = tmpHome();
+  const path = configFilePath(home);
+  const fileConfig = defaultConfig(home); // auth.token is ''
+  const cfg = applyPrecedence({}, {}, fileConfig);
+  // A GET that asks "what would a start resolve to?" must be free of every side effect a start
+  // has — otherwise reading the pending state would itself rewrite config.json.
+  assert.equal(cfg.auth.token, '', 'no token generated');
+  assert.ok(!existsSync(path), 'no file written');
+});
+
+test('restartPending: a port, host or common-name difference is pending', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  assert.equal(restartPending(base, { ...base, port: 9090 }), true, 'port');
+  assert.equal(restartPending(base, { ...base, host: '0.0.0.0' }), true, 'host');
+  assert.equal(restartPending(base, { ...base, tls: { ...base.tls, commonName: 'box.local' } }), true, 'common name');
+});
+
+test('restartPending: open and the cert paths are not pending', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  // A running process can honour both without being replaced, and announcing them would train the
+  // user to ignore the announcement. The token is NOT among them — see the token test below.
+  assert.equal(restartPending(base, { ...base, open: !base.open }), false, 'open');
+  assert.equal(
+    restartPending(base, { ...base, tls: { ...base.tls, cert: '/elsewhere/cert.pem' } }),
+    false,
+    'cert path',
+  );
+});
+
+test('restartPending: an absent common name equals an empty one', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  const empty = { ...base, tls: { ...base.tls, commonName: '' } };
+  assert.equal(restartPending(base, empty), false, 'neither can go in a certificate');
+});
+
+test('restartPending: a CLI flag the restart would keep is NOT pending', () => {
+  // The regression this whole comparison exists for. A server started with `--port 5555` against
+  // a file that says 9090 is not stale: `POST /api/restart` respawns with argv intact, so the
+  // flag wins again and the file never applies. Comparing the running port against the FILE
+  // would light a pending state that no button on any surface could ever clear.
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, auth: { token: 'tok' } };
+  const running = applyPrecedence({ port: 5555 }, {}, file);
+  assert.equal(running.port, 5555);
+  assert.equal(restartPending(running, applyPrecedence({ port: 5555 }, {}, file)), false);
+});
+
+test('restartPending: an env var the restart would keep is NOT pending', () => {
+  const home = tmpHome();
+  const env = { SEEDEEP_HOST: '10.0.0.9' };
+  const file = { ...defaultConfig(home), host: '0.0.0.0', auth: { token: 'tok' } };
+  const running = applyPrecedence({}, env, file);
+  assert.equal(running.host, '10.0.0.9');
+  assert.equal(restartPending(running, applyPrecedence({}, env, file)), false);
+});
+
+test('restartPending: a hand edit to a field no flag covers IS pending', () => {
+  // The incident: config.json edited to 0.0.0.0 while the process kept answering on loopback.
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), auth: { token: 'tok' } };
+  const running = applyPrecedence({ port: 5555 }, {}, file);
+  // Only the host differs: the port is pinned by the same flag on both sides, so a difference
+  // here can come from nothing but the edit.
+  const edited = { ...file, host: '0.0.0.0' };
+  assert.equal(restartPending(running, applyPrecedence({ port: 5555 }, {}, edited)), true);
+});
+
+// ── savePending / overriddenFields ───────────────────────────────────────────
+
+test('savePending: a switch the process has not taken up', () => {
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'old' } };
+  // The token is deliberately NOT here: the panel reads it redacted, so a save cannot carry one
+  // edited into the file. That is `restartPending`'s.
+  assert.equal(savePending(running, { ...running, auth: { token: 'new' } }), false, 'token');
+  const switched = {
+    ...running,
+    notifications: { ...running.notifications, tray: { ...running.notifications.tray, finishes: true } },
+  };
+  assert.equal(savePending(running, switched), true, 'a notification switch');
+  assert.equal(savePending(running, { ...running }), false, 'nothing to apply');
+});
+
+test('savePending: the fields a restart cures are not its business', () => {
+  // The two states name different cures, and naming the wrong one is worse than naming none.
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'tok' } };
+  assert.equal(savePending(running, { ...running, port: 9090, host: '0.0.0.0' }), false);
+});
+
+test('overriddenFields: only what a flag or a variable actually changes', () => {
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, host: '10.0.0.1', auth: { token: 'tok' } };
+  assert.deepEqual(overriddenFields({ port: 5555 }, {}, file), { port: 'flag' });
+  assert.deepEqual(overriddenFields({}, { SEEDEEP_HOST: '0.0.0.0' }, file), { host: 'env' });
+  // A flag that repeats the file overrides nothing anyone can observe, so it is not reported.
+  assert.deepEqual(overriddenFields({ port: 9090 }, {}, file), {});
+  assert.deepEqual(overriddenFields({}, {}, file), {});
+});
+
+test('overriddenFields: a flag wins over a variable in what it reports', () => {
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, auth: { token: 'tok' } };
+  assert.deepEqual(overriddenFields({ port: 5555 }, { SEEDEEP_PORT: '7070' }, file), { port: 'flag' });
+});
+
+test('restartPending: an empty desired token is not a change', () => {
+  // A missing config.json reads as "no token configured, one will be generated" — never as a
+  // request to replace the one in use. Compared literally it pinned a restart nobody could clear.
+  const home = tmpHome();
+  const running = { ...defaultConfig(home), auth: { token: 'generated-at-start' } };
+  assert.equal(restartPending(running, { ...running, auth: { token: '' } }), false);
+  assert.equal(restartPending(running, { ...running, auth: { token: 'written-by-hand' } }), true);
 });

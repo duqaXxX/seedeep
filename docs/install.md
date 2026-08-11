@@ -112,8 +112,9 @@ says which.
 ### `seedeep status`
 
 The one command that acts on nothing: it answers *what state is this machine in* —
-the server (up or down, on which port, and **which version it is actually serving**,
-which is not the version you installed until you restart it), whether `/seedeep`
+the server (up or down, on which port, **which version it is actually serving**,
+which is not the version you installed until you restart it, and whether
+`config.json` has changed since it started), whether `/seedeep`
 exists and whose it is, and whether a newer release is out. That last line comes from
 the cache the server already keeps, so `status` needs no network and never waits on
 one. A server that is down is a state, not a failure: the exit code is 0 whatever it
@@ -293,7 +294,22 @@ value when you set that client up.
 
 The settings panel (the sliders icon in the header) edits all of it — port, host,
 token, the full access URL, and the certificate fingerprint, each with a Copy
-button — so nothing has to be edited by hand.
+button — so nothing has to be edited by hand. It is an editor of `config.json`: the
+fields show what that file says (under any flag or environment variable that overrides
+it), so the two ways of configuring seedeep cannot undo each other — a save leaves
+every field it did not mention exactly as your editor left it.
+
+**A running server keeps the port, host and certificate name it started with**, whichever
+way they changed — the panel or an editor. Until you restart it, the file says one thing
+and the process does another, which on this page means remote access that is configured
+and simply not listening. Every surface now says so rather than leaving it to be found
+with `lsof`: an amber dot on the Settings button with the panel closed, a line above the
+tray's sessions, and a line in `seedeep status`. `seedeep restart` — or **Restart now** in
+the panel — applies it.
+
+A value a CLI flag or an environment variable sets is not reported, because a restart
+would not honour the file there either: `--port 9000` wins over `config.json` on every
+start, so there is nothing pending to announce.
 
 **The token is stored per ADDRESS, and the port is part of the address.** The
 browser keeps it in local storage, which is partitioned by origin — scheme, host

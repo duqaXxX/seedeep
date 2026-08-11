@@ -14,7 +14,19 @@ import { createCardsIndex, defaultCardsIndexFile } from './cards-index.ts';
 import { ClientRegistry, type SseSink } from './clients.ts';
 import { createProber, type PendingCommand, type Vanished } from './command-liveness.ts';
 import { buildComparison } from './compare.ts';
-import { defaultConfig, type NotifyConfig, type SeedDeepConfig, writeConfig } from './config.ts';
+import {
+  applyPrecedence,
+  defaultConfig,
+  type NotifyConfig,
+  type OverrideSource,
+  overriddenFields,
+  readConfigFile,
+  readConfigStrict,
+  restartPending,
+  type SeedDeepConfig,
+  savePending,
+  writeConfig,
+} from './config.ts';
 import { type DigestEntry, digestEntry } from './digest.ts';
 import { createLiveTrees } from './live-trees.ts';
 import { createNotifyEngine } from './notify-engine.ts';
@@ -67,6 +79,15 @@ export interface ServerDeps {
    * Override in tests to prevent the handler from writing to the real user config.
    */
   configPath?: string;
+  /**
+   * The CLI flags and environment this process was STARTED with — the two layers above the file
+   * in {@link applyPrecedence}. Held so the server can answer what a restart would resolve to,
+   * which is the only honest way to say whether one is pending. Default to nothing and the real
+   * environment; a test that cares passes `env: {}` so an exported `SEEDEEP_PORT` on the
+   * contributor's machine cannot decide the verdict.
+   */
+  cliFlags?: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>;
+  env?: Record<string, string | undefined>;
   /**
    * What `GET /api/update` answers. Defaults to the cached npm check. Override in tests — the
    * default is the one handler that can reach the network.
@@ -243,6 +264,32 @@ export function parseMarks(raw: string | null): Map<string, number> | undefined 
 /** What a secret reads as on the wire. One constant, so redaction and its inverse cannot drift. */
 const REDACTED = '***';
 
+/**
+ * `base` with the fields a `POST /api/config` body carries written over it — each provided
+ * top-level field overwrites, sub-objects are shallow-merged, absent fields are left alone.
+ *
+ * A function rather than the assignments it replaces because the merge now happens TWICE against
+ * two different bases — the file, for what is written, and the running config, for what takes
+ * effect without a restart — and two hand-written copies of it would be free to disagree about
+ * which fields a save touches. Assumes the body has already been validated.
+ */
+function mergeConfigBody(base: SeedDeepConfig, body: Record<string, unknown>): SeedDeepConfig {
+  const out: SeedDeepConfig = { ...base, auth: { ...base.auth }, tls: { ...base.tls } };
+  if (body['port'] !== undefined) out.port = body['port'] as number;
+  if (body['host'] !== undefined) out.host = body['host'] as string;
+  if (body['open'] !== undefined) out.open = Boolean(body['open']);
+  if (body['auth'] && typeof body['auth'] === 'object') {
+    out.auth = { ...out.auth, ...(body['auth'] as Record<string, unknown>) } as SeedDeepConfig['auth'];
+  }
+  if (body['tls'] && typeof body['tls'] === 'object') {
+    out.tls = { ...out.tls, ...(body['tls'] as Record<string, unknown>) } as SeedDeepConfig['tls'];
+  }
+  if (body['notifications'] && typeof body['notifications'] === 'object') {
+    out.notifications = mergeNotificationsPost(out.notifications, body['notifications'] as Record<string, unknown>);
+  }
+  return out;
+}
+
 function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: boolean): object {
   const { tls, auth, ...rest } = cfg;
   const { cert: _c, key: _k, ...tlsRest } = tls;
@@ -337,6 +384,61 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     ...(deps.config ?? defaultConfig()),
     auth: { ...(deps.config ?? defaultConfig()).auth },
     tls: { ...(deps.config ?? defaultConfig()).tls },
+  };
+
+  // What this process actually came up with, frozen before anything can edit it. `currentConfig`
+  // cannot answer for it: the first POST rewrites it, and from then on the server would be
+  // comparing the desired state against itself and reporting a stale process as fresh.
+  const startedWith: SeedDeepConfig = {
+    ...currentConfig,
+    auth: { ...currentConfig.auth },
+    tls: { ...currentConfig.tls },
+  };
+
+  /**
+   * What the process is USING right now, per field — which is not one object anywhere else.
+   * `port`, `host` and the certificate name are bound at startup and cannot change while it lives,
+   * so they come from `startedWith`; the token CAN be rotated live by a save, so it comes from the
+   * running copy. Take it all from `startedWith` and rotating the token from the panel reports a
+   * restart nobody needs.
+   */
+  const runningNow = (): SeedDeepConfig => ({ ...startedWith, auth: { ...currentConfig.auth } });
+
+  /**
+   * What `GET`/`POST /api/config` say about the process beyond the values themselves: the two
+   * pending states, each naming the cure that actually applies it, and the fields a flag or an
+   * environment variable is overriding — the one thing the panel cannot work out on its own, and
+   * without which an edit that snaps back has no explanation.
+   */
+  const configState = async (
+    desired: SeedDeepConfig,
+  ): Promise<{ restart_pending: boolean; save_pending: boolean; overrides: Record<string, OverrideSource> }> => {
+    let overrides: Record<string, OverrideSource> = {};
+    try {
+      overrides = overriddenFields(
+        deps.cliFlags ?? {},
+        deps.env ?? process.env,
+        await readConfigStrict(deps.configPath),
+      );
+    } catch {
+      // Same rule as `desiredConfig`: a file that cannot be read is not evidence of an override.
+    }
+    return {
+      restart_pending: restartPending(runningNow(), desired),
+      save_pending: savePending(currentConfig, desired),
+      overrides,
+    };
+  };
+
+  const desiredConfig = async (): Promise<SeedDeepConfig> => {
+    try {
+      return applyPrecedence(deps.cliFlags ?? {}, deps.env ?? process.env, await readConfigStrict(deps.configPath));
+    } catch {
+      // `readConfigStrict`, so this catch is REACHABLE: the lenient reader turns a malformed file
+      // into the defaults, and answering with those would show settings nobody chose and invite a
+      // restart into them. What is running is the honest answer, and it reports nothing pending.
+      return currentConfig;
+    }
   };
 
   // Non-loopback safety checks and TLS setup.
@@ -642,42 +744,31 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             { status: 400, headers: { 'content-type': 'application/json;charset=utf-8' } },
           );
         }
-        const prevPort = currentConfig.port;
-        const prevHost = currentConfig.host;
-        const prevTls = JSON.stringify(currentConfig.tls);
-        // Merge: each provided top-level field overwrites, sub-objects are shallow-merged.
-        if (body['port'] !== undefined) currentConfig.port = body['port'] as number;
-        if (body['host'] !== undefined) currentConfig.host = body['host'] as string;
-        if (body['open'] !== undefined) currentConfig.open = Boolean(body['open']);
-        if (body['auth'] && typeof body['auth'] === 'object') {
-          currentConfig.auth = {
-            ...currentConfig.auth,
-            ...(body['auth'] as Record<string, unknown>),
-          } as SeedDeepConfig['auth'];
-        }
-        if (body['tls'] && typeof body['tls'] === 'object') {
-          currentConfig.tls = {
-            ...currentConfig.tls,
-            ...(body['tls'] as Record<string, unknown>),
-          } as SeedDeepConfig['tls'];
-        }
-        if (body['notifications'] && typeof body['notifications'] === 'object') {
-          currentConfig.notifications = mergeNotificationsPost(
-            currentConfig.notifications,
-            body['notifications'] as Record<string, unknown>,
-          );
-        }
+        // The FILE is the base for what goes back to disk, re-read here rather than assumed: this
+        // process's copy was taken at startup, and writing it back would delete every change made
+        // in an editor since — measured, a save of `open` alone put `host` back to what the
+        // process was bound to. What goes to disk is the file plus this request; what stays in
+        // memory is what the process can honour without a restart.
         try {
-          await writeConfig(currentConfig, deps.configPath);
+          // Neither a malformed file NOR a missing one may become the defaults here: writing those
+          // puts built-ins over the user's token, port, certificate name and webhook on the first
+          // save made for any other reason — measured both ways, with a stray comma and by deleting
+          // the file under a live server. What is running is intact, so a save onto that repairs
+          // the file instead of emptying it. `readConfigFile` is what separates the three cases.
+          const base = (await readConfigFile(deps.configPath).catch(() => null)) ?? currentConfig;
+          await writeConfig(mergeConfigBody(base, body), deps.configPath);
         } catch {
-          /* non-fatal: in-memory state updated */
+          /* non-fatal: in-memory state below is still updated */
         }
-        const restartRequired =
-          currentConfig.port !== prevPort ||
-          currentConfig.host !== prevHost ||
-          JSON.stringify(currentConfig.tls) !== prevTls;
-        const redacted = redactConfig(currentConfig, tlsFingerprint, true);
-        return json(req, restartRequired ? { ...redacted, restart_required: true } : redacted);
+        // Same merge, other base: the token is adopted live and the notification switches are read
+        // from here on the next event, so the runtime copy has to carry them.
+        Object.assign(currentConfig, mergeConfigBody(currentConfig, body));
+        // Read back from disk rather than echoed from the request, and AFTER the write: the answer
+        // is about the process and the file, never about this keystroke. Saving a value back to
+        // what is already running reports nothing; a save landing on top of an earlier hand edit
+        // keeps the signal up. The old diff-on-save could only describe the request that carried it.
+        const desired = await desiredConfig();
+        return json(req, { ...redactConfig(desired, tlsFingerprint, true), ...(await configState(desired)) });
       }
 
       if (pathname === '/api/restart' && req.method === 'POST') {
@@ -696,8 +787,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       }
 
       // GET /api/config — current config (redacted). No auth required even on remote hosts.
+      // `restart_pending` rides this route because it is the same question the route already
+      // answers — what is this process actually serving — and every surface that has to state it
+      // (portal, tray, `seedeep status`) is already here for the version.
       if (pathname === '/api/config') {
-        return json(req, redactConfig(currentConfig, tlsFingerprint, authorised()));
+        const desired = await desiredConfig();
+        return json(req, { ...redactConfig(desired, tlsFingerprint, authorised()), ...(await configState(desired)) });
       }
 
       // GET /api/update — what npm says is current, from a cache that refreshes once an hour. The

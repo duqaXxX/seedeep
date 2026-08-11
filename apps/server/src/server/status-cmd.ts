@@ -31,7 +31,15 @@ import { VERSION } from './version.ts';
 export type ServerState =
   | { kind: 'down' }
   /** A record exists and the process is alive; `serving` is null when it would not say. */
-  | { kind: 'up'; record: RunningServerRecord; remote: boolean; serving: string | null };
+  | {
+      kind: 'up';
+      record: RunningServerRecord;
+      remote: boolean;
+      serving: string | null;
+      /** The server compared what it started with against what a restart would resolve to, and
+       * they differ. False also covers a server too old to answer the question. */
+      restartPending: boolean;
+    };
 
 /** Whether `/seedeep` exists, and whose it is. */
 export type CommandState = { kind: 'absent' } | { kind: 'present'; ownership: Ownership };
@@ -68,7 +76,7 @@ function serverLines(facts: StatusFacts): string[] {
   if (facts.server.kind === 'down') {
     return [`Server    not running        \`seedeep start\` starts one on port ${facts.port}`];
   }
-  const { record, remote, serving } = facts.server;
+  const { record, remote, serving, restartPending } = facts.server;
   const lines = [
     `Server    running — ${record.baseUrl}`,
     `          pid ${record.pid} · ${remote ? 'remote mode (TLS + token)' : 'loopback'}`,
@@ -81,6 +89,12 @@ function serverLines(facts: StatusFacts): string[] {
     lines.push(`          serving ${serving}`);
   } else {
     lines.push(`          serving ${serving} — you have ${facts.version} installed; \`seedeep restart\` swaps it`);
+  }
+  // The same shape of staleness one line up, on the other axis: there, the process is older than
+  // the code on disk; here, it is older than the configuration on disk. Only when true — a line
+  // that appears on every run is one nobody reads on the run that matters.
+  if (restartPending) {
+    lines.push('          config.json has changed since it started; `seedeep restart` applies it');
   }
   return lines;
 }
@@ -162,14 +176,22 @@ export async function runStatus(
   const record = (await runningServers()).find((s) => portOf(s.baseUrl) === port);
   let server: ServerState = { kind: 'down' };
   if (record) {
-    const config_ = await askServer<{ version?: string }>(record, '/api/config', config);
+    const config_ = await askServer<{ version?: string; restart_pending?: boolean }>(record, '/api/config', config);
     let remote = false;
     try {
       remote = !isLoopback(new URL(record.baseUrl).hostname);
     } catch {
       /* an unparseable address is not a claim about the mode */
     }
-    server = { kind: 'up', record, remote, serving: config_?.version ?? null };
+    server = {
+      kind: 'up',
+      record,
+      remote,
+      serving: config_?.version ?? null,
+      // The server is the only party that knows both sides of it; a `status` that worked it out
+      // locally would be guessing at flags and an environment it is not running under.
+      restartPending: config_?.restart_pending ?? false,
+    };
   }
   out.log(
     statusReport({
