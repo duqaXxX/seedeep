@@ -30,7 +30,6 @@ use tokio::time::timeout;
 use crate::client::{Conn, Reading};
 use crate::icon::{self, TrayState};
 use crate::local::{Local, LocalServer};
-use crate::settings::Prefs;
 use crate::update;
 
 /// While the panel is open. A session stopping on a question has to appear as it happens, and the
@@ -83,7 +82,6 @@ pub struct Tick {
 /// already interrupted the user about.
 pub struct Poller {
     conn: Arc<Conn>,
-    prefs: Arc<Prefs>,
     /// The local server layer, asked on every reading what the panel may offer. Shared with the
     /// commands, so a click and the tick that follows it are looking at one cache.
     local: Arc<LocalServer>,
@@ -113,13 +111,11 @@ pub struct Poller {
 impl Poller {
     pub fn new(
         conn: Arc<Conn>,
-        prefs: Arc<Prefs>,
         local: Arc<LocalServer>,
         notices: Arc<update::Notices>,
     ) -> Arc<Self> {
         Arc::new(Self {
             conn,
-            prefs,
             local,
             notices,
             checked_at: Mutex::new(None),
@@ -295,7 +291,7 @@ impl Poller {
         // Asked FIRST and unconditionally, so the setting silences the banner without also making
         // this version announceable again the moment it is switched back on.
         let unseen = self.notices.should_announce(&latest);
-        if !unseen || !self.prefs.get().notify_update {
+        if !unseen || !self.conn.wants_update_banner().await {
             return;
         }
         let running = status.server.unwrap_or_else(|| "an older one".to_string());

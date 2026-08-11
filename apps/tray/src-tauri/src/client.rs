@@ -1439,3 +1439,31 @@ mod stream_tests {
         assert!(parse_notification("event: notification").is_none());
     }
 }
+
+impl Conn {
+    /// Whether the server says a new-release banner is wanted — `notifications.tray.updates`.
+    ///
+    /// Read from the server and not from a file here, for the reason every other switch moved: the
+    /// panel that sets it is the server's, and a tray deciding from its own copy would silently
+    /// ignore what the user just changed. Asked on the update clock (every 15 minutes), never on the
+    /// poll, so it costs one request against a value that moves when a human moves it.
+    ///
+    /// Defaults to TRUE when it cannot be read: this gate only runs after `/api/update` has already
+    /// answered, so an unreadable config is a shape seedeep did not recognise rather than a server
+    /// that is gone — and losing the one banner that says the user is running an old release is the
+    /// worse of the two failures.
+    pub async fn wants_update_banner(&self) -> bool {
+        let Some((target, client)) = self.active() else {
+            return true;
+        };
+        let mut req = client.get(format!("{}{CONFIG_PATH}", target.base_url));
+        if let Some(token) = &target.token {
+            req = req.bearer_auth(token);
+        }
+        let Ok(res) = req.send().await else { return true };
+        let Ok(body) = res.json::<Value>().await else {
+            return true;
+        };
+        body["notifications"]["tray"]["updates"].as_bool().unwrap_or(true)
+    }
+}

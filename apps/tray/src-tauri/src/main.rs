@@ -4,7 +4,6 @@ mod icon;
 mod local;
 mod pin;
 mod poll;
-mod settings;
 mod store;
 mod update;
 
@@ -13,7 +12,6 @@ use std::sync::Arc;
 use client::{Conn, Status};
 use local::LocalServer;
 use poll::{Poller, Tick};
-use settings::Prefs;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, Rect, State, WindowEvent};
@@ -413,15 +411,10 @@ fn main() {
             // cannot be looking at two different servers.
             let conn = Arc::new(Conn::new(connection::store_path(&config_dir), local.clone()));
             app.manage(conn.clone());
-            // Loaded once and shared: the poll asks on every reading, and the panel's toggle writes
-            // through the same instance, so a change is in force on the next tick without either
-            // side re-reading the file.
-            let prefs = Arc::new(Prefs::load(settings::store_path(&config_dir)));
-            app.manage(prefs.clone());
             // Which versions THIS RUN has announced — held in memory, so a restart is a second
             // chance at a banner the system may never have shown (`update.rs`).
             let notices = Arc::new(update::Notices::new(&config_dir));
-            let poller = Poller::new(conn, prefs, local.clone(), notices);
+            let poller = Poller::new(conn, local.clone(), notices);
             app.manage(poller.clone());
 
             // A menu-bar app owns no Dock tile and no app-switcher entry: `Accessory` is what
