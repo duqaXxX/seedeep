@@ -269,21 +269,36 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     <input id="s-hook-url" class="sinput" type="text" placeholder="https://ntfy.sh/your-topic">
   </div>
   <div class="srow">
+    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner there and not a push here.</small></div>
+    <div class="shooks">
+      <div class="shook-row" data-hook="needsYou">
+        <div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session needs you</span>
+      </div>
+      <div class="shook-row" data-hook="fails">
+        <div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session fails</span>
+      </div>
+      <div class="shook-row" data-hook="finishes">
+        <div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session is back to you</span>
+      </div>
+      <div class="shook-row" data-hook="updates">
+        <div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A new server version is out</span>
+      </div>
+    </div>
+  </div>
+  <div class="srow">
+    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Custom notification…</button>
+  </div>
+  <div class="srow scustom" id="s-hook-custom-fields" hidden>
     <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
     <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Title: seedeep"></textarea>
   </div>
-  <div class="srow">
+  <div class="srow scustom" id="s-hook-template-row" hidden>
     <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
     <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
-  </div>
-  <div class="srow">
-    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner here and not a push there.</small></div>
-    <div class="shooks">
-      <label><input type="checkbox" id="s-hook-needsYou"> A session needs you</label>
-      <label><input type="checkbox" id="s-hook-fails"> A session fails</label>
-      <label><input type="checkbox" id="s-hook-finishes"> A session is back to you</label>
-      <label><input type="checkbox" id="s-hook-updates"> A new server version is out</label>
-    </div>
   </div>
 </div>
 <div class="block">
@@ -433,21 +448,37 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   const hookHeadersEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-headers')!;
   const hookTemplateEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-template')!;
   const hookSwitches = {
-    needsYou: drawer.querySelector<HTMLInputElement>('#s-hook-needsYou')!,
-    fails: drawer.querySelector<HTMLInputElement>('#s-hook-fails')!,
-    finishes: drawer.querySelector<HTMLInputElement>('#s-hook-finishes')!,
-    updates: drawer.querySelector<HTMLInputElement>('#s-hook-updates')!,
+    needsYou: drawer.querySelector<HTMLDivElement>('#s-hook-needsYou')!,
+    fails: drawer.querySelector<HTMLDivElement>('#s-hook-fails')!,
+    finishes: drawer.querySelector<HTMLDivElement>('#s-hook-finishes')!,
+    updates: drawer.querySelector<HTMLDivElement>('#s-hook-updates')!,
   };
+  // The same control the rest of the drawer uses; `on` IS the state, as it is for Open browser.
+  for (const [, track] of Object.entries(hookSwitches)) {
+    track.parentElement?.addEventListener('click', () => {
+      track.classList.toggle('on');
+      setDirty(true);
+    });
+  }
+
+  const customBtn = drawer.querySelector<HTMLButtonElement>('#s-hook-custom')!;
+  const customRows = [...drawer.querySelectorAll<HTMLElement>('.scustom')];
+  customBtn.addEventListener('click', () => {
+    const open = customBtn.getAttribute('aria-expanded') === 'true';
+    customBtn.setAttribute('aria-expanded', String(!open));
+    customBtn.textContent = open ? 'Custom notification…' : 'Hide custom fields';
+    for (const row of customRows) row.hidden = open;
+  });
 
   /** The webhook fields as a request body's worth of form state. */
   const webhookForm = (): WebhookForm => ({
     url: hookUrlEl.value.trim(),
     headersText: hookHeadersEl.value,
     template: hookTemplateEl.value,
-    needsYou: hookSwitches.needsYou.checked,
-    fails: hookSwitches.fails.checked,
-    finishes: hookSwitches.finishes.checked,
-    updates: hookSwitches.updates.checked,
+    needsYou: hookSwitches.needsYou.classList.contains('on'),
+    fails: hookSwitches.fails.classList.contains('on'),
+    finishes: hookSwitches.finishes.classList.contains('on'),
+    updates: hookSwitches.updates.classList.contains('on'),
   });
 
   async function load(): Promise<void> {
@@ -474,10 +505,10 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // reads as "keep the one you have" — a blank field would erase the token on the next Save.
       hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
       hookTemplateEl.value = hook?.template ?? '';
-      hookSwitches.needsYou.checked = hook?.needsYou ?? true;
-      hookSwitches.fails.checked = hook?.fails ?? true;
-      hookSwitches.finishes.checked = hook?.finishes ?? false;
-      hookSwitches.updates.checked = hook?.updates ?? false;
+      hookSwitches.needsYou.classList.toggle('on', hook?.needsYou ?? true);
+      hookSwitches.fails.classList.toggle('on', hook?.fails ?? true);
+      hookSwitches.finishes.classList.toggle('on', hook?.finishes ?? false);
+      hookSwitches.updates.classList.toggle('on', hook?.updates ?? false);
       // The dash stays when the field is absent: a server too old to report its version is a
       // question this panel cannot answer, and a guess here would be the one number a bug report
       // quotes verbatim.

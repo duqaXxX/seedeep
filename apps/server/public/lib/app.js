@@ -3046,21 +3046,36 @@ function createSettingsPanel(headerEl) {
     <input id="s-hook-url" class="sinput" type="text" placeholder="https://ntfy.sh/your-topic">
   </div>
   <div class="srow">
+    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner there and not a push here.</small></div>
+    <div class="shooks">
+      <div class="shook-row" data-hook="needsYou">
+        <div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session needs you</span>
+      </div>
+      <div class="shook-row" data-hook="fails">
+        <div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session fails</span>
+      </div>
+      <div class="shook-row" data-hook="finishes">
+        <div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A session is back to you</span>
+      </div>
+      <div class="shook-row" data-hook="updates">
+        <div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div>
+        <span>A new server version is out</span>
+      </div>
+    </div>
+  </div>
+  <div class="srow">
+    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Custom notification…</button>
+  </div>
+  <div class="srow scustom" id="s-hook-custom-fields" hidden>
     <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
     <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Title: seedeep"></textarea>
   </div>
-  <div class="srow">
+  <div class="srow scustom" id="s-hook-template-row" hidden>
     <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
     <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
-  </div>
-  <div class="srow">
-    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner here and not a push there.</small></div>
-    <div class="shooks">
-      <label><input type="checkbox" id="s-hook-needsYou"> A session needs you</label>
-      <label><input type="checkbox" id="s-hook-fails"> A session fails</label>
-      <label><input type="checkbox" id="s-hook-finishes"> A session is back to you</label>
-      <label><input type="checkbox" id="s-hook-updates"> A new server version is out</label>
-    </div>
   </div>
 </div>
 <div class="block">
@@ -3182,14 +3197,29 @@ function createSettingsPanel(headerEl) {
     finishes: drawer.querySelector("#s-hook-finishes"),
     updates: drawer.querySelector("#s-hook-updates")
   };
+  for (const [, track] of Object.entries(hookSwitches)) {
+    track.parentElement?.addEventListener("click", () => {
+      track.classList.toggle("on");
+      setDirty(true);
+    });
+  }
+  const customBtn = drawer.querySelector("#s-hook-custom");
+  const customRows = [...drawer.querySelectorAll(".scustom")];
+  customBtn.addEventListener("click", () => {
+    const open2 = customBtn.getAttribute("aria-expanded") === "true";
+    customBtn.setAttribute("aria-expanded", String(!open2));
+    customBtn.textContent = open2 ? "Custom notification…" : "Hide custom fields";
+    for (const row of customRows)
+      row.hidden = open2;
+  });
   const webhookForm = () => ({
     url: hookUrlEl.value.trim(),
     headersText: hookHeadersEl.value,
     template: hookTemplateEl.value,
-    needsYou: hookSwitches.needsYou.checked,
-    fails: hookSwitches.fails.checked,
-    finishes: hookSwitches.finishes.checked,
-    updates: hookSwitches.updates.checked
+    needsYou: hookSwitches.needsYou.classList.contains("on"),
+    fails: hookSwitches.fails.classList.contains("on"),
+    finishes: hookSwitches.finishes.classList.contains("on"),
+    updates: hookSwitches.updates.classList.contains("on")
   });
   async function load() {
     try {
@@ -3209,10 +3239,10 @@ function createSettingsPanel(headerEl) {
       hookUrlEl.value = hook?.url ?? "";
       hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
       hookTemplateEl.value = hook?.template ?? "";
-      hookSwitches.needsYou.checked = hook?.needsYou ?? true;
-      hookSwitches.fails.checked = hook?.fails ?? true;
-      hookSwitches.finishes.checked = hook?.finishes ?? false;
-      hookSwitches.updates.checked = hook?.updates ?? false;
+      hookSwitches.needsYou.classList.toggle("on", hook?.needsYou ?? true);
+      hookSwitches.fails.classList.toggle("on", hook?.fails ?? true);
+      hookSwitches.finishes.classList.toggle("on", hook?.finishes ?? false);
+      hookSwitches.updates.classList.toggle("on", hook?.updates ?? false);
       versionEl.textContent = cfg.version ?? "—";
       showUpdate();
       pendingToken = "";
