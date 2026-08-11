@@ -783,3 +783,28 @@ re-solving it would only add a second, weaker way in. How to turn it on:
 - **GUI shell** — one tabbed page (the workspace above), with **replay** for
   finished sessions and a per-tab subscription over the shared feed, so a dozen
   open tabs still cost one connection and closing one leaks nothing.
+
+
+## Notifications
+
+seedeep tells you when a session **stops on you**, when one **breaks**, and — if
+you ask for it — when one **hands the turn back**. The server decides all three:
+it holds the transitions, the switches and the wording, so a banner and the panel
+row it belongs to can never describe one event in two ways.
+
+Each **delivery channel has its own switches**. The same moment can be worth a
+banner on the machine you are sitting at and not worth a push somewhere else, and
+one shared set cannot say that. The tray's four are edited from its own panel; the
+webhook's from the portal's Settings.
+
+The **webhook** is off until it has a URL, and it is the only thing in seedeep
+that sends session data off the machine (see `install.md`). It POSTs to any
+address with your headers and your template — `{{title}}`, `{{body}}`,
+`{{project}}`, `{{subject}}`, `{{kind}}` — so ntfy, Pushover, Telegram or a script
+of your own all work without seedeep knowing any of them. A URL on its own is
+already a working webhook: an empty template posts the body. It never retries: a
+missed notification is better than one replayed minutes late.
+
+A turn that ends says **`Back to you`**, not "finished" — the session has not
+ended, it has become yours again. A turn **you** interrupted is never announced:
+if you pressed Esc you already know.
