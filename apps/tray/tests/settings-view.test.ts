@@ -137,7 +137,9 @@ test('each notification switch stores its own setting', () => {
   assert.equal(switches[1]!.getAttribute('aria-label'), 'A session fails');
   // The interruption rule is NOT on the label: a turn you stopped yourself never notifies, and
   // saying so only made a reader wonder what the exception was for. If you pressed Esc you know.
-  assert.equal(switches[2]!.getAttribute('aria-label'), 'A session finishes');
+  // Not "finishes": the session has not ended — the turn closed and it became yours again, which is
+  // the event, and the same words the banner itself now carries.
+  assert.equal(switches[2]!.getAttribute('aria-label'), 'A session is back to you');
   assert.equal(switches[3]!.getAttribute('aria-label'), 'A new server version is out');
   assert.equal(switches[1]!.getAttribute('aria-checked'), 'true', 'a broken session notifies by default');
   assert.equal(switches[2]!.getAttribute('aria-checked'), 'false', 'finished turns are off by default');

@@ -176,7 +176,9 @@ function notificationSection(prefs: Prefs, actions: SettingsActions): HTMLElemen
   node.append(
     toggle(prefs.notify, 'A session needs you', (on) => actions.setNotify(on)),
     toggle(prefs.notifyFailed, 'A session fails', (on) => actions.setNotifyFailed(on)),
-    toggle(prefs.notifyFinished, 'A session finishes', (on) => actions.setNotifyFinished(on)),
+    // Not "finishes": the session has not ended — the turn closed and it became yours again, which
+    // is what the banner says too.
+    toggle(prefs.notifyFinished, 'A session is back to you', (on) => actions.setNotifyFinished(on)),
     toggle(prefs.notifyUpdate, 'A new server version is out', (on) => actions.setNotifyUpdate(on)),
   );
   // Not the accent button `Connect` uses: this is a diagnostic, and drawn as the primary action of

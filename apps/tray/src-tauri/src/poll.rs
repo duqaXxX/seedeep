@@ -16,7 +16,6 @@
 //! arrives. Two implementations of one rule were free to diverge, which is how a phone and a menu
 //! bar end up disagreeing about the same session.
 
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

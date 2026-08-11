@@ -362,37 +362,51 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
     Ok(fitted)
 }
 
-/// The settings as they stand. Read when the panel opens its settings view, never held by the
-/// webview between opens: the file is the truth and it costs a mutex to ask.
+/// The settings as they stand, read from the SERVER.
+///
+/// They stopped being a local file when the server took over deciding what an event is: two copies
+/// of one switch would let a banner be silenced on one side and still fire on the other. A server
+/// that is not answering yields the error the panel shows in place of the switches.
 #[tauri::command]
-fn read_settings(prefs: State<'_, Arc<Prefs>>) -> Settings {
-    prefs.get()
+async fn read_settings(conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
+    conn.notify_switches().await.map(settings_of)
 }
 
-/// Turn the approval notification on or off, and answer with what is now stored — so the toggle
-/// draws the disk's answer rather than the click's intent, and a write that failed leaves it where
-/// it was.
+/// Turn the approval notification on or off, and answer with what the SERVER now holds — so the
+/// toggle draws the server's answer rather than the click's intent, and a call that failed leaves
+/// the switch where it was, with a message saying why.
 #[tauri::command]
-fn set_notify(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify(on)
+async fn set_notify(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
+    conn.set_notify_switch("needsYou", on).await.map(settings_of)
 }
 
-/// The same, for the banner a session sends when it finishes a turn.
+/// The same, for the banner a session sends when it hands the turn back to you.
 #[tauri::command]
-fn set_notify_finished(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_finished(on)
+async fn set_notify_finished(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
+    conn.set_notify_switch("finishes", on).await.map(settings_of)
 }
 
 /// The same, for the banner a session sends when one of its API calls fails.
 #[tauri::command]
-fn set_notify_failed(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_failed(on)
+async fn set_notify_failed(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
+    conn.set_notify_switch("fails", on).await.map(settings_of)
 }
 
 /// The same, for the banner that says a newer seedeep has been published.
 #[tauri::command]
-fn set_notify_update(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_update(on)
+async fn set_notify_update(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
+    conn.set_notify_switch("updates", on).await.map(settings_of)
+}
+
+/// The server's four switches in the shape the panel renders. The two vocabularies are deliberate —
+/// the wire speaks of events, the panel of banners — and this is the one place they meet.
+fn settings_of((needs_you, fails, finishes, updates): (bool, bool, bool, bool)) -> Settings {
+    Settings {
+        notify: needs_you,
+        notify_failed: fails,
+        notify_finished: finishes,
+        notify_update: updates,
+    }
 }
 
 /// Send one notification now, on purpose.

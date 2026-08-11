@@ -104,43 +104,10 @@ impl Prefs {
         *self.current.lock().unwrap()
     }
 
-    /// Store whether a session stopping on the human notifies, and return the settings as they now
-    /// stand.
-    pub fn set_notify(&self, notify: bool) -> Result<Settings, String> {
-        self.update(|s| s.notify = notify)
-    }
 
-    /// Store whether a session finishing a turn notifies, and return the settings as they now stand.
-    pub fn set_notify_finished(&self, notify_finished: bool) -> Result<Settings, String> {
-        self.update(|s| s.notify_finished = notify_finished)
-    }
 
-    /// Store whether a session whose call failed notifies, and return the settings as they now
-    /// stand.
-    pub fn set_notify_failed(&self, notify_failed: bool) -> Result<Settings, String> {
-        self.update(|s| s.notify_failed = notify_failed)
-    }
 
-    /// Store whether a newer published version notifies, and return the settings as they now stand.
-    pub fn set_notify_update(&self, notify_update: bool) -> Result<Settings, String> {
-        self.update(|s| s.notify_update = notify_update)
-    }
 
-    /// Change one setting, leaving the others as they are, and return what is now in force.
-    ///
-    /// The disk is written FIRST and the in-memory copy only after it succeeds: a toggle that took
-    /// effect for this run alone would be a setting the next start silently undoes, which is worse
-    /// than a toggle that says it could not be saved.
-    ///
-    /// One writer for every setting, so a second toggle cannot be added as a second `Settings { .. }`
-    /// literal — which is how the toggle written last would silently reset the ones it did not name.
-    fn update(&self, change: impl FnOnce(&mut Settings)) -> Result<Settings, String> {
-        let mut next = self.get();
-        change(&mut next);
-        store::write(&self.path, &next).map_err(|e| format!("Could not save the setting: {e}"))?;
-        *self.current.lock().unwrap() = next;
-        Ok(next)
-    }
 }
 
 #[cfg(test)]
@@ -172,43 +139,6 @@ mod tests {
         assert!(prefs.get().notify_failed);
         assert!(!prefs.get().notify_finished);
     }
-
-    #[test]
-    fn what_is_turned_off_stays_off_across_a_restart() {
-        let path = store_path(&tmp_dir());
-
-        let prefs = Prefs::load(path.clone());
-        assert!(!prefs.set_notify(false).unwrap().notify);
-        assert!(!prefs.get().notify);
-
-        assert!(!Prefs::load(path).get().notify, "the next start reads the file, not the default");
-    }
-
-    // Three settings in one file, and one writer for all of them. Written because the obvious way to
-    // add the second — a fresh `Settings { .. }` literal per setter — silently resets whichever one
-    // the setter does not name, and the user only finds out on the next session that fails to notify.
-    #[test]
-    fn changing_one_setting_leaves_the_others_where_they_were() {
-        let path = store_path(&tmp_dir());
-        let prefs = Prefs::load(path.clone());
-        prefs.set_notify(false).unwrap();
-        prefs.set_notify_failed(false).unwrap();
-        prefs.set_notify_update(false).unwrap();
-
-        let after = prefs.set_notify_finished(true).unwrap();
-
-        assert_eq!(
-            after,
-            Settings {
-                notify: false,
-                notify_finished: true,
-                notify_failed: false,
-                notify_update: false,
-            }
-        );
-        assert_eq!(Prefs::load(path).get(), after, "and the disk agrees");
-    }
-
     // The file a build BEFORE this feature wrote has no `notifyFinished` at all. Parsing it whole-
     // or-nothing would fall back to the defaults and turn the approvals the user had silenced back
     // on — a settings file undoing a setting.
@@ -234,36 +164,4 @@ mod tests {
         assert!(Prefs::load(path).get().notify);
     }
 
-    // The file is written with the same private mode as the connection — not because a preference is
-    // a secret, but because both live in a directory whose mode is the token's protection.
-    #[cfg(unix)]
-    #[test]
-    fn the_file_is_the_users_own() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tmp_dir();
-        let path = store_path(&dir);
-
-        Prefs::load(path.clone()).set_notify(false).unwrap();
-
-        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        let raw = fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"notify\""), "{raw}");
-    }
-
-    // A setting that could not be stored must not claim to be in force: the panel shows the
-    // message and the toggle stays where the disk says it is.
-    #[test]
-    fn a_setting_that_cannot_be_written_does_not_take_effect() {
-        // A path under a FILE, so `create_dir_all` fails — the one write failure that can be
-        // provoked without touching permissions the test runner may hold anyway.
-        let blocked = tmp_dir().join("wall");
-        fs::write(&blocked, "not a directory").unwrap();
-        let prefs = Prefs::load(store_path(&blocked));
-
-        let err = prefs.set_notify(false).expect_err("the write cannot succeed");
-
-        assert!(err.contains("Could not save the setting"), "{err}");
-        assert!(prefs.get().notify, "the in-memory value must follow the disk");
-    }
 }
