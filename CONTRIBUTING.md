@@ -83,10 +83,10 @@ to `.seedeep-dev` inside the checkout, which is gitignored.
 | | Development | Installed |
 | -- | -- | -- |
 | Server: `config.json`, `cert.pem`, `key.pem`, caches, indexes, `servers/`, `server.log` | `.seedeep-dev/` | `~/.seedeep/` |
-| Tray: `connection.json`, `settings.json` | `.seedeep-dev/tray/` | the app's own config directory |
+| Tray: `connection.json` | `.seedeep-dev/tray/` | the app's own config directory |
 | Port | 44843 | 44842 |
 
-Nothing is shared: token, certificate, port, notification preferences, caches — all doubled. The
+Nothing is shared: token, certificate, port, caches — all doubled. Notification preferences are NOT in that list: they live in the server's `config.json`, so a dev server and an installed one each have their own, and the tray reads whichever it is connected to. The
 installed apps never carry the variable, and the tray *cannot*: a GUI app inherits no shell
 environment at all, which is what makes it the installed world without anyone choosing that.
 
