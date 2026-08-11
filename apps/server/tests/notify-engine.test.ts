@@ -16,7 +16,7 @@ function entry(o: { id: string; status: DigestEntry['status']; waitingFor?: stri
     waitingFor: o.waitingFor ?? null,
     pendingTool: null,
     error: null,
-    turn: { state: 'done', now: { text: '' } },
+    turn: { state: 'done', apiCalls: 1, now: { text: '' } },
   } as unknown as DigestEntry;
 }
 

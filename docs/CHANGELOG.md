@@ -4,6 +4,14 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A turn that never called the model no longer announces a finish.** The report was a banner saying
+only `Turn finished`, arriving long after the session had stopped: Esc pressed before the first
+reply leaves NOTHING in the transcript — no marker, no `interruptedMessageId`, no assistant line —
+so the turn was never marked interrupted, and the finish fired when liveness read from the process
+finally said idle. Esc that Claude Code does record was already covered end to end. Measured over
+533 real sessions: 24 turns of 2526 are the silent shape; the other zero-call turns are local slash
+commands, which never make a session look busy in the first place.
+
 **A notification is one title and one line.** The bodies carried a second line — the command
 awaiting approval, Claude Code's error text, what the turn had done — and none of it belonged there:
 you cannot act on a banner (approving still means going back to the terminal), a banner truncates

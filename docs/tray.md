@@ -1113,7 +1113,7 @@ from `capabilities/default.json`.
 | -- | -- | -- | -- |
 | A session stops on the human (`waiting`, and only the two labels below) | *A session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` |
 | A session's model call fails (`error` becomes non-null) | *A session fails* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` |
-| A session that was `busy` becomes `idle` | *A session finishes* | **off** | `project — subject` / `Turn finished` |
+| A session that was `busy` becomes `idle`, having called the model at least once | *A session finishes* | **off** | `project — subject` / `Turn finished` |
 | The connected SERVER is behind npm (`standing`, from `/api/update`) | *A new server version is out* | **on** | `seedeep <latest> is available` / `The server is running <its version>.` |
 
 **Why one switch per trigger, and not one reason for one switch.** The events are not the same bargain: a
@@ -1193,6 +1193,15 @@ were stopped on the human, and which were at work, last time it could see; it an
 was not there before. Three rules follow, and each of them is a way of not lying about when
 something happened:
 
+- **A turn that never called the model did not finish.** Esc pressed BEFORE the first reply leaves
+  nothing in the transcript — no marker, no `interruptedMessageId`, no assistant line — so the turn
+  is never marked interrupted, and the finish used to be announced minutes later, when liveness read
+  from the process finally said idle. Esc that Claude Code DOES record was already covered: the
+  marker line carries `interruptedMessageId`, the parser turns it into `turn-interrupted` before the
+  next turn opens, and an interrupted turn has never notified. Measured 2026-08-11 over 533 real
+  sessions: 24 turns of 2526 (1.0%) are the silent shape. The other zero-call turns are local slash
+  commands (264, 10.5%), which never make a session look busy, so no finish was ever in flight for
+  them.
 - **A session already waiting — or already idle — when the tray connects is not an event.** The
   first digest after a start, or after a reconnect, SEEDS both sets and announces nothing. Without
   that, every restart would replay every open prompt as if it had just happened.

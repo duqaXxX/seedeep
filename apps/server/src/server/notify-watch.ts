@@ -121,9 +121,19 @@ function failedAnnouncement(e: DigestEntry): Announcement {
  * telling them what they just did is the definition of a banner that gets muted. What the turn
  * actually did is not carried either — the event IS the session becoming yours again, and the
  * account of it is the Idle band's, three words away in the panel.
+ *
+ * **Neither is a turn that never called the model.** That covers the half of Esc the transcript
+ * cannot state: pressed before the first reply, Claude Code writes NOTHING — no marker, no
+ * `interruptedMessageId`, no assistant line — so the turn is never marked interrupted and used to
+ * announce itself as finished, minutes later, when liveness read from the process finally said
+ * idle. A turn that never started is not a turn that finished. Measured 2026-08-11 over 533 real
+ * sessions: 24 turns of 2526 (1.0%) are that shape. The other zero-call turns are local slash
+ * commands (264, 10.5%), which never make the session look busy in the first place, so nothing
+ * about them reaches this function anyway.
  */
 function finishedAnnouncement(e: DigestEntry): Announcement | null {
   if (e.turn?.state === 'interrupted') return null;
+  if ((e.turn?.apiCalls ?? 0) === 0) return null;
   // `Turn finished`, and both words earn their place. `Finished` alone read as the SESSION having
   // ended, which it has not; `Back to you` said the right thing and nobody could tell what it meant
   // out of context. Naming the turn is what makes it unambiguous.
