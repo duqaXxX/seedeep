@@ -34,14 +34,6 @@ export interface Versions {
   serverChannel?: string;
 }
 
-/** What the app has stored — see `settings.rs`. */
-export interface Prefs {
-  notify: boolean;
-  notifyFinished: boolean;
-  notifyFailed: boolean;
-  notifyUpdate: boolean;
-}
-
 /** The message the last action came back with. `bad` is a failure; anything else is a receipt. */
 export interface Note {
   text: string;
@@ -52,10 +44,6 @@ export interface Note {
 export interface SettingsActions {
   /** Back to the sessions. */
   back(): void;
-  setNotify(on: boolean): void;
-  setNotifyFinished(on: boolean): void;
-  setNotifyFailed(on: boolean): void;
-  setNotifyUpdate(on: boolean): void;
   /** Point the tray at another server — the same act as the connection screen's. */
   connect(url: string): void;
   /** Send one notification now. The only way to find out whether they arrive at all. */
@@ -247,7 +235,6 @@ function aboutSection(versions: Versions): HTMLElement {
  */
 export function renderSettings(
   status: Extract<Status, { kind: 'connected' }>,
-  prefs: Prefs,
   actions: SettingsActions,
   versions: Versions,
   local: Local,

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use client::{Conn, Status};
 use local::LocalServer;
 use poll::{Poller, Tick};
-use settings::{Prefs, Settings};
+use settings::Prefs;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, Rect, State, WindowEvent};
@@ -362,53 +362,6 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
     Ok(fitted)
 }
 
-/// The settings as they stand, read from the SERVER.
-///
-/// They stopped being a local file when the server took over deciding what an event is: two copies
-/// of one switch would let a banner be silenced on one side and still fire on the other. A server
-/// that is not answering yields the error the panel shows in place of the switches.
-#[tauri::command]
-async fn read_settings(conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
-    conn.notify_switches().await.map(settings_of)
-}
-
-/// Turn the approval notification on or off, and answer with what the SERVER now holds — so the
-/// toggle draws the server's answer rather than the click's intent, and a call that failed leaves
-/// the switch where it was, with a message saying why.
-#[tauri::command]
-async fn set_notify(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
-    conn.set_notify_switch("needsYou", on).await.map(settings_of)
-}
-
-/// The same, for the banner a session sends when it hands the turn back to you.
-#[tauri::command]
-async fn set_notify_finished(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
-    conn.set_notify_switch("finishes", on).await.map(settings_of)
-}
-
-/// The same, for the banner a session sends when one of its API calls fails.
-#[tauri::command]
-async fn set_notify_failed(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
-    conn.set_notify_switch("fails", on).await.map(settings_of)
-}
-
-/// The same, for the banner that says a newer seedeep has been published.
-#[tauri::command]
-async fn set_notify_update(on: bool, conn: State<'_, Arc<Conn>>) -> Result<Settings, String> {
-    conn.set_notify_switch("updates", on).await.map(settings_of)
-}
-
-/// The server's four switches in the shape the panel renders. The two vocabularies are deliberate —
-/// the wire speaks of events, the panel of banners — and this is the one place they meet.
-fn settings_of((needs_you, fails, finishes, updates): (bool, bool, bool, bool)) -> Settings {
-    Settings {
-        notify: needs_you,
-        notify_failed: fails,
-        notify_finished: finishes,
-        notify_update: updates,
-    }
-}
-
 /// Send one notification now, on purpose.
 ///
 /// This is the ONLY honest way to surface the platform's own silence. The plugin's
@@ -441,11 +394,6 @@ fn main() {
             stop_server,
             server_version,
             update_view,
-            read_settings,
-            set_notify,
-            set_notify_finished,
-            set_notify_failed,
-            set_notify_update,
             test_notification,
             resize
         ])

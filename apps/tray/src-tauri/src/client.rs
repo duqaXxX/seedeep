@@ -35,10 +35,6 @@ const STREAM_PATH: &str = "/api/stream";
 /// buffer for it would trade a dropped stream for unbounded memory.
 const SSE_BUFFER_MAX: usize = 1 << 20;
 
-/// What the panel says when a switch could not be saved. The same words the panel already uses for
-/// a server that is not answering, so the user recognises the cause instead of reading a new voice.
-const NOT_RUNNING: &str = "Not saved — seedeep is not running";
-
 /// The endpoint that names the server's own release, read only when the settings view is opened.
 /// Never on the poll: it is a value that cannot change while a process lives, and a second request
 /// a second would buy nothing.
@@ -1409,6 +1405,7 @@ fn parse_notification(frame: &str) -> Option<Announcement> {
     serde_json::from_str(data?).ok()
 }
 
+
 #[cfg(test)]
 mod stream_tests {
     use super::*;
@@ -1440,67 +1437,5 @@ mod stream_tests {
     fn a_frame_that_is_not_json_is_dropped_rather_than_panicking() {
         assert!(parse_notification("event: notification\ndata: not json").is_none());
         assert!(parse_notification("event: notification").is_none());
-    }
-}
-
-/// The tray's four switches as the SERVER holds them, in the shape the panel already renders.
-///
-/// The names differ on purpose: `notifications.tray` on the wire speaks of events (`needsYou`), the
-/// panel of banners (`notify`). Translating here keeps one vocabulary per side instead of renaming
-/// a settings file every time the server's own words move.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct WireSwitches {
-    #[serde(rename = "needsYou")]
-    needs_you: bool,
-    fails: bool,
-    finishes: bool,
-    updates: bool,
-}
-
-impl Conn {
-    /// Read the four notification switches from the server.
-    ///
-    /// They live there, not in a local file, because the server is what decides an event now: two
-    /// copies of one switch would let a banner be silenced on one side and not the other.
-    pub async fn notify_switches(&self) -> Result<(bool, bool, bool, bool), String> {
-        let Some((target, client)) = self.active() else {
-            return Err(NOT_RUNNING.to_string());
-        };
-        let mut req = client.get(format!("{}{CONFIG_PATH}", target.base_url));
-        if let Some(token) = &target.token {
-            req = req.bearer_auth(token);
-        }
-        let res = req.send().await.map_err(|_| NOT_RUNNING.to_string())?;
-        let body: Value = res.json().await.map_err(|_| NOT_RUNNING.to_string())?;
-        let w: WireSwitches =
-            serde_json::from_value(body["notifications"]["tray"].clone()).map_err(|_| NOT_RUNNING.to_string())?;
-        Ok((w.needs_you, w.fails, w.finishes, w.updates))
-    }
-
-    /// Move one switch, and answer with what the server now holds.
-    ///
-    /// `key` is the server's own name for the event (`needsYou`, `fails`, `finishes`, `updates`).
-    /// A failure is reported rather than swallowed: the panel has to put the switch back, because
-    /// one that looks moved and changed nothing is worse than one that refused.
-    pub async fn set_notify_switch(&self, key: &str, on: bool) -> Result<(bool, bool, bool, bool), String> {
-        let Some((target, client)) = self.active() else {
-            return Err(NOT_RUNNING.to_string());
-        };
-        let mut req = client.post(format!("{}{CONFIG_PATH}", target.base_url));
-        if let Some(token) = &target.token {
-            req = req.bearer_auth(token);
-        }
-        let res = req
-            .json(&serde_json::json!({ "notifications": { "tray": { key: on } } }))
-            .send()
-            .await
-            .map_err(|_| NOT_RUNNING.to_string())?;
-        if !res.status().is_success() {
-            return Err(NOT_RUNNING.to_string());
-        }
-        let body: Value = res.json().await.map_err(|_| NOT_RUNNING.to_string())?;
-        let w: WireSwitches =
-            serde_json::from_value(body["notifications"]["tray"].clone()).map_err(|_| NOT_RUNNING.to_string())?;
-        Ok((w.needs_you, w.fails, w.finishes, w.updates))
     }
 }

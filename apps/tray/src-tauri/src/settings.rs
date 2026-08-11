@@ -85,7 +85,6 @@ pub fn store_path(config_dir: &Path) -> PathBuf {
 /// The poll asks on every reading — once a second with the panel open — and a preference read is a
 /// file read only when the answer might have changed, which is when the user changes it.
 pub struct Prefs {
-    path: PathBuf,
     current: Mutex<Settings>,
 }
 
@@ -94,7 +93,6 @@ impl Prefs {
     pub fn load(path: PathBuf) -> Self {
         let current = store::read(&path).unwrap_or_default();
         Self {
-            path,
             current: Mutex::new(current),
         }
     }
