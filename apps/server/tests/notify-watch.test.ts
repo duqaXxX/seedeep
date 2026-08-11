@@ -124,7 +124,11 @@ test('the words match the panel, because two wordings teach the user to trust ne
     }),
   ]);
   assert.equal(wait!.title, 'atlas — add a retry to the uploader');
-  assert.equal(wait!.body, 'Waiting for your approval — Bash\nrm -rf build');
+  // The tool's NAME, never its argument: a banner answers "do I get up", and the command is what
+  // you go and read. It is also the text that would leave the machine on the webhook channel.
+  assert.equal(wait!.body, 'Waiting for your approval — Bash');
+  assert.ok(!wait!.body.includes('rm -rf build'), 'the command is not carried');
+  assert.ok(!wait!.body.includes('\n'), 'one line');
 
   const w2 = createNotifyWatch();
   w2.step([entry({ id: 'b', status: 'busy' })]);
@@ -136,20 +140,21 @@ test('the words match the panel, because two wordings teach the user to trust ne
   const [failed] = w3.step([
     entry({ id: 'c', status: 'idle', error: { agentId: 'sub-1', message: 'API Error: 529 Overloaded' } }),
   ]);
-  assert.equal(failed!.body, "A subagent's API call failed\nAPI Error: 529 Overloaded");
+  assert.equal(failed!.body, "A subagent's API call failed");
+  assert.ok(!failed!.body.includes('529'), "Claude Code's message is the panel's to show");
 });
 
-test('a finished turn says Turn finished, with the agent last words when there are any', () => {
+test('a finished turn says Turn finished, and not what the turn did', () => {
   // `Finished` said the session had ended; it had not. The turn closed and the session became the
-  // user's again, which is the event — and in the one case where this line is ALL the notification
-  // carries, the word is the whole message.
+  // user's again, which is the event — and the event is the whole message. What the turn actually
+  // did is the Idle band's account, three words away in the panel.
   const w = createNotifyWatch();
   w.step([entry({ id: 'a', status: 'busy' })]);
   const [a] = w.step([entry({ id: 'a', status: 'idle', nowText: 'Added the retry and ran the tests.' })]);
-  assert.equal(a!.body, 'Turn finished\nAdded the retry and ran the tests.');
+  assert.equal(a!.body, 'Turn finished');
 });
 
-test('a finished turn with nothing on record still says Turn finished', () => {
+test('a finished turn with nothing on record says exactly the same thing', () => {
   const w = createNotifyWatch();
   w.step([entry({ id: 'a', status: 'busy' })]);
   assert.equal(w.step([entry({ id: 'a', status: 'idle', nowText: '' })])[0]!.body, 'Turn finished');

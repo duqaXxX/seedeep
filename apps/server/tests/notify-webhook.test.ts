@@ -10,7 +10,8 @@ const announcement: Announcement = {
   project: 'atlas',
   subject: 'add a retry to the uploader',
   title: 'atlas — add a retry to the uploader',
-  body: 'Waiting for your approval — Bash\nrm -rf build',
+  // One line, and never the command: what a notification carries is the event, not the detail.
+  body: 'Waiting for your approval — Bash',
 };
 
 function hook(o: Partial<NotifyWebhook> = {}): NotifyWebhook {
@@ -86,18 +87,18 @@ test('an unconfigured webhook is never called at all', async () => {
   assert.equal(called, false);
 });
 
-test('a JSON body has its values escaped, so a quoted command cannot break the payload', () => {
-  // The least safe text in seedeep goes through here: a prompt, and a shell command the user is
-  // being asked to approve. Telegram takes JSON, and an unescaped quote makes it reject the call —
+test('a JSON body has its values escaped, so a quoted prompt cannot break the payload', () => {
+  // The bodies are ours and safe. The TITLE is not: it carries the user's own first prompt, which
+  // is the only free text left in the payload — and a quote in it makes Telegram reject the call
   // silently, because nothing retries.
-  const risky = { ...announcement, body: 'Waiting for your approval — Bash\nrm -rf "build"' };
-  const out = renderTemplate('{"chat_id":"1","text":"{{body}}"}', risky, 'application/json');
+  const risky = { ...announcement, subject: 'fix the "retry" helper', title: 'atlas — fix the "retry" helper' };
+  const out = renderTemplate('{"chat_id":"1","text":"{{title}}"}', risky, 'application/json');
   const parsed = JSON.parse(out) as { text: string };
-  assert.equal(parsed.text, risky.body, 'and it round-trips to exactly what the banner said');
+  assert.equal(parsed.text, risky.title, 'and it round-trips to exactly what the banner said');
 });
 
 test('a plain body is left alone — escaping it would post backslashes to ntfy', () => {
-  const risky = { ...announcement, body: 'a "quoted" thing' };
-  assert.equal(renderTemplate('{{body}}', risky, 'text/plain'), 'a "quoted" thing');
-  assert.equal(renderTemplate('{{body}}', risky), 'a "quoted" thing');
+  const risky = { ...announcement, title: 'a "quoted" thing' };
+  assert.equal(renderTemplate('{{title}}', risky, 'text/plain'), 'a "quoted" thing');
+  assert.equal(renderTemplate('{{title}}', risky), 'a "quoted" thing');
 });

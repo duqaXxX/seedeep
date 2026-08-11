@@ -4,6 +4,17 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A notification is one title and one line.** The bodies carried a second line — the command
+awaiting approval, Claude Code's error text, what the turn had done — and none of it belonged there:
+you cannot act on a banner (approving still means going back to the terminal), a banner truncates
+exactly that line first, and every one of them is one click away in the panel, untruncated. What
+settled it is the webhook: it exists to reach a phone, it is the one channel whose payload LEAVES
+the machine, and those second lines were shipping shell commands and error text to a third-party
+service to say what the first line already said. Tray and webhook now carry identical text, so there
+is one thing to reason about. The tool's NAME stays on an approval — `Waiting for your approval —
+Bash` says whether something is about to run, which is how fast you get up; the command itself does
+not.
+
 **A stale process says so, on every surface and for as long as it is stale.** A server holds the
 port, host and certificate name it started with; `config.json` can move underneath it, and until
 now nothing said so — remote access was configured, the process kept answering on loopback, and the

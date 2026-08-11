@@ -814,6 +814,14 @@ of your own all work without seedeep knowing any of them. A URL on its own is
 already a working webhook: an empty template posts the body. It never retries: a
 missed notification is better than one replayed minutes late.
 
+**A notification is one title and one line**: which session, and what happened —
+`atlas — add a retry to the uploader` / `Waiting for your approval — Bash`. Not the
+command awaiting approval, not the error text, not what the turn did. You cannot act
+on a banner anyway (approving still means going back to the terminal), a banner
+truncates that second line first, and all of it is one click away in the panel. It
+also keeps the webhook honest: that is the one channel whose payload leaves your
+machine, and it now carries no more than the banner beside you does.
+
 A turn that ends says **`Turn finished`**, not "finished" — the session has not
 ended, it has become yours again. A turn **you** interrupted is never announced:
 if you pressed Esc you already know.

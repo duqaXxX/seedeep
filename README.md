@@ -100,7 +100,11 @@ that notifies about everything is a tray you mute.
 | -- | -- | -- |
 | **Waiting for your approval** | on | the session cannot go on until you answer |
 | **The last API call failed** | on | it has stopped, and nothing on screen says so — 39 of 47 real failures were the last line their session ever wrote |
-| **Finished** | **off** | news you can read whenever you like should not be able to force you to silence the two that cannot wait |
+| **Turn finished** | **off** | news you can read whenever you like should not be able to force you to silence the two that cannot wait |
+
+Each is one title and one line — which session, and what happened. The command
+awaiting approval and the error text stay in the panel: you cannot act on a banner,
+and the webhook channel sends its payload off your machine.
 
 seedeep ships unsigned, so macOS asks for the notification permission again on every
 update — a tray that goes quiet after an upgrade is
