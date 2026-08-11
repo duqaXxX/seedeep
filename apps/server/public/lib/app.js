@@ -3205,7 +3205,7 @@ function createSettingsPanel(headerEl) {
     finishes: drawer.querySelector("#s-hook-finishes"),
     updates: drawer.querySelector("#s-hook-updates")
   };
-  for (const [, track] of Object.entries({ ...traySwitches, ...hookSwitches })) {
+  for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
     track.parentElement?.addEventListener("click", () => {
       track.classList.toggle("on");
       setDirty(true);

@@ -472,7 +472,11 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     updates: drawer.querySelector<HTMLDivElement>('#s-hook-updates')!,
   };
   // The same control the rest of the drawer uses; `on` IS the state, as it is for Open browser.
-  for (const [, track] of Object.entries({ ...traySwitches, ...hookSwitches })) {
+  //
+  // Concatenated, never spread into one object: the two channels carry the SAME four keys, so
+  // `{ ...tray, ...hook }` silently keeps four entries out of eight and leaves one channel's
+  // toggles with no listener at all — which is exactly what it did.
+  for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
     track.parentElement?.addEventListener('click', () => {
       track.classList.toggle('on');
       setDirty(true);
