@@ -72,7 +72,6 @@ function section(title: string): HTMLElement {
   return node;
 }
 
-
 /**
  * What the server section says, which is three different facts and not one with holes in it.
  *

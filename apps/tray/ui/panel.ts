@@ -399,7 +399,6 @@ async function openSettings(): Promise<void> {
   }
 }
 
-
 /**
  * Send one notification. The receipt says SENT, never delivered: the platform reports success even
  * when it shows nothing (`docs/tray.md`), so the only proof is the banner the user is looking for.

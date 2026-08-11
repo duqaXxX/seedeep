@@ -243,12 +243,7 @@ test('no version means no About section at all', () => {
 // process can be named for this address — that takes the records on disk — so a screen that decided
 // from `baseUrl` would offer a button for a server it cannot signal.
 test('stopping is offered only when Rust can name the process', () => {
-  const { node, calls } = mount(
-    LOCAL,
-    undefined,
-    { tray: '0.1.1' },
-    { start: { kind: 'elsewhere' }, canStop: true },
-  );
+  const { node, calls } = mount(LOCAL, undefined, { tray: '0.1.1' }, { start: { kind: 'elsewhere' }, canStop: true });
 
   const stop = find(node, 'set-stop')[0] as { onclick: () => void };
   stop.onclick();
