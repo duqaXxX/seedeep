@@ -2991,7 +2991,7 @@ function createSettingsPanel(headerEl) {
     <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
   </div>
   <div class="srow">
-    <div class="slabel">Open browser<br>on start</div>
+    <div class="slabel">Open browser on start</div>
     <div class="stoggle-wrap">
       <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
       <span id="s-open-label" class="stoggle-label">Yes</span>
@@ -3042,38 +3042,27 @@ function createSettingsPanel(headerEl) {
 <div class="block">
   <div class="blabel">Notifications</div>
   <div class="srow">
-    <div class="slabel">Webhook URL<small>Where the POST goes — your notification service's endpoint. Empty turns the webhook off.</small></div>
-    <input id="s-hook-url" class="sinput" type="text" placeholder="https://ntfy.sh/your-topic">
+    <div class="slabel">Where notifications go<small>The tray shows them on this machine. Nothing else is sent anywhere unless you add an endpoint below.</small></div>
+    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Send to a webhook…</button>
   </div>
-  <div class="srow">
-    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner there and not a push here.</small></div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Webhook URL<small>Where the POST goes. Any service that accepts one — leaving it empty keeps the webhook off.</small></div>
+    <input id="s-hook-url" class="sinput" type="text" placeholder="https://example.com/hook">
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Send when<small>Its own set: the same event can be worth a banner on the tray and not worth sending here.</small></div>
     <div class="shooks">
-      <div class="shook-row" data-hook="needsYou">
-        <div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-        <span>A session needs you</span>
-      </div>
-      <div class="shook-row" data-hook="fails">
-        <div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-        <span>A session fails</span>
-      </div>
-      <div class="shook-row" data-hook="finishes">
-        <div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-        <span>A session is back to you</span>
-      </div>
-      <div class="shook-row" data-hook="updates">
-        <div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div>
-        <span>A new server version is out</span>
-      </div>
+      <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session is back to you</span></div>
+      <div class="shook-row"><div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
     </div>
   </div>
-  <div class="srow">
-    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Custom notification…</button>
-  </div>
-  <div class="srow scustom" id="s-hook-custom-fields" hidden>
+  <div class="srow scustom" hidden>
     <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
-    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Title: seedeep"></textarea>
+    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Authorization: Bearer …"></textarea>
   </div>
-  <div class="srow scustom" id="s-hook-template-row" hidden>
+  <div class="srow scustom" hidden>
     <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
     <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
   </div>
@@ -3208,7 +3197,7 @@ function createSettingsPanel(headerEl) {
   customBtn.addEventListener("click", () => {
     const open2 = customBtn.getAttribute("aria-expanded") === "true";
     customBtn.setAttribute("aria-expanded", String(!open2));
-    customBtn.textContent = open2 ? "Custom notification…" : "Hide custom fields";
+    customBtn.textContent = open2 ? "Send to a webhook…" : "Hide webhook settings";
     for (const row of customRows)
       row.hidden = open2;
   });
