@@ -7603,9 +7603,11 @@ function createGraph(container, state, opts = {}) {
       if (work.length)
         scopeBanner.append(E("span", "sbnum", work.join(" · ")));
       const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
+      const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
+      if (work.length && (open || worked))
+        scopeBanner.append(E("span", "sbsep group", "|"));
       if (open)
         scopeBanner.append(liveElapsed(open));
-      const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
       if (open && worked)
         scopeBanner.append(E("span", "sbsep", "·"));
       if (worked)

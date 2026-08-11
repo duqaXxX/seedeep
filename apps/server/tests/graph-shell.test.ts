@@ -6046,11 +6046,11 @@ test('scope banner: the two durations are separated, and only when both are ther
   // A live turn beside a finished one: the running counter AND the session total.
   const both = snapWithTurns([makeTurn(1), makeTurn(2, { state: 'live', durationMs: null })]);
   const live = createGraph(container, { snapshot: () => both, onChange: () => () => {}, onEvent: () => () => {} });
-  assert.equal(
-    findByClass(findByClass(container, 'scope-banner')[0], 'sbsep').length,
-    1,
-    'a separator between the running turn and the session total',
-  );
+  const seps = findByClass(findByClass(container, 'scope-banner')[0], 'sbsep');
+  // Two separators, two jobs: a bar closing the counts, a dot between the two durations. Same
+  // character for both and the grouping dissolves — which is the whole reason there are two.
+  assert.equal(seps.length, 2, 'the group bar and the duration dot');
+  assert.equal(seps.filter((n: any) => n.className?.includes('group')).length, 1, 'exactly one group bar');
   live.destroy();
 
   // Nothing running: one duration, so nothing to separate — a dangling `·` is worse than none.
@@ -6060,7 +6060,10 @@ test('scope banner: the two durations are separated, and only when both are ther
     onChange: () => () => {},
     onEvent: () => () => {},
   });
-  assert.equal(findByClass(findByClass(container2, 'scope-banner')[0], 'sbsep').length, 0, 'no lone separator');
+  // The counts are still there, so the group bar is; the durations are one, so no dot joins them.
+  const settledSeps = findByClass(findByClass(container2, 'scope-banner')[0], 'sbsep');
+  assert.equal(settledSeps.length, 1, 'the group bar alone');
+  assert.ok(settledSeps[0].className?.includes('group'), 'and it is the group one, not a lone dot');
   settled.destroy();
 
   g.document = prevDoc;

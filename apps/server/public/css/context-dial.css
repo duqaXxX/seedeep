@@ -354,6 +354,13 @@
 /* Joins the two durations into one group, the way the counts before them are joined by a string.
    It has to be an element rather than text because both of them tick on their own counter. Dimmer
    than either side: it is punctuation, not a third value. */
+.sbsep.group {
+  /* Between the GROUPS, not inside one: a different character, or the grouping dissolves back into
+     a single run of five figures with four units in it. Fainter than the dots it separates —
+     louder punctuation than the values it stands between would read as a value itself. */
+  opacity: 0.35;
+  margin: 0 0.1rem;
+}
 .sbsep {
   font-family: var(--mono);
   font-size: 0.7rem;

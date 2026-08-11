@@ -1492,14 +1492,18 @@ export function createGraph(
       // The live counter answers "how long has the current turn been running" — the only
       // live duration a whole-session scope has. Same guard as the turn scope below.
       const open = fullSnap.turnList.find((t) => working(t, fullSnap));
-      if (open) scopeBanner.append(liveElapsed(open));
       // How long the whole session has worked. Not redundant with the counter beside it:
       // that one is THIS turn, this one is every turn summed. A session with no finished
       // turn yet has nothing to total.
       const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
-      // The two durations are one group, so they are joined like the counts before them — but by a
-      // separator span rather than a string, because both tick: each is its own live counter and
-      // cannot be folded into one piece of text.
+      // Two separators doing two different jobs, which is why they are not the same character.
+      // Between the GROUPS a bar: whitespace alone left the boundary too weak to see, and the
+      // interior dot used there would have dissolved the grouping back into one run of five
+      // figures — rendered all three on the real banner to compare, and that is what it looks
+      // like. Between the two DURATIONS the same dot as the counts, and a span rather than a
+      // string because both tick on their own counter and cannot be one piece of text.
+      if (work.length && (open || worked)) scopeBanner.append(E('span', 'sbsep group', '|'));
+      if (open) scopeBanner.append(liveElapsed(open));
       if (open && worked) scopeBanner.append(E('span', 'sbsep', '·'));
       if (worked) scopeBanner.append(sessionWorked(fullSnap));
       // The answer the session ended on. A scope selector promises that the same surface
