@@ -7,6 +7,7 @@ import {
   parseHeaders,
   randomToken,
   resolveFormState,
+  usablePort,
 } from '../src/client/settings.ts';
 
 // ── isLoopback ───────────────────────────────────────────────────────────────
@@ -173,7 +174,6 @@ test('the save body carries the webhook with its headers parsed', () => {
     needsYou: true,
     fails: false,
     finishes: false,
-    updates: false,
   });
   assert.deepEqual(body['notifications'], {
     webhook: {
@@ -183,7 +183,20 @@ test('the save body carries the webhook with its headers parsed', () => {
       needsYou: true,
       fails: false,
       finishes: false,
-      updates: false,
     },
   });
+});
+
+test('a port the server could not bind is left out of the body, never sent as zero', () => {
+  // With no Save button every toggle posts the whole form. An empty field used to travel as
+  // Number('') === 0, which the server accepts as a number and then binds at random on next start.
+  assert.equal(usablePort(''), null);
+  assert.equal(usablePort('45x'), null);
+  assert.equal(usablePort('0'), null);
+  assert.equal(usablePort('70000'), null);
+  assert.equal(usablePort(' 45999 '), 45999);
+
+  const body = buildSaveBody(null, '127.0.0.1', true, '', '');
+  assert.ok(!('port' in body), 'the server keeps the port it already had');
+  assert.equal(body['host'], '127.0.0.1');
 });

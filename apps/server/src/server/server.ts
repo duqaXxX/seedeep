@@ -147,6 +147,15 @@ export const LIVENESS_MS = 15_000;
  */
 const NOTIFY_COALESCE_MS = 300;
 
+/**
+ * How often the notification engine looks even when the transcript has said nothing.
+ *
+ * A session waiting on an approval is SILENT — it writes its next line only once the user answers —
+ * so the state that matters changes with no event to hang an evaluation on. One second matches what
+ * the tray's own poll spent while its panel was open, and it runs only while `wanted()`.
+ */
+const NOTIFY_SWEEP_MS = 1_000;
+
 const encoder = new TextEncoder();
 
 /**
@@ -253,6 +262,10 @@ function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: b
       ...rest.notifications,
       webhook: {
         ...rest.notifications.webhook,
+        // The URL is a CREDENTIAL, not an address: for Slack, Discord and ntfy, whoever holds it can
+        // post into the channel. This endpoint answers without auth even in remote mode, so it says
+        // only whether one is configured.
+        url: rest.notifications.webhook.url === '' ? '' : REDACTED,
         headers: Object.fromEntries(Object.keys(rest.notifications.webhook.headers).map((k) => [k, REDACTED])),
       },
     },
@@ -271,6 +284,9 @@ function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unkn
   const obj = (v: unknown): Record<string, unknown> =>
     v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
   const hook = obj(given['webhook']);
+  // `***` means "keep what you have", for the URL exactly as for a header: the panel reads the
+  // redaction and posts the whole object back, and taking it literally would store the mask.
+  const url = hook['url'] === undefined || hook['url'] === REDACTED ? stored.webhook.url : String(hook['url']);
   const headers =
     hook['headers'] === undefined
       ? stored.webhook.headers
@@ -282,7 +298,7 @@ function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unkn
         );
   return {
     tray: { ...stored.tray, ...obj(given['tray']) } as NotifyConfig['tray'],
-    webhook: { ...stored.webhook, ...hook, headers } as NotifyConfig['webhook'],
+    webhook: { ...stored.webhook, ...hook, url, headers } as NotifyConfig['webhook'],
   };
 }
 
@@ -422,21 +438,52 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   });
 
   // Coalesced: a turn appends many lines in a burst and the digest is the same answer for all of
-  // them. The delay is what a notification can afford to be late by and is far below the tray's
-  // own 1s open / 5s closed poll, so this is never the slower of the two.
+  // them.
   let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  // One build at a time. The first is materially slower than the rest — `liveTrees.ensure` seeds
+  // from disk on first sight — so two in flight would resolve out of order and rewind `seen` to an
+  // older reading, announcing the same finish twice.
+  let building = false;
+  // Whether anyone was listening last time, so the loss of the last one can RE-SEED. Without this,
+  // `seen` keeps a snapshot from whenever the tray was closed and the next reading announces a wait
+  // that happened half an hour ago — the exact misdating the seed rule exists to prevent.
+  let wasWanted = false;
+
   const evaluate = () => {
-    if (notifyTimer !== null || !notify.wanted()) return;
+    const wanted = notify.wanted();
+    if (wasWanted && !wanted) {
+      // Nobody left to tell. Forget what was seen, so whoever arrives next starts from a seed.
+      notify.feed(null);
+    }
+    wasWanted = wanted;
+    if (notifyTimer !== null || building || !wanted) return;
     notifyTimer = setTimeout(() => {
       notifyTimer = null;
+      building = true;
       // A reading that could not be made re-seeds rather than announcing a stale transition.
-      buildDigest().then(
-        (entries) => notify.feed(entries),
-        () => notify.feed(null),
-      );
+      buildDigest()
+        .then(
+          (entries) => notify.feed(entries),
+          () => notify.feed(null),
+        )
+        .finally(() => {
+          building = false;
+        });
     }, NOTIFY_COALESCE_MS);
     (notifyTimer as { unref?: () => void }).unref?.();
   };
+
+  /**
+   * The heartbeat the transcript cannot provide.
+   *
+   * `needsYou` and `finishes` are decided by `status`, which lives in `~/.claude/sessions/` and NOT
+   * in the transcript — and a session stopped on an approval writes nothing at all until the user
+   * answers. An edge trigger on transcript events therefore misses precisely the event the feature
+   * exists for. The tray's poll used to cover this; removing it without replacing it was the
+   * regression. Runs only while there is somebody to tell, so an unwatched process is still idle.
+   */
+  const notifySweep = setInterval(() => evaluate(), NOTIFY_SWEEP_MS);
+  (notifySweep as { unref?: () => void }).unref?.();
 
   const onEvent = (e: NormalizedEvent) => {
     registry.broadcast(e.type, e);
@@ -986,6 +1033,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     tlsCertOrigin,
     stop() {
       clearInterval(heartbeat);
+      clearInterval(notifySweep);
       clearInterval(liveness);
       liveTrees.stop();
       deps.watcher.off('event', onEvent);

@@ -54,7 +54,7 @@ export function resolveFormState(
  * `pendingToken` is included only when the user generated a new one (non-empty).
  */
 export function buildSaveBody(
-  port: number,
+  port: number | null,
   host: string,
   open: boolean,
   cn: string,
@@ -62,7 +62,10 @@ export function buildSaveBody(
   webhook?: WebhookForm,
   tray?: NotifyChannelSwitches,
 ): Record<string, unknown> {
-  const body: Record<string, unknown> = { port, host, open };
+  // A port that is not a usable one is OMITTED rather than sent: with no Save button every toggle
+  // posts the whole form, so an empty field would otherwise write `port: 0` — which the server
+  // accepts as a number and then binds at random on the next start.
+  const body: Record<string, unknown> = port === null ? { host, open } : { port, host, open };
   if (cn.trim()) body['tls'] = { commonName: cn.trim() };
   if (pendingToken) body['auth'] = { token: pendingToken };
   if (webhook) {
@@ -76,6 +79,17 @@ export function buildSaveBody(
     body['notifications'] = { ...n, tray };
   }
   return body;
+}
+
+/**
+ * The port as a number, or null when the field does not hold one seedeep could bind.
+ *
+ * Exported so the panel and this rule cannot disagree — the same reason the CN check lives in
+ * `resolveFormState` alone.
+ */
+export function usablePort(value: string): number | null {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
 }
 
 /** Which events one channel is allowed to interrupt for. Both channels carry the same four. */
@@ -94,7 +108,6 @@ export interface WebhookForm {
   needsYou: boolean;
   fails: boolean;
   finishes: boolean;
-  updates: boolean;
 }
 
 /**
@@ -300,7 +313,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
       <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
       <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
-      <div class="shook-row"><div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
     </div>
   </div>
   <div class="srow scustom" hidden>
@@ -452,7 +464,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     needsYou: drawer.querySelector<HTMLDivElement>('#s-hook-needsYou')!,
     fails: drawer.querySelector<HTMLDivElement>('#s-hook-fails')!,
     finishes: drawer.querySelector<HTMLDivElement>('#s-hook-finishes')!,
-    updates: drawer.querySelector<HTMLDivElement>('#s-hook-updates')!,
   };
   // The same control the rest of the drawer uses; `on` IS the state, as it is for Open browser.
   //
@@ -491,7 +502,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     needsYou: hookSwitches.needsYou.classList.contains('on'),
     fails: hookSwitches.fails.classList.contains('on'),
     finishes: hookSwitches.finishes.classList.contains('on'),
-    updates: hookSwitches.updates.classList.contains('on'),
   });
 
   async function load(): Promise<void> {
@@ -526,7 +536,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       hookSwitches.needsYou.classList.toggle('on', hook?.needsYou ?? true);
       hookSwitches.fails.classList.toggle('on', hook?.fails ?? true);
       hookSwitches.finishes.classList.toggle('on', hook?.finishes ?? false);
-      hookSwitches.updates.classList.toggle('on', hook?.updates ?? false);
       // The dash stays when the field is absent: a server too old to report its version is a
       // question this panel cannot answer, and a guess here would be the one number a bug report
       // quotes verbatim.
@@ -628,7 +637,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       return;
     }
     const body = buildSaveBody(
-      Number(portEl.value),
+      usablePort(portEl.value),
       host,
       openTrack.classList.contains('on'),
       cnEl.value,

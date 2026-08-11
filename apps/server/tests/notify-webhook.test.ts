@@ -18,7 +18,6 @@ function hook(o: Partial<NotifyWebhook> = {}): NotifyWebhook {
     needsYou: true,
     fails: true,
     finishes: true,
-    updates: false,
     url: 'https://example.test/hook',
     headers: {},
     template: '{{body}}',

@@ -26,7 +26,10 @@ export function renderTemplate(template: string, a: Announcement, contentType = 
   // a prompt, and a shell command the user is being asked to approve. A quote or a newline in
   // either would produce a payload the service rejects — silently, since nothing here retries.
   // The content type the user declared is what says which escaping is right.
-  const json = contentType.toLowerCase().includes('application/json');
+  // The declared type decides when it is declared. When it is not — and the panel never told the
+  // user they had to — a template that is itself JSON is the plainest possible statement of intent,
+  // and posting a raw newline inside one of its strings makes the service reject it silently.
+  const json = contentType.toLowerCase().includes('application/json') || looksLikeJson(template);
   const enc = (v: string) => (json ? JSON.stringify(v).slice(1, -1) : v);
   const values: Record<string, string> = {
     title: enc(a.title),
@@ -36,6 +39,20 @@ export function renderTemplate(template: string, a: Announcement, contentType = 
     kind: a.kind,
   };
   return template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => values[name] ?? whole);
+}
+
+/** Whether a template is itself a JSON document, which is what an unlabelled JSON body looks like. */
+function looksLikeJson(template: string): boolean {
+  const t = template.trim();
+  if (!(t.startsWith('{') && t.endsWith('}')) && !(t.startsWith('[') && t.endsWith(']'))) return false;
+  // Checked with the placeholders replaced by a harmless literal: the template itself never parses,
+  // since `{{body}}` is not valid JSON in a value position.
+  try {
+    JSON.parse(t.replace(/\{\{\w+\}\}/g, 'x'));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The declared content type, whatever case the user typed the header name in. */

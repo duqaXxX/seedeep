@@ -1127,7 +1127,9 @@ test('GET /api/config redacts webhook headers, which is where a service token li
     const body = (await (await fetch(`${srv.url}/api/config`)).json()) as {
       notifications: { webhook: { url: string; headers: Record<string, string> } };
     };
-    assert.equal(body.notifications.webhook.url, 'https://example.test/hook', 'the URL is not a secret');
+    // The URL IS a secret: for Slack, Discord and ntfy it is the whole credential, and this
+    // endpoint answers without auth. It says only whether one is configured.
+    assert.equal(body.notifications.webhook.url, '***');
     assert.deepEqual(body.notifications.webhook.headers, { Authorization: '***', Title: '***' });
   } finally {
     await srv.stop();

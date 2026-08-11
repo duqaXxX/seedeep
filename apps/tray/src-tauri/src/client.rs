@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use reqwest::header::{ETAG, IF_NONE_MATCH};
 use reqwest::{Client, StatusCode};
+use tokio::time::timeout;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -34,6 +35,13 @@ const STREAM_PATH: &str = "/api/stream";
 /// JSON; anything approaching this is a server that stopped writing blank lines, and growing the
 /// buffer for it would trade a dropped stream for unbounded memory.
 const SSE_BUFFER_MAX: usize = 1 << 20;
+
+/// How long the notification stream may say nothing before it is treated as dead.
+///
+/// The server writes a keepalive every 15s (`HEARTBEAT_MS`), so this is two of them plus room for a
+/// slow one. Shorter would reconnect over an ordinary hiccup; longer would leave the tray silent
+/// through a sleep, which is the failure this exists to bound.
+const STREAM_SILENCE: Duration = Duration::from_secs(35);
 
 /// The endpoint that names the server's own release, read only when the settings view is opened.
 /// Never on the poll: it is a value that cannot change while a process lives, and a second request
@@ -410,7 +418,18 @@ impl Conn {
         // has to survive into the next read. Bounded by SSE_BUFFER_MAX: a server that never sends a
         // blank line must not grow this without limit.
         let mut buf = String::new();
-        while let Some(chunk) = res.chunk().await.map_err(|e| describe(&e))? {
+        // Bounded, because a half-open connection never errors: a laptop that slept, a Wi-Fi that
+        // changed, a NAT that dropped the flow without a FIN all leave `chunk()` waiting until the
+        // OS gives up — minutes or hours — while the icon keeps updating from the separate poll, so
+        // nothing looks wrong and no banner ever appears again. The server writes a keepalive every
+        // 15s, so silence past two of them is a stream that is gone; returning lets `subscribe`
+        // reconnect, and the server re-seeds rather than replaying.
+        loop {
+            let next = timeout(STREAM_SILENCE, res.chunk())
+                .await
+                .map_err(|_| "stream went silent".to_string())?
+                .map_err(|e| describe(&e))?;
+            let Some(chunk) = next else { break };
             buf.push_str(&String::from_utf8_lossy(&chunk));
             if buf.len() > SSE_BUFFER_MAX {
                 return Err("stream frame exceeded the buffer".to_string());

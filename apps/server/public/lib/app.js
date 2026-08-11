@@ -2906,7 +2906,7 @@ function resolveFormState(host, cn) {
   return { remote, canSave: !cnError, cnError };
 }
 function buildSaveBody(port, host, open, cn, pendingToken, webhook, tray) {
-  const body = { port, host, open };
+  const body = port === null ? { host, open } : { port, host, open };
   if (cn.trim())
     body["tls"] = { commonName: cn.trim() };
   if (pendingToken)
@@ -2920,6 +2920,10 @@ function buildSaveBody(port, host, open, cn, pendingToken, webhook, tray) {
     body["notifications"] = { ...n, tray };
   }
   return body;
+}
+function usablePort(value) {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
 }
 function parseHeaders(text) {
   const out = {};
@@ -3067,7 +3071,6 @@ function createSettingsPanel(headerEl) {
       <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
       <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
       <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
-      <div class="shook-row"><div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
     </div>
   </div>
   <div class="srow scustom" hidden>
@@ -3188,8 +3191,7 @@ function createSettingsPanel(headerEl) {
   const hookSwitches = {
     needsYou: drawer.querySelector("#s-hook-needsYou"),
     fails: drawer.querySelector("#s-hook-fails"),
-    finishes: drawer.querySelector("#s-hook-finishes"),
-    updates: drawer.querySelector("#s-hook-updates")
+    finishes: drawer.querySelector("#s-hook-finishes")
   };
   for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
     track.parentElement?.addEventListener("click", () => {
@@ -3218,8 +3220,7 @@ function createSettingsPanel(headerEl) {
     template: hookTemplateEl.value,
     needsYou: hookSwitches.needsYou.classList.contains("on"),
     fails: hookSwitches.fails.classList.contains("on"),
-    finishes: hookSwitches.finishes.classList.contains("on"),
-    updates: hookSwitches.updates.classList.contains("on")
+    finishes: hookSwitches.finishes.classList.contains("on")
   });
   async function load() {
     try {
@@ -3247,7 +3248,6 @@ function createSettingsPanel(headerEl) {
       hookSwitches.needsYou.classList.toggle("on", hook?.needsYou ?? true);
       hookSwitches.fails.classList.toggle("on", hook?.fails ?? true);
       hookSwitches.finishes.classList.toggle("on", hook?.finishes ?? false);
-      hookSwitches.updates.classList.toggle("on", hook?.updates ?? false);
       versionEl.textContent = cfg.version ?? "—";
       showUpdate();
       pendingToken = "";
@@ -3317,7 +3317,7 @@ function createSettingsPanel(headerEl) {
       cnEl.focus();
       return;
     }
-    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm(), trayForm());
+    const body = buildSaveBody(usablePort(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm(), trayForm());
     try {
       const res = await authFetch("/api/config", {
         method: "POST",

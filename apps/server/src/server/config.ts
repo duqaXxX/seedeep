@@ -11,8 +11,14 @@ export interface NotifyChannelSwitches {
   updates: boolean;
 }
 
-/** The webhook channel: the same switches, plus where and how to POST. */
-export interface NotifyWebhook extends NotifyChannelSwitches {
+/**
+ * The webhook channel: the session switches, plus where and how to POST.
+ *
+ * `updates` is deliberately NOT here. A new-release banner is the tray telling you about the
+ * machine you are sitting at; there is no announcement for it in the engine, so a switch would be
+ * one the user turns on and that then says nothing at all.
+ */
+export interface NotifyWebhook extends Omit<NotifyChannelSwitches, 'updates'> {
   /** Empty means the channel is off — no URL, no delivery, nothing leaves the machine. */
   url: string;
   /** Sent verbatim on every POST. Where a service's auth token goes. */
@@ -87,7 +93,7 @@ export function defaultConfig(home = homedir()): SeedDeepConfig {
       // changing one changes what the user sees, and moving where a setting LIVES may not also
       // change what it says. The webhook ships off — nothing leaves the machine unasked.
       tray: { needsYou: true, fails: true, finishes: false, updates: true },
-      webhook: { needsYou: true, fails: true, finishes: false, updates: false, url: '', headers: {}, template: '' },
+      webhook: { needsYou: true, fails: true, finishes: false, url: '', headers: {}, template: '' },
     },
   };
 }
