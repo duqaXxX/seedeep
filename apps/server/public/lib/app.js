@@ -3049,7 +3049,7 @@ function createSettingsPanel(headerEl) {
     <div class="shooks">
       <div class="shook-row"><div id="s-tray-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
       <div class="shook-row"><div id="s-tray-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
-      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session is back to you</span></div>
+      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
       <div class="shook-row"><div id="s-tray-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
     </div>
   </div>
@@ -3066,7 +3066,7 @@ function createSettingsPanel(headerEl) {
     <div class="shooks">
       <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
       <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
-      <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session is back to you</span></div>
+      <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
       <div class="shook-row"><div id="s-hook-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
     </div>
   </div>

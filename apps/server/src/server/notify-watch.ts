@@ -110,10 +110,11 @@ function failedAnnouncement(e: DigestEntry): Announcement {
  */
 function finishedAnnouncement(e: DigestEntry): Announcement | null {
   if (e.turn?.state === 'interrupted') return null;
-  // `Back to you`, not `Finished`: the session has not ended — the turn closed and the session
-  // became the user's again, which is the event. In the case where the turn left nothing on record
-  // this line is the WHOLE notification, so the word carries all of the meaning there is.
-  let body = 'Back to you';
+  // `Turn finished`, and both words earn their place. `Finished` alone read as the SESSION having
+  // ended, which it has not; `Back to you` said the right thing and nobody could tell what it meant
+  // out of context. Naming the turn is what makes it unambiguous — and in the case where the turn
+  // left nothing on record, this line is the whole notification.
+  let body = 'Turn finished';
   const said = e.turn?.now?.text;
   if (said) body += `\n${said}`;
   return {

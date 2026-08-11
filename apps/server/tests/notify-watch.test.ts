@@ -139,18 +139,18 @@ test('the words match the panel, because two wordings teach the user to trust ne
   assert.equal(failed!.body, "A subagent's API call failed\nAPI Error: 529 Overloaded");
 });
 
-test('a finished turn says Back to you, with the agent last words when there are any', () => {
+test('a finished turn says Turn finished, with the agent last words when there are any', () => {
   // `Finished` said the session had ended; it had not. The turn closed and the session became the
   // user's again, which is the event — and in the one case where this line is ALL the notification
   // carries, the word is the whole message.
   const w = createNotifyWatch();
   w.step([entry({ id: 'a', status: 'busy' })]);
   const [a] = w.step([entry({ id: 'a', status: 'idle', nowText: 'Added the retry and ran the tests.' })]);
-  assert.equal(a!.body, 'Back to you\nAdded the retry and ran the tests.');
+  assert.equal(a!.body, 'Turn finished\nAdded the retry and ran the tests.');
 });
 
-test('a finished turn with nothing on record still says Back to you', () => {
+test('a finished turn with nothing on record still says Turn finished', () => {
   const w = createNotifyWatch();
   w.step([entry({ id: 'a', status: 'busy' })]);
-  assert.equal(w.step([entry({ id: 'a', status: 'idle', nowText: '' })])[0]!.body, 'Back to you');
+  assert.equal(w.step([entry({ id: 'a', status: 'idle', nowText: '' })])[0]!.body, 'Turn finished');
 });

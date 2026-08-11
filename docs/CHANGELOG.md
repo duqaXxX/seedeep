@@ -22,7 +22,7 @@ It never retries and never throws: a broken address must not take down the banne
 path. It is the one thing in seedeep that sends session data off the machine — see
 `docs/install.md`.
 
-**A finished turn now says `Back to you`.** `Finished` claimed the session had ended; it had not —
+**A finished turn now says `Turn finished`.** `Finished` claimed the session had ended; it had not —
 the turn closed and the session became yours again. In the case where the turn left nothing on
 record, that line is the whole notification.
 

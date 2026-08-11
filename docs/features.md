@@ -805,6 +805,6 @@ of your own all work without seedeep knowing any of them. A URL on its own is
 already a working webhook: an empty template posts the body. It never retries: a
 missed notification is better than one replayed minutes late.
 
-A turn that ends says **`Back to you`**, not "finished" — the session has not
+A turn that ends says **`Turn finished`**, not "finished" — the session has not
 ended, it has become yours again. A turn **you** interrupted is never announced:
 if you pressed Esc you already know.
