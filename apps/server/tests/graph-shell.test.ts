@@ -5999,8 +5999,12 @@ test('scope banner: the whole-session summary carries the call and tool counts',
 
   const banner = findByClass(container, 'scope-banner')[0];
   const nums = findByClass(banner, 'sbnum').map((n: any) => n.textContent);
-  assert.ok(nums.includes('403 calls'), `the call count is in the banner — got ${JSON.stringify(nums)}`);
-  assert.ok(nums.includes('3 tools'), `the tool count is beside it — got ${JSON.stringify(nums)}`);
+  // ONE element, not three side by side: `2 turns 403 calls 3 tools` reads as a single number with
+  // stray words in it — same colour, same weight, no separator. The separators are the whole point.
+  assert.ok(
+    nums.includes('2 turns · 403 calls · 3 tools'),
+    `the three counts are one group with separators — got ${JSON.stringify(nums)}`,
+  );
 
   view.destroy();
   g.document = prevDoc;
@@ -6028,5 +6032,36 @@ test('scope banner: a selected turn carries the same two counts, scoped to it', 
   assert.match(stats, /2 tools/, 'and only the tools that turn ran');
 
   view.destroy();
+  g.document = prevDoc;
+});
+
+// The durations are the banner's second group, and they are joined by an ELEMENT rather than by a
+// string: both tick on their own live counter, so neither can be folded into one piece of text.
+test('scope banner: the two durations are separated, and only when both are there', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+
+  // A live turn beside a finished one: the running counter AND the session total.
+  const both = snapWithTurns([makeTurn(1), makeTurn(2, { state: 'live', durationMs: null })]);
+  const live = createGraph(container, { snapshot: () => both, onChange: () => () => {}, onEvent: () => () => {} });
+  assert.equal(
+    findByClass(findByClass(container, 'scope-banner')[0], 'sbsep').length,
+    1,
+    'a separator between the running turn and the session total',
+  );
+  live.destroy();
+
+  // Nothing running: one duration, so nothing to separate — a dangling `·` is worse than none.
+  const container2 = g.document.createElement();
+  const settled = createGraph(container2, {
+    snapshot: () => snapWithTurns([makeTurn(1), makeTurn(2)]),
+    onChange: () => () => {},
+    onEvent: () => () => {},
+  });
+  assert.equal(findByClass(findByClass(container2, 'scope-banner')[0], 'sbsep').length, 0, 'no lone separator');
+  settled.destroy();
+
   g.document = prevDoc;
 });

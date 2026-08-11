@@ -7592,17 +7592,23 @@ function createGraph(container, state, opts = {}) {
       const cs = turnCostStats(fullSnap);
       if (cs.escCount > 0)
         scopeBanner.append(E("span", "sbstats", cs.escCount + " interrupted"));
+      const work = [];
       if (fullSnap.turns > 0)
-        scopeBanner.append(E("span", "sbnum", nTurns(fullSnap.turns)));
+        work.push(nTurns(fullSnap.turns));
       if (fullSnap.apiCalls > 0)
-        scopeBanner.append(E("span", "sbnum", kc(fullSnap.apiCalls) + " calls"));
+        work.push(kc(fullSnap.apiCalls) + " calls");
       const toolCount = summarizeTools(fullSnap.mainTools).count;
       if (toolCount > 0)
-        scopeBanner.append(E("span", "sbnum", kc(toolCount) + " tools"));
+        work.push(kc(toolCount) + " tools");
+      if (work.length)
+        scopeBanner.append(E("span", "sbnum", work.join(" · ")));
       const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
       if (open)
         scopeBanner.append(liveElapsed(open));
-      if (fullSnap.turnList.some((t) => t.durationMs !== null))
+      const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
+      if (open && worked)
+        scopeBanner.append(E("span", "sbsep", "·"));
+      if (worked)
         scopeBanner.append(sessionWorked(fullSnap));
       const finalTurn = open && !ended2 ? null : finalResultTurn(fullSnap);
       if (finalTurn) {

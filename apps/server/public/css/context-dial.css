@@ -350,3 +350,15 @@
   white-space: nowrap;
   flex: none;
 }
+
+/* Joins the two durations into one group, the way the counts before them are joined by a string.
+   It has to be an element rather than text because both of them tick on their own counter. Dimmer
+   than either side: it is punctuation, not a third value. */
+.sbsep {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--lo2);
+  opacity: 0.55;
+  flex: none;
+  margin: 0 -0.15rem;
+}

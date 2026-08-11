@@ -132,10 +132,12 @@ than suppression: a spawn already has the richer toast on the bottom rail, so a 
 
 ### How much work it took, before you look for it
 
-The bar above the widgets answers the size of the session in one line: **turns,
-API calls, tool calls**, how long the current turn has been running, and how long
-every turn has taken together. Selecting a turn re-scopes it to that turn, with the
-same two counts scoped along.
+The bar above the widgets answers the size of the session in one line, in **two
+groups**: how much work — turns, API calls, tool calls — and how long — the current
+turn, and every turn summed. The grouping is the readable part: five figures with
+four different units, set side by side without separators, read as one number with
+stray words in it. Selecting a turn re-scopes the bar to that turn, with the same
+two counts scoped along.
 
 Both counts already existed — the calls under the token ledger, the tools under
 four file paths in Main tools — and neither could be found, which is a placement
