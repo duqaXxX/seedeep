@@ -7,10 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { defaultCacheFile } from '../src/server/aggregate-cache.ts';
 import { defaultCardsIndexFile } from '../src/server/cards-index.ts';
 import {
+  applyPrecedence,
   configFilePath,
   defaultConfig,
   readConfig,
   resolveConfig,
+  restartPending,
   seedDeepDir,
   writeConfig,
 } from '../src/server/config.ts';
@@ -277,4 +279,78 @@ test('readConfig merges notifications per key, so a partial file keeps the other
   assert.equal(c.notifications.webhook.needsYou, true, 'a webhook switch kept its default');
   assert.equal(c.notifications.tray.needsYou, true, 'the tray channel survived a webhook-only file');
   assert.deepEqual(c.notifications.webhook.headers, {});
+});
+
+// ── applyPrecedence / restartPending ─────────────────────────────────────────
+
+test('applyPrecedence neither generates a token nor writes the file', async () => {
+  const home = tmpHome();
+  const path = configFilePath(home);
+  const fileConfig = defaultConfig(home); // auth.token is ''
+  const cfg = applyPrecedence({}, {}, fileConfig);
+  // A GET that asks "what would a start resolve to?" must be free of every side effect a start
+  // has — otherwise reading the pending state would itself rewrite config.json.
+  assert.equal(cfg.auth.token, '', 'no token generated');
+  assert.ok(!existsSync(path), 'no file written');
+});
+
+test('restartPending: a port, host or common-name difference is pending', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  assert.equal(restartPending(base, { ...base, port: 9090 }), true, 'port');
+  assert.equal(restartPending(base, { ...base, host: '0.0.0.0' }), true, 'host');
+  assert.equal(restartPending(base, { ...base, tls: { ...base.tls, commonName: 'box.local' } }), true, 'common name');
+});
+
+test('restartPending: open, token and cert paths are not pending', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  // A running process can honour all three without being replaced, and announcing them would
+  // train the user to ignore the announcement.
+  assert.equal(restartPending(base, { ...base, open: !base.open }), false, 'open');
+  assert.equal(restartPending(base, { ...base, auth: { token: 'other' } }), false, 'token');
+  assert.equal(
+    restartPending(base, { ...base, tls: { ...base.tls, cert: '/elsewhere/cert.pem' } }),
+    false,
+    'cert path',
+  );
+});
+
+test('restartPending: an absent common name equals an empty one', () => {
+  const home = tmpHome();
+  const base = { ...defaultConfig(home), auth: { token: 'tok' } };
+  const empty = { ...base, tls: { ...base.tls, commonName: '' } };
+  assert.equal(restartPending(base, empty), false, 'neither can go in a certificate');
+});
+
+test('restartPending: a CLI flag the restart would keep is NOT pending', () => {
+  // The regression this whole comparison exists for. A server started with `--port 5555` against
+  // a file that says 9090 is not stale: `POST /api/restart` respawns with argv intact, so the
+  // flag wins again and the file never applies. Comparing the running port against the FILE
+  // would light a pending state that no button on any surface could ever clear.
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), port: 9090, auth: { token: 'tok' } };
+  const running = applyPrecedence({ port: 5555 }, {}, file);
+  assert.equal(running.port, 5555);
+  assert.equal(restartPending(running, applyPrecedence({ port: 5555 }, {}, file)), false);
+});
+
+test('restartPending: an env var the restart would keep is NOT pending', () => {
+  const home = tmpHome();
+  const env = { SEEDEEP_HOST: '10.0.0.9' };
+  const file = { ...defaultConfig(home), host: '0.0.0.0', auth: { token: 'tok' } };
+  const running = applyPrecedence({}, env, file);
+  assert.equal(running.host, '10.0.0.9');
+  assert.equal(restartPending(running, applyPrecedence({}, env, file)), false);
+});
+
+test('restartPending: a hand edit to a field no flag covers IS pending', () => {
+  // The incident: config.json edited to 0.0.0.0 while the process kept answering on loopback.
+  const home = tmpHome();
+  const file = { ...defaultConfig(home), auth: { token: 'tok' } };
+  const running = applyPrecedence({ port: 5555 }, {}, file);
+  // Only the host differs: the port is pinned by the same flag on both sides, so a difference
+  // here can come from nothing but the edit.
+  const edited = { ...file, host: '0.0.0.0' };
+  assert.equal(restartPending(running, applyPrecedence({ port: 5555 }, {}, edited)), true);
 });

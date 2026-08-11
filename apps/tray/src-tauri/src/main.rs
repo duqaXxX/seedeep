@@ -234,6 +234,15 @@ async fn server_version(conn: State<'_, Arc<Conn>>) -> Result<Option<String>, ()
     Ok(conn.server_version().await)
 }
 
+/// Whether the connected server is running a configuration `config.json` no longer describes.
+///
+/// Asked when the popover opens rather than on the poll — the value moves only when a human edits
+/// the file or saves the panel, and the moment the icon is clicked is the moment it is read.
+#[tauri::command]
+async fn restart_pending(conn: State<'_, Arc<Conn>>) -> Result<bool, ()> {
+    Ok(conn.restart_pending().await)
+}
+
 /// What the About section needs to mark a version as behind: npm's newest, and which of the two
 /// installs is older than it.
 ///
@@ -391,6 +400,7 @@ fn main() {
             start_server,
             stop_server,
             server_version,
+            restart_pending,
             update_view,
             test_notification,
             resize

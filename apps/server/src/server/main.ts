@@ -58,6 +58,10 @@ export async function run(argv: string[], deps: MainDeps): Promise<{ stop(): voi
     port: config.port,
     host: config.host,
     config,
+    // The two layers above the file, handed on so the server can tell a config.json that a
+    // restart would honour from one a flag would go on overriding.
+    cliFlags: { port: opts.port, host: opts.host, open: opts.open },
+    env: process.env as Record<string, string | undefined>,
   });
   deps.watcher.start();
   // After the bind, never before: the record carries the address this server actually answers on,

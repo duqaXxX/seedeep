@@ -2309,8 +2309,24 @@ work.
 ### Settings panel
 
 The settings drawer (gear icon in the header) lets the user change configuration without
-editing `config.json` directly. It loads the current config on open (`GET /api/config`)
-and POSTs changes on save.
+editing `config.json` directly. It loads on open (`GET /api/config`) and POSTs changes on save.
+
+**It is an editor of the FILE, not a view of the process.** The fields show the configuration as a
+start would resolve it right now — `config.json` under this process's flags and environment — and a
+save merges the request onto the file re-read at that moment. Both halves matter and both were
+wrong: the panel used to show the copy the process was holding, so a `config.json` edited in an
+editor was invisible in the fields, and the save wrote that whole copy back — measured, a save of
+`open` alone put `host` back to what the process was bound to, silently discarding the edit. What
+stays the process's own is what no edit can change: `version`, the certificate fingerprint, and
+`restart_pending`, which is precisely the statement that the two have diverged.
+
+A value pinned by a CLI flag or an environment variable is shown as the flag sets it, not as the
+file says: that is what this server runs and what every restart will keep running, so offering an
+edit to the file's number would be offering one with no effect.
+
+The `***` redactions (the auth token, the webhook URL and its headers) mean "keep what you have",
+resolved against that same file — the source the panel read them from, so the mask can only ever put
+back the value it stood for.
 
 **The panel has no Save button.** Every control writes as it changes: a toggle on the click, a text
 field on `change` — leaving it or pressing Enter — and never on each keystroke, or typing `45999`
@@ -2355,16 +2371,42 @@ loopback mode.** The name is still on its way to `config.json`, so it still bloc
 a refusal whose reason sits inside a hidden section is a dead end with no way out of the
 panel.
 
-Restart semantics: changes to `port`, `host`, or `tls` set `restart_required: true` in
-the server response. The drawer shows a "Restart now" button that calls `POST /api/restart`
-and polls until the server is back before reloading. Token changes take effect immediately.
+### A restart the process itself knows is due
+
+Three values are BOUND at startup and cannot be revisited by the process holding them: `port`,
+`host`, and the certificate's common name. `open` is spent the moment the browser opened and a
+token is adopted live, so neither counts — announcing them would teach the reader to ignore the
+announcement.
+
+The server is the only party that can say whether a restart is due, because the answer is not
+"does `config.json` differ from what I am running". Configuration arrives through a four-layer
+chain (CLI flags → env → file → defaults, `applyPrecedence`), and `POST /api/restart` respawns
+with `process.argv.slice(2)` intact — so a server started with `--port 9000` goes on ignoring the
+file's port after every restart. Comparing against the file alone would light a permanent signal
+that no button could clear.
+
+So `restart_pending` compares **what this process resolved at startup** against **what a fresh
+start would resolve to now**: the same flags and the same environment, over `config.json` re-read
+at request time. Both sides go through one function, so the two can never drift apart.
+
+- It is recomputed per request and never cached — a cached answer is exactly how a file edited in
+  an editor stays invisible.
+- It rides `GET /api/config`, so every surface reads one verdict: the portal (a dot on the
+  Settings button, a banner in the drawer, the `Restart now` button), the tray (a line above the
+  bands, asked when the popover opens), and `seedeep status` (a line under `serving`).
+- `POST /api/config` derives its answer from the same comparison, taken AFTER the write. A save
+  that puts a value back to what is already running reports nothing; a save landing on top of an
+  earlier hand edit keeps the signal up. The old diff-on-save could only describe the last
+  keystroke, and vanished with the response that carried it.
+
+Token changes still take effect immediately, with no restart.
 
 ### Config endpoints
 
 | Method | Path | Auth required | Purpose |
 |--------|------|---------------|---------|
-| `GET`  | `/api/config` | Never | Current config (token redacted as `"***"`, `tls.cert`/`tls.key` omitted, `tls.fingerprint` added in remote mode) plus `version` — runtime state, not config: it describes the process answering and is never written back to `config.json`. It rides this route because the version has to be readable before anything else is, which on a remote host means before a token exists. The exemption goes no further than that: `dev` is withheld from an unauthenticated caller (see *Which build is answering*) |
-| `POST` | `/api/config` | On non-loopback | Partial merge + atomic write; returns redacted config + `restart_required: true` when `port`, `host`, or `tls` changed |
+| `GET`  | `/api/config` | Never | The configuration a start would resolve to now — `config.json` under this process's flags and environment, never the copy it is holding (token redacted as `"***"`, `tls.cert`/`tls.key` omitted, `tls.fingerprint` added in remote mode) — plus `version` and `restart_pending`, which are runtime state, not config: both describe the process answering and neither is written back to `config.json`. It rides this route because the version has to be readable before anything else is, which on a remote host means before a token exists. The exemption goes no further than that: `dev` is withheld from an unauthenticated caller (see *Which build is answering*) |
+| `POST` | `/api/config` | On non-loopback | Partial merge onto `config.json` **re-read at that moment** + atomic write, so a save cannot undo an edit it never mentioned; the runtime copy takes the same merge for what applies without a restart. Returns the redacted config read back + `restart_pending`, never a diff of the request (see *A restart the process itself knows is due*) |
 
 ### Resetting
 

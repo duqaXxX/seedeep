@@ -4,6 +4,36 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A stale process says so, on every surface and for as long as it is stale.** A server holds the
+port, host and certificate name it started with; `config.json` can move underneath it, and until
+now nothing said so — remote access was configured, the process kept answering on loopback, and the
+diagnosis came from `lsof`. `GET /api/config` now carries `restart_pending`, and the portal shows an
+amber dot on the Settings button with the panel closed, the panel explains it with the `Restart now`
+button beside it, the tray prints a line above its sessions, and `seedeep status` prints one under
+`serving`. The previous signal was the answer to a Save and lived only inside it: closing the drawer
+lost it, and a file edited by hand never produced it at all.
+
+**It compares what a restart would DO, not what the file says.** Configuration resolves through a
+four-layer chain, and `POST /api/restart` respawns with the same argv — so a server started with
+`--port 9000` goes on ignoring the file's port after every restart. Comparing against the file alone
+would have lit a signal no button could clear. Both sides now run through one extracted function
+(`applyPrecedence`, pure — no token, no write), recomputed per request so an editor's change is
+never cached away.
+
+**The settings panel is an editor of `config.json`, not a view of the process.** It showed the copy
+the server was holding and wrote that copy back, so a file edited in an editor was invisible in the
+fields and a save made for any other reason silently discarded the edit — measured: saving `open`
+alone put `host` back. The fields now show what a start would resolve to (the file, under this
+process's flags), and a save merges onto the file re-read at that moment, leaving every field it did
+not mention alone. A value a CLI flag pins is still shown as the flag sets it — that is what runs,
+and offering an edit to the file's number there would be offering one with no effect.
+
+**`restart_required` is gone**, replaced by `restart_pending` on both `/api/config` verbs and
+derived from that one comparison, taken after the write. A save that restores a running value
+reports nothing; a save on top of an earlier hand edit keeps the signal up. One consequence: editing
+`tls.cert` or `tls.key` no longer raises the signal — neither is reachable from the panel, and only
+three fields are bound at startup.
+
 **Notifications are decided by the server, not by the tray.** The diffing between two readings —
 the only part of notifying the tray still owned — moved into the server, which already held the
 state and the wording. The tray subscribes to the event stream and shows what arrives; it composes

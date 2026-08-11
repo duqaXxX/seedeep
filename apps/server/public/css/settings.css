@@ -26,6 +26,27 @@
   border-color: var(--agent);
   background: rgba(125, 211, 252, 0.08);
 }
+/* The one mark that survives the drawer being closed: the server is serving a configuration
+   `config.json` no longer describes. Positioned on the button because that is where the fix is —
+   a dot anywhere else would state a problem without a way to it. */
+.settings-btn.pending {
+  position: relative;
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.settings-btn.pending::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  /* Against the header, not the button: the dot overhangs the corner, so the ring has to read as
+     a gap in the bar behind it rather than a highlight on the border it crosses. */
+  box-shadow: 0 0 0 2px var(--bg);
+}
 
 /* ── remote access warning banner ───────────────────────────────── */
 .sbanner {
@@ -48,6 +69,15 @@
   display: block;
   margin-bottom: 0.1rem;
   font-size: 0.82rem;
+}
+/* Same shape as the remote-access banner, tighter below it: the two can be up together, and the
+   stale-process one is the actionable half, so it comes first and stays adjacent. */
+.spending {
+  margin-bottom: 0.7rem;
+}
+.spending code {
+  font-family: var(--mono);
+  font-size: 0.76rem;
 }
 
 /* ── form rows ───────────────────────────────────────────────────── */

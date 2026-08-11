@@ -692,6 +692,24 @@ discovery, then the first read), then one conditional request every **1.00 s** w
 and every **5.00 s** with it closed. A digest request is ~12.5 ms of CPU over 912 sessions on disk —
 about 1.2% of one core at the faster cadence.
 
+### A server not honouring its own configuration
+
+Above the bands, when the connected server is bound to a port, host or certificate name
+`config.json` no longer asks for: *"This server started before config.json was last changed."* It is
+the server's own verdict (`restart_pending` on `/api/config`) and never the tray's — the answer
+depends on the flags and the environment that process was started with, which are not readable from
+another process, let alone from another machine. A server too old to carry the field reads as
+nothing pending, because the tray states what it was told and never what it inferred.
+
+**Not a band, and not an icon state.** A band is a session and the icon summarises sessions; this is
+a property of the process, and giving it either would have said "a session needs you" about
+something no session is doing.
+
+It is asked **once per popover opening** — on the edge, not on the poll. The value moves only when a
+human edits that file or saves the portal's panel, so the click that opens the popover is both the
+moment it can have changed and the moment it is read. One request per click, and nothing on the 1 s
+clock.
+
 ## Reaching the server
 
 Everything the tray knows arrives through one Rust module and one endpoint. **The webview never

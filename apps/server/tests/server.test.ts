@@ -845,7 +845,7 @@ test('POST /api/config without token on remote host → 401', async () => {
   }
 });
 
-test('POST /api/config: host change is reported as restart_required', async () => {
+test('POST /api/config: host change is reported as restart_pending', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-host-'));
   const srv = await startServer({
     watcher: new EventEmitter(),
@@ -853,6 +853,7 @@ test('POST /api/config: host change is reported as restart_required', async () =
     port: 0,
     config: { ...defaultConfig(), auth: { token: '' } },
     configPath: join(dir, 'config.json'),
+    env: {},
   });
   try {
     const res = await fetch(`${srv.url}/api/config`, {
@@ -861,13 +862,13 @@ test('POST /api/config: host change is reported as restart_required', async () =
       body: JSON.stringify({ host: '0.0.0.0' }),
     });
     const body = await res.json();
-    assert.equal(body.restart_required, true, 'changing host requires restart');
+    assert.equal(body.restart_pending, true, 'changing host requires restart');
   } finally {
     srv.stop();
   }
 });
 
-test('POST /api/config: open-only change does NOT set restart_required', async () => {
+test('POST /api/config: open-only change does NOT set restart_pending', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-open-'));
   const srv = await startServer({
     watcher: new EventEmitter(),
@@ -875,6 +876,7 @@ test('POST /api/config: open-only change does NOT set restart_required', async (
     port: 0,
     config: { ...defaultConfig(), auth: { token: '' } },
     configPath: join(dir, 'config.json'),
+    env: {},
   });
   try {
     const res = await fetch(`${srv.url}/api/config`, {
@@ -883,7 +885,82 @@ test('POST /api/config: open-only change does NOT set restart_required', async (
       body: JSON.stringify({ open: false }),
     });
     const body = await res.json();
-    assert.ok(!body.restart_required, 'open-only change should not set restart_required');
+    assert.ok(!body.restart_pending, 'open-only change should not set restart_pending');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config: a pending restart outlives the request that caused it', async () => {
+  // The bug: `Restart required` lived in the response to the Save and nowhere else, so closing
+  // the drawer lost it while the process stayed stale.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-outlives-'));
+  const configPath = join(dir, 'config.json');
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config: { ...defaultConfig(), auth: { token: 'tok' } },
+    configPath,
+    env: {},
+  });
+  try {
+    assert.equal((await (await fetch(`${srv.url}/api/config`)).json()).restart_pending, false, 'fresh');
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host: '0.0.0.0' }),
+    });
+    const later = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(later.restart_pending, true, 'still pending on a later, unrelated GET');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config: a config.json edited by hand is pending', async () => {
+  // The incident this ticket came from: no Save, no POST, nothing but an editor.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-hand-'));
+  const configPath = join(dir, 'config.json');
+  const cfg = { ...defaultConfig(), auth: { token: 'tok' } };
+  writeFileSync(configPath, JSON.stringify(cfg));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config: cfg,
+    configPath,
+    env: {},
+  });
+  try {
+    assert.equal((await (await fetch(`${srv.url}/api/config`)).json()).restart_pending, false, 'fresh');
+    writeFileSync(configPath, JSON.stringify({ ...cfg, host: '0.0.0.0' }));
+    const after = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(after.restart_pending, true, 'the hand edit is seen without any request having made it');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config: a file a CLI flag overrides is NOT pending', async () => {
+  // The false positive the comparison is built to avoid. `POST /api/restart` respawns with argv
+  // intact, so `--port 5555` wins again and the file's 9090 never applies: a banner here would be
+  // one no button could clear.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-flag-'));
+  const configPath = join(dir, 'config.json');
+  writeFileSync(configPath, JSON.stringify({ ...defaultConfig(), port: 9090, auth: { token: 'tok' } }));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config: { ...defaultConfig(), port: 5555, auth: { token: 'tok' } },
+    cliFlags: { port: 5555 },
+    configPath,
+    env: {},
+  });
+  try {
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.restart_pending, false, 'the flag survives the restart, so nothing is pending');
   } finally {
     srv.stop();
   }
@@ -1117,10 +1194,15 @@ test('a checkout is told to pull; a downloaded file is given no command at all',
 
 test('GET /api/config redacts webhook headers, which is where a service token lives', async () => {
   const home = mkdtempSync(join(tmpdir(), 'seedeep-hook-'));
+  const configPath = join(home, 'config.json');
   const config = defaultConfig(home);
   config.notifications.webhook.url = 'https://example.test/hook';
   config.notifications.webhook.headers = { Authorization: 'Bearer real-secret', Title: 'seedeep' };
-  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, config });
+  // On disk as well as injected: the endpoint answers with the CONFIGURATION, which lives in the
+  // file — a server whose file says something else is the case the pending signal is for, not the
+  // case this test is about.
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, config, configPath });
   try {
     // This endpoint answers WITHOUT auth, by design — the version has to be readable before a token
     // exists. Anything secret behind it has to be redacted, exactly as `auth.token` already is.
@@ -1141,6 +1223,9 @@ test('POST /api/config keeps a stored header when the panel sends back the redac
   const configPath = join(home, 'config.json');
   const config = defaultConfig(home);
   config.notifications.webhook.headers = { Authorization: 'Bearer real-secret' };
+  // The file is what a save merges onto, so the secret has to be in it — that is where it lives on
+  // a real machine, and where the panel read the `***` from.
+  writeFileSync(configPath, JSON.stringify(config));
   const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, config, configPath });
   try {
     // The panel GETs `***` and POSTs the whole object back. Taking that literally would erase the
@@ -1159,5 +1244,87 @@ test('POST /api/config keeps a stored header when the panel sends back the redac
     assert.equal(written.notifications.webhook.url, 'https://new.test/h', 'the rest of the POST still applied');
   } finally {
     await srv.stop();
+  }
+});
+
+test('POST /api/config does not undo a hand edit it never mentioned', async () => {
+  // Measured before the fix: a save of `open` alone put `host` back to what the process was bound
+  // to, silently discarding an edit made in an editor. The panel is an editor of the FILE, so a
+  // save merges onto the file — not onto the copy this process happens to be holding.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-merge-'));
+  const configPath = join(dir, 'config.json');
+  const config = { ...defaultConfig(), auth: { token: 'tok' } };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(configPath, JSON.stringify({ ...config, host: '0.0.0.0' }));
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ open: false }),
+    });
+    const written = JSON.parse(readFileSync(configPath, 'utf8')) as { host: string; open: boolean };
+    assert.equal(written.host, '0.0.0.0', 'the hand edit survived a save that never mentioned host');
+    assert.equal(written.open, false, 'and the save still applied');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config answers with the file, so the panel edits what it shows', async () => {
+  // The other half of the same rule: showing the running value put a stale number in the field the
+  // next save would write back.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-shows-'));
+  const configPath = join(dir, 'config.json');
+  const config = { ...defaultConfig(), auth: { token: 'tok' } };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(configPath, JSON.stringify({ ...config, host: '0.0.0.0' }));
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.host, '0.0.0.0', 'the field shows what a restart would apply');
+    assert.equal(body.restart_pending, true, 'and says the process is not on it yet');
+    assert.equal(body.version, VERSION, 'while the version stays the process’s own');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('GET /api/config: a CLI flag wins over the file in what the panel shows', async () => {
+  // Never the raw file: a port pinned by `--port` is what the panel must show, because it is what
+  // this server runs and what every restart will keep running. Showing 9090 there would offer an
+  // edit to a value that has no effect.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-flagshow-'));
+  const configPath = join(dir, 'config.json');
+  writeFileSync(configPath, JSON.stringify({ ...defaultConfig(), port: 9090, auth: { token: 'tok' } }));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config: { ...defaultConfig(), port: 5555, auth: { token: 'tok' } },
+    cliFlags: { port: 5555 },
+    configPath,
+    env: {},
+  });
+  try {
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.port, 5555, 'the flag, not the file');
+    assert.equal(body.restart_pending, false, 'and nothing pending, because a restart keeps it');
+  } finally {
+    srv.stop();
   }
 });

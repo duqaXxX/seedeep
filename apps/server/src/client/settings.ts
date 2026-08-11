@@ -175,7 +175,13 @@ interface ConfigResponse {
       updates?: boolean;
     };
   };
-  restart_required?: boolean;
+  /**
+   * The RUNNING process is serving something a restart would replace — computed by the server from
+   * what it started with against what a fresh start would resolve to now. True on load, not only
+   * in the answer to a Save, and true for a `config.json` edited in an editor with this panel
+   * never opened.
+   */
+  restart_pending?: boolean;
 }
 
 interface SavedState {
@@ -220,6 +226,14 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
 <div class="dhead">
   <div class="deyebrow"><span class="dchip">config</span></div>
   <h3>Settings</h3>
+</div>
+<div class="sbanner spending" id="s-pending" style="display:none">
+  ${RESTART_SVG}
+  <div>
+    <strong>Running an older configuration</strong>
+    This server is still bound to the port, host and certificate name it started
+    with — <code>config.json</code> has changed since. Restart to serve it.
+  </div>
 </div>
 <div class="sbanner" id="s-banner" style="display:none">
   ${WARN_SVG}
@@ -347,6 +361,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
 
   const dclose = qd<HTMLButtonElement>('.close');
   const banner = qd<HTMLDivElement>('#s-banner');
+  const pendingBanner = qd<HTMLDivElement>('#s-pending');
   const portEl = qd<HTMLInputElement>('#s-port');
   const hostEl = qd<HTMLInputElement>('#s-host');
   const openTrack = qd<HTMLDivElement>('#s-open-track');
@@ -402,7 +417,18 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     }
   }
 
-  function setRestartAvailable(on: boolean): void {
+  /**
+   * State the stale process on all three of its surfaces at once — the dot on the header button
+   * (the only one visible with the drawer closed, which is the whole point), the banner that
+   * explains it, and the button that ends it.
+   *
+   * One function because a signal shown in one place and not the others is how this went missed:
+   * the footer hint was correct and simply not where anyone was looking.
+   */
+  function setRestartPending(on: boolean): void {
+    btn.classList.toggle('pending', on);
+    btn.title = on ? 'Settings — restart to apply config.json' : 'Settings';
+    pendingBanner.style.display = on ? '' : 'none';
     restartNowBtn.style.display = on ? '' : 'none';
   }
 
@@ -546,7 +572,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenEl.value = '***';
       tokenEl.type = 'password';
       tokenNote.style.display = 'none';
-      setRestartAvailable(false);
+      setRestartPending(cfg.restart_pending ?? false);
       updateRemote(); // also calls computeAccessUrl via urlEl.value update
     } catch {
       showMsg('Could not load config', true);
@@ -566,6 +592,26 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     scrim.classList.remove('on');
     drawer.classList.remove('on');
   }
+
+  /**
+   * The pending state alone, without `load()` — which would overwrite a form the user may be
+   * typing in. Runs at mount, so the dot is right on a page that never opens the drawer, and again
+   * whenever the tab comes back: editing `config.json` means leaving this window for an editor,
+   * and returning is exactly when the answer may have changed. No timer, so a backgrounded tab
+   * costs nothing.
+   */
+  async function refreshPending(): Promise<void> {
+    try {
+      const cfg = (await authFetch('/api/config').then((r) => r.json())) as ConfigResponse;
+      setRestartPending(cfg.restart_pending ?? false);
+    } catch {
+      // A server that cannot be reached is a different failure, and one the page states elsewhere.
+    }
+  }
+  void refreshPending();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void refreshPending();
+  });
 
   btn.addEventListener('click', () => (drawer.classList.contains('on') ? close() : open()));
   scrim.addEventListener('click', close);
@@ -674,12 +720,12 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenNote.style.display = 'none'; // the lockout has happened; warning about it is now noise
 
       updateRemote(); // also recomputes URL via computeAccessUrl → getToken
-      if (r.restart_required) {
-        setRestartAvailable(true);
-        showMsg('Saved — restart to apply');
-      } else {
-        showMsg('Saved');
-      }
+      // The server answers with the state of the PROCESS, so a Save that puts a value back to what
+      // is running clears the banner instead of raising one, and a Save landing on top of an
+      // earlier hand edit keeps it up.
+      const pending = r.restart_pending ?? false;
+      setRestartPending(pending);
+      showMsg(pending ? 'Saved — restart to apply' : 'Saved');
     } catch {
       showMsg('Save failed', true);
     }
@@ -693,7 +739,9 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     } catch {
       // Expected: the server exits before the response is fully flushed.
     }
-    restartNowBtn.style.display = 'none';
+    // The successor comes up on the new values, so nothing is pending any more; the reload below
+    // asks the server again either way.
+    setRestartPending(false);
     restartEl.style.display = 'none';
     // The spawned child needs a moment to bind the port before we reload.
     // Poll until the server is back (max 10 s), then reload the page.

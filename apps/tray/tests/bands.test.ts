@@ -78,7 +78,7 @@ function main(over: Partial<DigestEntry['main']> = {}): DigestEntry['main'] {
 const live = (entries: DigestEntry[]): Row[] => entries.map((e) => ({ entry: e, ended: false }));
 
 /** Render rows and record every session a click handed over, and whether settings was asked for. */
-function mount(rows: readonly Row[], error?: string, now?: number) {
+function mount(rows: readonly Row[], error?: string, now?: number, restartPending?: boolean) {
   (globalThis as { document?: unknown }).document = fakeDoc();
   const opened: string[] = [];
   const asked = { settings: 0, portal: 0 };
@@ -87,7 +87,11 @@ function mount(rows: readonly Row[], error?: string, now?: number) {
     portal: () => (asked.portal += 1),
     settings: () => (asked.settings += 1),
   };
-  return { node: renderLive(rows, CONNECTED, actions, error, now) as unknown, opened, asked };
+  return {
+    node: renderLive(rows, CONNECTED, actions, error, now, restartPending) as unknown,
+    opened,
+    asked,
+  };
 }
 
 const find = (node: unknown, cls: string) => findByClass(node, cls);
@@ -837,4 +841,18 @@ test('the Broken band is drawn above Needs you', () => {
 
   const heads = find(node, 'band-head').map((h) => text(h));
   assert.deepEqual(heads, ['Broken', 'Needs you'], 'the panel order must be the icon’s precedence');
+});
+
+// A server bound to a configuration `config.json` no longer asks for. Stated above the sessions and
+// NOT as a band: a band is a session, and nothing any session is doing has gone wrong.
+test('a stale server is named above the bands, and only when it is stale', () => {
+  const { node } = mount(live([entry()]), undefined, undefined, true);
+  const stale = find(node, 'bands-stale');
+  assert.equal(stale.length, 1, 'the notice is rendered');
+  assert.match(text(stale[0]), /config\.json/);
+  assert.equal(find(node, 'band--stale').length, 0, 'it is not a band');
+});
+
+test('a server honouring its config says nothing about it', () => {
+  assert.equal(find(mount(live([entry()])).node, 'bands-stale').length, 0);
 });

@@ -773,6 +773,14 @@ tunnel ships with `seedeep`: an SSH port-forward or a VPN already solves that, a
 re-solving it would only add a second, weaker way in. How to turn it on:
 [`install.md`](install.md#remote-access).
 
+**A server keeps the port, host and certificate name it started with**, so a config
+changed since — in the panel or in an editor — is a file saying one thing and a
+process doing another. An amber dot on the Settings button says so with the panel
+closed, and the panel explains it with the button that ends it; the tray says it above
+its sessions and `seedeep status` prints it. It is the SERVER's comparison, against
+what a fresh start would resolve to rather than against the file alone: a port pinned
+by `--port` is not pending, because a restart would go on ignoring the file there too.
+
 ## The engine underneath
 
 - **Core engine** — read-only, runtime-agnostic watcher + parser: session

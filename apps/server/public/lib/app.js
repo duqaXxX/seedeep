@@ -2979,6 +2979,14 @@ function createSettingsPanel(headerEl) {
   <div class="deyebrow"><span class="dchip">config</span></div>
   <h3>Settings</h3>
 </div>
+<div class="sbanner spending" id="s-pending" style="display:none">
+  ${RESTART_SVG}
+  <div>
+    <strong>Running an older configuration</strong>
+    This server is still bound to the port, host and certificate name it started
+    with — <code>config.json</code> has changed since. Restart to serve it.
+  </div>
+</div>
 <div class="sbanner" id="s-banner" style="display:none">
   ${WARN_SVG}
   <div>
@@ -3102,6 +3110,7 @@ function createSettingsPanel(headerEl) {
   const qd = (sel) => drawer.querySelector(sel);
   const dclose = qd(".close");
   const banner = qd("#s-banner");
+  const pendingBanner = qd("#s-pending");
   const portEl = qd("#s-port");
   const hostEl = qd("#s-host");
   const openTrack = qd("#s-open-track");
@@ -3139,7 +3148,10 @@ function createSettingsPanel(headerEl) {
       updateRow.style.display = "none";
     }
   }
-  function setRestartAvailable(on) {
+  function setRestartPending(on) {
+    btn.classList.toggle("pending", on);
+    btn.title = on ? "Settings — restart to apply config.json" : "Settings";
+    pendingBanner.style.display = on ? "" : "none";
     restartNowBtn.style.display = on ? "" : "none";
   }
   function showMsg(text, isErr = false, durationMs = 3000) {
@@ -3254,7 +3266,7 @@ function createSettingsPanel(headerEl) {
       tokenEl.value = "***";
       tokenEl.type = "password";
       tokenNote.style.display = "none";
-      setRestartAvailable(false);
+      setRestartPending(cfg.restart_pending ?? false);
       updateRemote();
     } catch {
       showMsg("Could not load config", true);
@@ -3271,6 +3283,17 @@ function createSettingsPanel(headerEl) {
     scrim.classList.remove("on");
     drawer.classList.remove("on");
   }
+  async function refreshPending() {
+    try {
+      const cfg = await authFetch("/api/config").then((r) => r.json());
+      setRestartPending(cfg.restart_pending ?? false);
+    } catch {}
+  }
+  refreshPending();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden)
+      refreshPending();
+  });
   btn.addEventListener("click", () => drawer.classList.contains("on") ? close() : open());
   scrim.addEventListener("click", close);
   dclose.addEventListener("click", close);
@@ -3342,12 +3365,9 @@ function createSettingsPanel(headerEl) {
       tokenEl.type = "password";
       tokenNote.style.display = "none";
       updateRemote();
-      if (r.restart_required) {
-        setRestartAvailable(true);
-        showMsg("Saved — restart to apply");
-      } else {
-        showMsg("Saved");
-      }
+      const pending = r.restart_pending ?? false;
+      setRestartPending(pending);
+      showMsg(pending ? "Saved — restart to apply" : "Saved");
     } catch {
       showMsg("Save failed", true);
     }
@@ -3358,7 +3378,7 @@ function createSettingsPanel(headerEl) {
     try {
       await authFetch("/api/restart", { method: "POST" });
     } catch {}
-    restartNowBtn.style.display = "none";
+    setRestartPending(false);
     restartEl.style.display = "none";
     msgEl.textContent = "Restarting…";
     msgEl.className = "smsg";

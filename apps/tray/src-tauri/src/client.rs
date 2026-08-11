@@ -43,9 +43,10 @@ const SSE_BUFFER_MAX: usize = 1 << 20;
 /// through a sleep, which is the failure this exists to bound.
 const STREAM_SILENCE: Duration = Duration::from_secs(35);
 
-/// The endpoint that names the server's own release, read only when the settings view is opened.
-/// Never on the poll: it is a value that cannot change while a process lives, and a second request
-/// a second would buy nothing.
+/// The endpoint that names the server's own release and whether it is honouring the configuration
+/// on disk. Read when the settings view is opened, and once more each time the popover is — never
+/// on the poll: the version cannot change while a process lives, and the pending state moves only
+/// when a human edits `config.json` or saves the panel, so a request a second would buy nothing.
 const CONFIG_PATH: &str = "/api/config";
 
 /// The version npm calls latest, as the server cached it. Read on its own slow clock (`poll.rs`),
@@ -540,6 +541,31 @@ impl Conn {
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
             .map(str::to_string)
+    }
+
+    /// Whether the connected server is bound to a port, host or certificate name that `config.json`
+    /// no longer asks for — the server's own comparison, never the tray's.
+    ///
+    /// The tray cannot compute this: the answer depends on the flags and the environment that
+    /// server was started with, which are not readable from another process, let alone from another
+    /// machine. `false` for a server too old to carry the field, which is the same thing it says
+    /// about a server with nothing pending — the tray states a problem it was told about, and
+    /// never one it inferred.
+    pub async fn restart_pending(&self) -> bool {
+        let Some((target, client)) = self.active() else {
+            return false;
+        };
+        let mut req = client.get(format!("{}{CONFIG_PATH}", target.base_url));
+        if let Some(token) = &target.token {
+            req = req.bearer_auth(token);
+        }
+        let Ok(res) = req.send().await else { return false };
+        let Ok(body) = res.json::<Value>().await else {
+            return false;
+        };
+        body.get("restart_pending")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     }
 
     /// What the connected server's update check found — about ITSELF and about npm.

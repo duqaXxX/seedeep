@@ -176,16 +176,19 @@ export async function writeConfig(config: SeedDeepConfig, path?: string, home = 
 }
 
 /**
- * Apply the precedence chain: CLI flags → env vars → `fileConfig` → built-in defaults.
- * Generates a random `auth.token` when absent and persists it to `configPath` (non-fatal on
- * write failure — the token is regenerated on the next start rather than crashing this one).
+ * Apply the precedence chain — CLI flags → env vars → `fileConfig` → built-in defaults — and
+ * nothing else: no token, no write, no clock. Pure, so it can answer "what would a start resolve
+ * to right now?" as often as a request asks (see {@link restartPending}) without a GET ever
+ * rewriting `config.json`.
+ *
+ * It is the one place the chain is spelled out. A second copy is exactly how a stale-process
+ * signal would come to disagree with the process it is describing.
  */
-export async function resolveConfig(
+export function applyPrecedence(
   cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
   env: Record<string, string | undefined>,
   fileConfig: SeedDeepConfig,
-  configPath?: string,
-): Promise<SeedDeepConfig> {
+): SeedDeepConfig {
   const resolved: SeedDeepConfig = {
     ...fileConfig,
     // env layer
@@ -205,6 +208,45 @@ export async function resolveConfig(
   if (cliFlags.port !== undefined) resolved.port = cliFlags.port;
   if (cliFlags.host !== undefined) resolved.host = cliFlags.host;
   if (cliFlags.open !== undefined) resolved.open = cliFlags.open;
+  return resolved;
+}
+
+/**
+ * Whether the process running `running` is serving a configuration a restart would replace —
+ * `true` when a fresh start, resolved from the SAME flags and env against `config.json` as it
+ * stands now, would come up differently.
+ *
+ * Three fields, and only three: `port`, `host` and the certificate's common name are what a
+ * process BINDS at startup and cannot revisit. `open` is spent the moment the browser opened, a
+ * token is adopted live, and announcing either would teach the user to ignore the announcement —
+ * which is how a server left on loopback went unnoticed in the first place.
+ *
+ * Both sides come through {@link applyPrecedence}, never from the file alone: a server started
+ * with `--port 9000` is not stale because `config.json` says 44842. `POST /api/restart` respawns
+ * with `process.argv.slice(2)` intact, so that flag survives the restart and the file would still
+ * not win — a pending state the button cannot clear is worse than no signal at all.
+ */
+export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConfig): boolean {
+  return (
+    running.port !== wouldStart.port ||
+    running.host !== wouldStart.host ||
+    // Absent and empty are the same certificate name — neither can be put in one.
+    (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '')
+  );
+}
+
+/**
+ * {@link applyPrecedence}, plus the one thing a start does that a comparison must not: generate a
+ * random `auth.token` when absent and persist it to `configPath` (non-fatal on write failure — the
+ * token is regenerated on the next start rather than crashing this one).
+ */
+export async function resolveConfig(
+  cliFlags: Partial<Pick<SeedDeepConfig, 'port' | 'host' | 'open'>>,
+  env: Record<string, string | undefined>,
+  fileConfig: SeedDeepConfig,
+  configPath?: string,
+): Promise<SeedDeepConfig> {
+  const resolved = applyPrecedence(cliFlags, env, fileConfig);
 
   // Generate and persist `auth.token` when absent. Write back when the file was absent
   // (ENOENT) OR when it existed but carried no token — both cases mean the token we just
