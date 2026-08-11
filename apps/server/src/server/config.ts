@@ -142,6 +142,20 @@ export async function readConfig(path?: string, home = homedir()): Promise<SeedD
  * does not overwrite it. Callers that only need a config to start with want {@link readConfig}.
  */
 export async function readConfigStrict(path?: string, home = homedir()): Promise<SeedDeepConfig> {
+  return (await readConfigFile(path, home)) ?? defaultConfig(home);
+}
+
+/**
+ * The file as it stands: `null` when it does not exist, and a THROW when it exists and cannot be
+ * understood.
+ *
+ * Three states, not two, because a caller that WRITES has to treat them differently. Absent is not
+ * "every default" for such a caller either: merging onto the defaults wrote `token: ""` and an
+ * empty webhook over a running server's real ones the moment anything was saved — measured, by
+ * deleting `config.json` under a live server and toggling one switch. Only a reader can take the
+ * defaults for a missing file; a writer has to fall back to what the process holds.
+ */
+export async function readConfigFile(path?: string, home = homedir()): Promise<SeedDeepConfig | null> {
   const filePath = path ?? configFilePath(home);
   const defs = defaultConfig(home);
   let raw: string;
@@ -149,7 +163,7 @@ export async function readConfigStrict(path?: string, home = homedir()): Promise
     raw = await readFile(filePath, 'utf8');
   } catch (e) {
     // ENOENT is normal on first run, and is the one read failure that is not a loss of information.
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return defs;
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new Error(`could not read config (${(e as Error).message})`);
   }
   let p: unknown;
@@ -230,11 +244,13 @@ export function applyPrecedence(
  * `true` when a fresh start, resolved from the SAME flags and env against `config.json` as it
  * stands now, would come up differently.
  *
- * Four fields. Three are what a process BINDS at startup and cannot revisit — `port`, `host` and
- * the certificate's common name. The fourth is `auth.token`: a save can rotate it live, but only
- * with a token the PANEL generated, and one edited straight into the file is never in a request —
- * the panel reads it redacted. A restart is what applies that one, which is why it is here and not
- * in {@link savePending}.
+ * Two groups. Three fields are what a process BINDS at startup and cannot revisit — `port`, `host`
+ * and the certificate's common name. The rest are the values the panel is shown REDACTED (the auth
+ * token, the webhook's address and its headers): a save can change any of them, but only carrying a
+ * value the panel HAS, and one edited straight into the file is never in a request — the panel
+ * posts `***`, which resolves back to what was already there. A restart is what applies those,
+ * which is why they are here and not in {@link savePending}: a pending state cleared by no button
+ * at all is worse than no signal.
  *
  * `open` is in neither: it is spent the moment the browser opened, and announcing it would teach
  * the user to ignore the announcement — which is how a server left on loopback went unnoticed in
@@ -252,12 +268,15 @@ export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConf
     // never produce.
     !Object.is(running.port, wouldStart.port) ||
     running.host !== wouldStart.host ||
+    // Absent and empty are the same certificate name — neither can be put in one.
+    (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '') ||
     // An EMPTY desired token is not a request to change anything: it means "none configured, one
     // will be generated on the next start", which is what a missing file says. Comparing it
-    // literally reports a pending restart against a token nobody wrote.
-    (wouldStart.auth.token !== '' && running.auth.token !== wouldStart.auth.token) ||
-    // Absent and empty are the same certificate name — neither can be put in one.
-    (running.tls.commonName ?? '') !== (wouldStart.tls.commonName ?? '')
+    // literally reports a pending restart against a token nobody wrote. The webhook's fields carry
+    // no such rule — an emptied URL is a channel deliberately switched off, which IS a change.
+    (wouldStart.auth.token === '' ? false : running.auth.token !== wouldStart.auth.token) ||
+    running.notifications.webhook.url !== wouldStart.notifications.webhook.url ||
+    JSON.stringify(running.notifications.webhook.headers) !== JSON.stringify(wouldStart.notifications.webhook.headers)
   );
 }
 
@@ -274,7 +293,22 @@ export function restartPending(running: SeedDeepConfig, wouldStart: SeedDeepConf
  * `open` is in neither: it is spent the moment the browser opened, so nothing can apply it.
  */
 export function savePending(running: SeedDeepConfig, desired: SeedDeepConfig): boolean {
-  return JSON.stringify(running.notifications) !== JSON.stringify(desired.notifications);
+  return JSON.stringify(applicableBySave(running)) !== JSON.stringify(applicableBySave(desired));
+}
+
+/**
+ * The notification settings the PANEL holds in clear, and can therefore post back unchanged: every
+ * switch, and the webhook's template.
+ *
+ * The webhook's URL and its headers are excluded for the same reason the token is — the panel is
+ * shown `***` and posts `***`, which the merge resolves back to what was already there. A pending
+ * state raised on one of those could never be cleared by pressing the button that claims to clear
+ * it, which is measurably worse than not raising it: the banner and the header dot simply stayed up
+ * forever. They are covered by {@link restartPending} instead, which names a cure that works.
+ */
+function applicableBySave(c: SeedDeepConfig): unknown {
+  const { url: _url, headers: _headers, ...webhook } = c.notifications.webhook;
+  return { tray: c.notifications.tray, webhook };
 }
 
 /** Where a value that beats `config.json` came from. */
@@ -326,6 +360,13 @@ export async function resolveConfig(
   env: Record<string, string | undefined>,
   fileConfig: SeedDeepConfig,
   configPath?: string,
+  /**
+   * Whether `fileConfig` really came from the file. `false` when it could not be parsed, and then
+   * NOTHING is written: the token is generated for this run alone and the user's file is left for
+   * them to repair. Writing it back is how a stray comma cost a token, a port and a certificate
+   * name — at startup, before any request, which is the half the POST-side guard does not cover.
+   */
+  fileIsUsable = true,
 ): Promise<SeedDeepConfig> {
   const resolved = applyPrecedence(cliFlags, env, fileConfig);
 
@@ -339,7 +380,9 @@ export async function resolveConfig(
     const absent = await readFile(configPath ?? configFilePath())
       .then(() => false)
       .catch((e) => (e as NodeJS.ErrnoException).code === 'ENOENT');
-    if (absent || !fileConfig.auth.token) {
+    // `fileIsUsable` first: a file we could not parse holds settings we would be erasing, and a
+    // token regenerated on every start until the user repairs it is the smaller harm by far.
+    if (fileIsUsable && (absent || !fileConfig.auth.token)) {
       try {
         await writeConfig(resolved, configPath);
       } catch {

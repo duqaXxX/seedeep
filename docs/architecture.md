@@ -2335,14 +2335,26 @@ The `***` redactions (the auth token, the webhook URL and its headers) mean "kee
 resolved against that same file — the source the panel read them from, so the mask can only ever put
 back the value it stood for.
 
-**A file that cannot be understood is not a config.** `readConfig` is deliberately lenient — a
-malformed `config.json` becomes the defaults so a server still starts — and that is exactly wrong
-for a caller that WRITES: merging onto the defaults put built-ins over the user's token, port and
-certificate name on the first save they made for any other reason. Both paths here use
-`readConfigStrict`, which throws on a file that exists and cannot be parsed (a MISSING file is still
-the defaults — absent legitimately means "every default"). On that throw the panel shows what is
-running and reports nothing pending, and a save merges onto the running config, which repairs the
-file rather than emptying it.
+**A file that cannot be understood is not a config — and a missing one is not a config either.**
+Reading it has three outcomes, not two, and `readConfigFile` is what separates them: `null` when it
+does not exist, a THROW when it exists and cannot be parsed, the config otherwise. `readConfig`
+stays lenient on top of it (a server must still start on a broken file) and `readConfigStrict` takes
+the defaults for a missing one — but a caller that WRITES can take neither shortcut:
+
+- Merging onto the defaults after a parse failure put built-ins over the user's token, port and
+  certificate name on the first save made for any other reason.
+- Merging onto the defaults for a MISSING file did the same — measured by deleting `config.json`
+  under a live server, a plausible "reset my settings", and toggling one switch: `token: ""` and an
+  empty webhook, and the next start would have minted a new token and locked out every pinned
+  client.
+
+So `POST /api/config` merges onto the file only when there IS one that parses, and onto the running
+config otherwise — which repairs the file instead of emptying it. `GET` shows what is running and
+reports nothing pending. **`resolveConfig` carries the same rule to startup**: handed
+`fileIsUsable: false` it generates a token for that run and writes nothing, so a stray comma costs
+a regenerated token until its owner repairs the file, and never the file itself. Every entry point
+goes through one helper (`readFileConfig` in `main.ts`) — including the subcommands, since `seedeep
+status`, which acts on nothing, was overwriting the config it was reporting on.
 
 **The panel has no Save button.** Every control writes as it changes: a toggle on the click, a text
 field on `change` — leaving it or pressing Enter — and never on each keystroke, or typing `45999`
@@ -2398,10 +2410,19 @@ reads it redacted. A restart is what applies that one.
 `open` is in neither state: it is spent the moment the browser opened, so nothing can apply it, and
 announcing it would teach the reader to ignore the announcement.
 
-**Two states, because there are two cures.** `save_pending` is the notification settings: the
-switches are in the form, so pressing **Apply now** genuinely re-posts them, and telling the user to
-restart for those would name an instruction that is not the fix. Naming the wrong cure is worse than
-naming none — which is why the token sits under `restart_pending` and not here.
+**Two states, because there are two cures.** `save_pending` is the notification settings the panel
+holds IN CLEAR — every switch and the webhook's template — because those are what pressing **Apply
+now** genuinely re-posts. Everything the panel is shown REDACTED sits under `restart_pending`
+instead: the auth token, the webhook's address and its headers. The panel posts `***` for each, the
+merge resolves that back to the value already there, and a state raised on one of them could not be
+cleared by the button offering to clear it — the banner and the header dot simply stayed up forever.
+Naming the wrong cure is worse than naming none.
+
+**Apply now reloads before it posts.** The banner can arrive from the background refresh with the
+drawer already open, and that path deliberately leaves the form alone so it cannot wipe out
+half-typed input — so the fields still hold what was loaded before the edit, and posting them wrote
+the user's change straight back out. Reloading first is also what the button means: apply what the
+file says.
 
 The server is the only party that can say whether a restart is due, because the answer is not
 "does `config.json` differ from what I am running". Configuration arrives through a four-layer

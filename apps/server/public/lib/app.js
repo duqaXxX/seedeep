@@ -3422,7 +3422,10 @@ function createSettingsPanel(headerEl) {
       showMsg("Save failed", true);
     }
   }
-  applyNowBtn.addEventListener("click", () => void persist());
+  applyNowBtn.addEventListener("click", async () => {
+    await load();
+    await persist();
+  });
   restartNowBtn.addEventListener("click", async () => {
     restartNowBtn.disabled = true;
     restartNowBtn.textContent = "Restarting…";

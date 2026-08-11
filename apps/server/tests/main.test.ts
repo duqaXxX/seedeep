@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { defaultConfig } from '../src/server/config.ts';
+import { defaultConfig, readConfigStrict, resolveConfig } from '../src/server/config.ts';
 import { run } from '../src/server/main.ts';
 
 function fakeDeps(overrides = {}) {
@@ -115,4 +118,24 @@ test('a replaced certificate is announced, and before the new fingerprint', asyn
 test('a reused certificate is not announced as replaced', async () => {
   const lines = await linesPrintedBy('AA:BB:CC', 'reused');
   assert.ok(!lines.some((l) => l.includes('re-pinned')), lines.join(' | '));
+});
+
+test('a malformed config.json is never written over — not by a start, not by a subcommand', async () => {
+  // The half the POST-side guard does not reach: `resolveConfig` generated a token and persisted
+  // it, so a stray comma cost the port, the token and the certificate name before any request had
+  // been made. Reproduced against a real start before the fix.
+  const home = mkdtempSync(join(tmpdir(), 'seedeep-main-broken-'));
+  const path = join(home, 'config.json');
+  const broken = '{ "port": 9090, "auth": { "token": "real-token" },\n';
+  writeFileSync(path, broken);
+  const cfg = await readConfigStrict(path, home).then(
+    () => null,
+    (e: Error) => e,
+  );
+  assert.ok(cfg instanceof Error, 'pre-condition: strict reading rejects it');
+
+  // `fileIsUsable: false` is what every entry point passes on that rejection.
+  const resolved = await resolveConfig({}, {}, defaultConfig(home), path, false);
+  assert.ok(resolved.auth.token.length > 0, 'this run still gets a token');
+  assert.equal(readFileSync(path, 'utf8'), broken, 'and the file is exactly as the user left it');
 });

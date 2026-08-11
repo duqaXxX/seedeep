@@ -809,9 +809,18 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   }
 
   // The panel has no Save button — every control writes as it changes — so a state whose cure is
-  // "save" needs an action of its own. This posts the form as it stands, which is what the fields
-  // already show: the file's values, including the ones an editor put there.
-  applyNowBtn.addEventListener('click', () => void persist());
+  // "save" needs an action of its own.
+  //
+  // `load()` FIRST, and it is not a refinement: the banner can arrive from `refreshPending()` with
+  // the drawer already open, and that path deliberately leaves the form alone so it cannot wipe out
+  // half-typed input. The fields then still hold what was loaded BEFORE the edit, and posting them
+  // wrote the user's change straight back out — measured in a browser: a switch set in an editor
+  // came back false, and the panel said "Saved". Reloading is also exactly what the button means:
+  // apply what the FILE says.
+  applyNowBtn.addEventListener('click', async () => {
+    await load();
+    await persist();
+  });
 
   restartNowBtn.addEventListener('click', async () => {
     restartNowBtn.disabled = true;

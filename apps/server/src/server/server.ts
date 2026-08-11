@@ -20,6 +20,7 @@ import {
   type NotifyConfig,
   type OverrideSource,
   overriddenFields,
+  readConfigFile,
   readConfigStrict,
   restartPending,
   type SeedDeepConfig,
@@ -749,11 +750,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         // process was bound to. What goes to disk is the file plus this request; what stays in
         // memory is what the process can honour without a restart.
         try {
-          // A file that cannot be understood is NOT a config: falling back to the defaults here
-          // would write built-ins over the user's token, port and certificate name on the first
-          // save they make for any other reason. What is running is intact, so a save onto that
-          // repairs the file instead of emptying it.
-          const base = await readConfigStrict(deps.configPath).catch(() => currentConfig);
+          // Neither a malformed file NOR a missing one may become the defaults here: writing those
+          // puts built-ins over the user's token, port, certificate name and webhook on the first
+          // save made for any other reason — measured both ways, with a stray comma and by deleting
+          // the file under a live server. What is running is intact, so a save onto that repairs
+          // the file instead of emptying it. `readConfigFile` is what separates the three cases.
+          const base = (await readConfigFile(deps.configPath).catch(() => null)) ?? currentConfig;
           await writeConfig(mergeConfigBody(base, body), deps.configPath);
         } catch {
           /* non-fatal: in-memory state below is still updated */

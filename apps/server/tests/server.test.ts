@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -1494,6 +1494,91 @@ test('GET /api/config names the fields a flag is overriding', async () => {
   try {
     const body = await (await fetch(`${srv.url}/api/config`)).json();
     assert.deepEqual(body.overrides, { port: 'flag' });
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config keeps the token and the webhook when config.json is MISSING', async () => {
+  // Found in review, reproduced against a real server: deleting the file under a running server —
+  // a plausible "reset my settings" — then toggling anything wrote `token: ""` and an empty
+  // webhook. The next start would mint a new token and lock out every pinned client.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-gone-'));
+  const configPath = join(dir, 'config.json');
+  const config = {
+    ...defaultConfig(),
+    auth: { token: 'real-token' },
+    notifications: {
+      ...defaultConfig().notifications,
+      webhook: {
+        ...defaultConfig().notifications.webhook,
+        url: 'https://hooks.example.test/abc',
+        headers: { Authorization: 'Bearer s3cret' },
+      },
+    },
+  };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    rmSync(configPath);
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ open: false }),
+    });
+    const written = JSON.parse(readFileSync(configPath, 'utf8')) as typeof config;
+    assert.equal(written.auth.token, 'real-token', 'the token survived');
+    assert.equal(written.notifications.webhook.url, 'https://hooks.example.test/abc', 'the webhook survived');
+    assert.deepEqual(written.notifications.webhook.headers, { Authorization: 'Bearer s3cret' }, 'and its headers');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('a hand-edited webhook URL asks for a restart, so the signal can be cleared', async () => {
+  // It was `save_pending`, and the panel posts the URL redacted — so `Apply now` resolved `***`
+  // back to the running value and left the two sides exactly as divergent. The banner and the
+  // header dot stayed up with no action on any surface that could clear them.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-cfg-hookurl-'));
+  const configPath = join(dir, 'config.json');
+  const config = {
+    ...defaultConfig(),
+    auth: { token: 'tok' },
+    notifications: {
+      ...defaultConfig().notifications,
+      webhook: { ...defaultConfig().notifications.webhook, url: 'https://old.example.test/a' },
+    },
+  };
+  writeFileSync(configPath, JSON.stringify(config));
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    config,
+    configPath,
+    env: {},
+  });
+  try {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        ...config,
+        notifications: {
+          ...config.notifications,
+          webhook: { ...config.notifications.webhook, url: 'https://new.example.test/b' },
+        },
+      }),
+    );
+    const body = await (await fetch(`${srv.url}/api/config`)).json();
+    assert.equal(body.restart_pending, true, 'a restart applies it');
+    assert.equal(body.save_pending, false, 'a save cannot, so it must not be named');
   } finally {
     srv.stop();
   }

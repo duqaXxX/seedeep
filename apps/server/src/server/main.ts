@@ -3,7 +3,7 @@ import type { SessionRecord } from '../core/types.ts';
 import { type CliOptions, parseArgs } from './args.ts';
 import { openBrowser } from './browser.ts';
 import { planClaudeCommand } from './claude-command.ts';
-import { readConfig, resolveConfig, type SeedDeepConfig } from './config.ts';
+import { defaultConfig, readConfigStrict, resolveConfig, type SeedDeepConfig } from './config.ts';
 import { discoverSessions } from './discovery.ts';
 import { usage, versionLine } from './help.ts';
 import { refreshOwnedCommandFile, runInstallCommand, staleCommandNotice } from './install-command.ts';
@@ -31,6 +31,24 @@ export interface MainDeps {
   config?: SeedDeepConfig;
 }
 
+/**
+ * The config file plus the one thing every entry point has to know about it: whether it could be
+ * read at all.
+ *
+ * `usable: false` is a file that EXISTS and cannot be parsed, and it travels to `resolveConfig` so
+ * nothing is written back over it. Without this a stray comma was replaced by the built-in defaults
+ * and a fresh token — not only by a server start, but by `seedeep status`, a command that acts on
+ * nothing and still managed to destroy the file it was reporting on.
+ */
+async function readFileConfig(): Promise<{ config: SeedDeepConfig; usable: boolean }> {
+  try {
+    return { config: await readConfigStrict(), usable: true };
+  } catch (e) {
+    console.warn(`seedeep: ${(e as Error).message} — using the defaults, leaving the file alone`);
+    return { config: defaultConfig(), usable: false };
+  }
+}
+
 /** Apply only the CLI layer on top of a known config (used when deps.config is injected). */
 function applyCliFlags(config: SeedDeepConfig, opts: ReturnType<typeof parseArgs>): SeedDeepConfig {
   const out = { ...config, auth: { ...config.auth }, tls: { ...config.tls } };
@@ -48,9 +66,10 @@ function applyCliFlags(config: SeedDeepConfig, opts: ReturnType<typeof parseArgs
  */
 export async function run(argv: string[], deps: MainDeps): Promise<{ stop(): void }> {
   const opts = parseArgs(argv);
+  const file = await readFileConfig();
   const config = deps.config
     ? applyCliFlags(deps.config, opts)
-    : await resolveConfig(opts, process.env as Record<string, string | undefined>, await readConfig());
+    : await resolveConfig(opts, process.env as Record<string, string | undefined>, file.config, undefined, file.usable);
 
   const server = await deps.startServer({
     watcher: deps.watcher as unknown as EventEmitter,
@@ -198,7 +217,14 @@ async function withConfig(
   opts: CliOptions,
   run: (port: number, config: SeedDeepConfig) => Promise<number>,
 ): Promise<number> {
-  const config = await resolveConfig(opts, process.env as Record<string, string | undefined>, await readConfig());
+  const file = await readFileConfig();
+  const config = await resolveConfig(
+    opts,
+    process.env as Record<string, string | undefined>,
+    file.config,
+    undefined,
+    file.usable,
+  );
   return run(opts.port ?? config.port, config);
 }
 

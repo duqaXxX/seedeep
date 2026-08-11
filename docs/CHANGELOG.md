@@ -39,6 +39,16 @@ process's flags), and a save merges onto the file re-read at that moment, leavin
 not mention alone. A value a CLI flag pins is still shown as the flag sets it — that is what runs,
 and offering an edit to the file's number there would be offering one with no effect.
 
+**Four data-loss paths found in review, all reproduced against a real server before being fixed.**
+A `config.json` that could not be parsed was replaced by the built-in defaults plus a fresh token at
+STARTUP — no request involved — and by `seedeep status`, a command that acts on nothing. A file that
+had been DELETED under a running server was written back as `token: ""` with an empty webhook on the
+next save. `Apply now`, pressed with the drawer already open, posted the form as it stood before the
+edit and wrote the user's change away. And a hand-edited webhook URL raised a `save_pending` that no
+button could ever clear, because the panel posts that field redacted. Reading the file now has three
+outcomes rather than two — missing, unparseable, fine — and no writer takes the defaults for either
+of the first two.
+
 **A second state, for the changes a restart is the wrong cure for.** `save_pending` says
 `config.json` carries notification settings this server has not taken up, with an **Apply now**
 button — the panel has no Save button, so a state cured by saving needed an action of its own. The
