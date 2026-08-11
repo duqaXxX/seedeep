@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildSaveBody, isLoopback, randomToken, resolveFormState } from '../src/client/settings.ts';
+import {
+  buildSaveBody,
+  formatHeaders,
+  isLoopback,
+  parseHeaders,
+  randomToken,
+  resolveFormState,
+} from '../src/client/settings.ts';
 
 // ── isLoopback ───────────────────────────────────────────────────────────────
 
@@ -135,5 +142,48 @@ test('buildSaveBody: both CN and token present', () => {
     open: false,
     tls: { commonName: 'box.local' },
     auth: { token: 'tok42' },
+  });
+});
+
+// ── webhook headers ──────────────────────────────────────────────────────────
+
+test('headers are one Name: value per line, and round-trip', () => {
+  const parsed = parseHeaders('Authorization: Bearer t\nTitle: seedeep');
+  assert.deepEqual(parsed, { Authorization: 'Bearer t', Title: 'seedeep' });
+  assert.equal(formatHeaders(parsed), 'Authorization: Bearer t\nTitle: seedeep');
+});
+
+test('a value containing a colon survives, because URLs and times both have one', () => {
+  assert.deepEqual(parseHeaders('X-Target: https://example.test:8443/x'), {
+    'X-Target': 'https://example.test:8443/x',
+  });
+});
+
+test('a line with no name is dropped rather than guessed at', () => {
+  // A header with no name is not a header, and inventing one would send it to the user's service
+  // without them having written it.
+  assert.deepEqual(parseHeaders('nonsense\n: novalue\n\nTitle: ok'), { Title: 'ok' });
+});
+
+test('the save body carries the webhook with its headers parsed', () => {
+  const body = buildSaveBody(4571, '127.0.0.1', true, '', '', {
+    url: 'https://example.test/hook',
+    headersText: 'Title: seedeep',
+    template: '{{title}}',
+    needsYou: true,
+    fails: false,
+    finishes: false,
+    updates: false,
+  });
+  assert.deepEqual(body['notifications'], {
+    webhook: {
+      url: 'https://example.test/hook',
+      headers: { Title: 'seedeep' },
+      template: '{{title}}',
+      needsYou: true,
+      fails: false,
+      finishes: false,
+      updates: false,
+    },
   });
 });

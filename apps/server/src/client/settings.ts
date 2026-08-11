@@ -59,11 +59,53 @@ export function buildSaveBody(
   open: boolean,
   cn: string,
   pendingToken: string,
+  webhook?: WebhookForm,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { port, host, open };
   if (cn.trim()) body['tls'] = { commonName: cn.trim() };
   if (pendingToken) body['auth'] = { token: pendingToken };
+  if (webhook) {
+    // `headersText` is FORM state, not config: sending it would write a key the server never reads
+    // into the user's config.json and leave it there for good.
+    const { headersText, ...rest } = webhook;
+    body['notifications'] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
+  }
   return body;
+}
+
+/** The webhook half of the form, as the panel holds it before it becomes a request body. */
+export interface WebhookForm {
+  url: string;
+  headersText: string;
+  template: string;
+  needsYou: boolean;
+  fails: boolean;
+  finishes: boolean;
+  updates: boolean;
+}
+
+/**
+ * `Name: value` per line into the object the server stores.
+ *
+ * A line without a colon is DROPPED rather than guessed at: a header with no name is not a header,
+ * and inventing one would send it to the user's service without them having written it.
+ */
+export function parseHeaders(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const at = line.indexOf(':');
+    if (at <= 0) continue;
+    const name = line.slice(0, at).trim();
+    if (name) out[name] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+
+/** The stored headers back into the one-per-line text the field shows. */
+export function formatHeaders(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
 }
 
 const SLIDERS_SVG = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
@@ -94,6 +136,18 @@ interface ConfigResponse {
   /** `fingerprint` is present only when the RUNNING server is serving TLS — a host typed into
    * the form but not yet restarted into has no certificate to describe. */
   tls?: { commonName?: string; fingerprint?: string };
+  /** Header VALUES arrive redacted — this endpoint answers without auth. See `load()`. */
+  notifications?: {
+    webhook?: {
+      url?: string;
+      headers?: Record<string, string>;
+      template?: string;
+      needsYou?: boolean;
+      fails?: boolean;
+      finishes?: boolean;
+      updates?: boolean;
+    };
+  };
   restart_required?: boolean;
 }
 
@@ -205,6 +259,30 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       <input id="s-fp" class="sinput" type="text" readonly
              placeholder="Available after restarting in remote mode">
       <button id="s-copy-fp" class="xbtn">Copy</button>
+    </div>
+  </div>
+</div>
+<div class="block">
+  <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Webhook URL<small>Where the POST goes — your notification service's endpoint. Empty turns the webhook off.</small></div>
+    <input id="s-hook-url" class="sinput" type="text" placeholder="https://ntfy.sh/your-topic">
+  </div>
+  <div class="srow">
+    <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
+    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Title: seedeep"></textarea>
+  </div>
+  <div class="srow">
+    <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
+    <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
+  </div>
+  <div class="srow">
+    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner here and not a push there.</small></div>
+    <div class="shooks">
+      <label><input type="checkbox" id="s-hook-needsYou"> A session needs you</label>
+      <label><input type="checkbox" id="s-hook-fails"> A session fails</label>
+      <label><input type="checkbox" id="s-hook-finishes"> A session is back to you</label>
+      <label><input type="checkbox" id="s-hook-updates"> A new server version is out</label>
     </div>
   </div>
 </div>
@@ -351,6 +429,27 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   }
 
   // ── load ───────────────────────────────────────────────────────────────────
+  const hookUrlEl = drawer.querySelector<HTMLInputElement>('#s-hook-url')!;
+  const hookHeadersEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-headers')!;
+  const hookTemplateEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-template')!;
+  const hookSwitches = {
+    needsYou: drawer.querySelector<HTMLInputElement>('#s-hook-needsYou')!,
+    fails: drawer.querySelector<HTMLInputElement>('#s-hook-fails')!,
+    finishes: drawer.querySelector<HTMLInputElement>('#s-hook-finishes')!,
+    updates: drawer.querySelector<HTMLInputElement>('#s-hook-updates')!,
+  };
+
+  /** The webhook fields as a request body's worth of form state. */
+  const webhookForm = (): WebhookForm => ({
+    url: hookUrlEl.value.trim(),
+    headersText: hookHeadersEl.value,
+    template: hookTemplateEl.value,
+    needsYou: hookSwitches.needsYou.checked,
+    fails: hookSwitches.fails.checked,
+    finishes: hookSwitches.finishes.checked,
+    updates: hookSwitches.updates.checked,
+  });
+
   async function load(): Promise<void> {
     try {
       const cfg = (await authFetch('/api/config').then((r) => r.json())) as ConfigResponse;
@@ -368,6 +467,17 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // so Discard must not revert it and a Save cannot change it (a new cert needs a restart).
       // Empty leaves the placeholder visible, which is the honest answer while there is none.
       fpEl.value = cfg.tls?.fingerprint ?? '';
+      const hook = cfg.notifications?.webhook;
+      hookUrlEl.value = hook?.url ?? '';
+      // Values arrive redacted (`***`) because this endpoint answers without auth. Showing them is
+      // deliberate: the user sees WHICH headers exist, and posting `***` back is what the server
+      // reads as "keep the one you have" — a blank field would erase the token on the next Save.
+      hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
+      hookTemplateEl.value = hook?.template ?? '';
+      hookSwitches.needsYou.checked = hook?.needsYou ?? true;
+      hookSwitches.fails.checked = hook?.fails ?? true;
+      hookSwitches.finishes.checked = hook?.finishes ?? false;
+      hookSwitches.updates.checked = hook?.updates ?? false;
       // The dash stays when the field is absent: a server too old to report its version is a
       // question this panel cannot answer, and a guess here would be the one number a bug report
       // quotes verbatim.
@@ -484,6 +594,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       openTrack.classList.contains('on'),
       cnEl.value,
       pendingToken,
+      webhookForm(),
     );
 
     try {

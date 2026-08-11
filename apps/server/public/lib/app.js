@@ -2905,13 +2905,34 @@ function resolveFormState(host, cn) {
   }
   return { remote, canSave: !cnError, cnError };
 }
-function buildSaveBody(port, host, open, cn, pendingToken) {
+function buildSaveBody(port, host, open, cn, pendingToken, webhook) {
   const body = { port, host, open };
   if (cn.trim())
     body["tls"] = { commonName: cn.trim() };
   if (pendingToken)
     body["auth"] = { token: pendingToken };
+  if (webhook) {
+    const { headersText, ...rest } = webhook;
+    body["notifications"] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
+  }
   return body;
+}
+function parseHeaders(text) {
+  const out = {};
+  for (const line of text.split(`
+`)) {
+    const at = line.indexOf(":");
+    if (at <= 0)
+      continue;
+    const name = line.slice(0, at).trim();
+    if (name)
+      out[name] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+function formatHeaders(headers) {
+  return Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join(`
+`);
 }
 var SLIDERS_SVG = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
   <line x1="2" y1="4" x2="14" y2="4"/>
@@ -3015,6 +3036,30 @@ function createSettingsPanel(headerEl) {
       <input id="s-fp" class="sinput" type="text" readonly
              placeholder="Available after restarting in remote mode">
       <button id="s-copy-fp" class="xbtn">Copy</button>
+    </div>
+  </div>
+</div>
+<div class="block">
+  <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Webhook URL<small>Where the POST goes — your notification service's endpoint. Empty turns the webhook off.</small></div>
+    <input id="s-hook-url" class="sinput" type="text" placeholder="https://ntfy.sh/your-topic">
+  </div>
+  <div class="srow">
+    <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
+    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Title: seedeep"></textarea>
+  </div>
+  <div class="srow">
+    <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
+    <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
+  </div>
+  <div class="srow">
+    <div class="slabel">Send when<small>The tray has its own set — the same event can be worth a banner here and not a push there.</small></div>
+    <div class="shooks">
+      <label><input type="checkbox" id="s-hook-needsYou"> A session needs you</label>
+      <label><input type="checkbox" id="s-hook-fails"> A session fails</label>
+      <label><input type="checkbox" id="s-hook-finishes"> A session is back to you</label>
+      <label><input type="checkbox" id="s-hook-updates"> A new server version is out</label>
     </div>
   </div>
 </div>
@@ -3128,6 +3173,24 @@ function createSettingsPanel(headerEl) {
     saveBtn.disabled = !canSave || !dirty;
     urlEl.value = computeAccessUrl();
   }
+  const hookUrlEl = drawer.querySelector("#s-hook-url");
+  const hookHeadersEl = drawer.querySelector("#s-hook-headers");
+  const hookTemplateEl = drawer.querySelector("#s-hook-template");
+  const hookSwitches = {
+    needsYou: drawer.querySelector("#s-hook-needsYou"),
+    fails: drawer.querySelector("#s-hook-fails"),
+    finishes: drawer.querySelector("#s-hook-finishes"),
+    updates: drawer.querySelector("#s-hook-updates")
+  };
+  const webhookForm = () => ({
+    url: hookUrlEl.value.trim(),
+    headersText: hookHeadersEl.value,
+    template: hookTemplateEl.value,
+    needsYou: hookSwitches.needsYou.checked,
+    fails: hookSwitches.fails.checked,
+    finishes: hookSwitches.finishes.checked,
+    updates: hookSwitches.updates.checked
+  });
   async function load() {
     try {
       const cfg = await authFetch("/api/config").then((r) => r.json());
@@ -3142,6 +3205,14 @@ function createSettingsPanel(headerEl) {
       setOpen(savedState.open);
       cnEl.value = savedState.cn;
       fpEl.value = cfg.tls?.fingerprint ?? "";
+      const hook = cfg.notifications?.webhook;
+      hookUrlEl.value = hook?.url ?? "";
+      hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
+      hookTemplateEl.value = hook?.template ?? "";
+      hookSwitches.needsYou.checked = hook?.needsYou ?? true;
+      hookSwitches.fails.checked = hook?.fails ?? true;
+      hookSwitches.finishes.checked = hook?.finishes ?? false;
+      hookSwitches.updates.checked = hook?.updates ?? false;
       versionEl.textContent = cfg.version ?? "—";
       showUpdate();
       pendingToken = "";
@@ -3234,7 +3305,7 @@ function createSettingsPanel(headerEl) {
       return;
     }
     saveBtn.disabled = true;
-    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken);
+    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm());
     try {
       const res = await authFetch("/api/config", {
         method: "POST",
