@@ -54,16 +54,84 @@ export function resolveFormState(
  * `pendingToken` is included only when the user generated a new one (non-empty).
  */
 export function buildSaveBody(
-  port: number,
+  port: number | null,
   host: string,
   open: boolean,
   cn: string,
   pendingToken: string,
+  webhook?: WebhookForm,
+  tray?: NotifyChannelSwitches,
 ): Record<string, unknown> {
-  const body: Record<string, unknown> = { port, host, open };
+  // A port that is not a usable one is OMITTED rather than sent: with no Save button every toggle
+  // posts the whole form, so an empty field would otherwise write `port: 0` — which the server
+  // accepts as a number and then binds at random on the next start.
+  const body: Record<string, unknown> = port === null ? { host, open } : { port, host, open };
   if (cn.trim()) body['tls'] = { commonName: cn.trim() };
   if (pendingToken) body['auth'] = { token: pendingToken };
+  if (webhook) {
+    // `headersText` is FORM state, not config: sending it would write a key the server never reads
+    // into the user's config.json and leave it there for good.
+    const { headersText, ...rest } = webhook;
+    body['notifications'] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
+  }
+  if (tray) {
+    const n = (body['notifications'] ?? {}) as Record<string, unknown>;
+    body['notifications'] = { ...n, tray };
+  }
   return body;
+}
+
+/**
+ * The port as a number, or null when the field does not hold one seedeep could bind.
+ *
+ * Exported so the panel and this rule cannot disagree — the same reason the CN check lives in
+ * `resolveFormState` alone.
+ */
+export function usablePort(value: string): number | null {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+}
+
+/** Which events one channel is allowed to interrupt for. Both channels carry the same four. */
+export interface NotifyChannelSwitches {
+  needsYou: boolean;
+  fails: boolean;
+  finishes: boolean;
+  updates: boolean;
+}
+
+/** The webhook half of the form, as the panel holds it before it becomes a request body. */
+export interface WebhookForm {
+  url: string;
+  headersText: string;
+  template: string;
+  needsYou: boolean;
+  fails: boolean;
+  finishes: boolean;
+}
+
+/**
+ * `Name: value` per line into the object the server stores.
+ *
+ * A line without a colon is DROPPED rather than guessed at: a header with no name is not a header,
+ * and inventing one would send it to the user's service without them having written it.
+ */
+export function parseHeaders(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const at = line.indexOf(':');
+    if (at <= 0) continue;
+    const name = line.slice(0, at).trim();
+    if (name) out[name] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+
+/** The stored headers back into the one-per-line text the field shows. */
+export function formatHeaders(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
 }
 
 const SLIDERS_SVG = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
@@ -94,6 +162,19 @@ interface ConfigResponse {
   /** `fingerprint` is present only when the RUNNING server is serving TLS — a host typed into
    * the form but not yet restarted into has no certificate to describe. */
   tls?: { commonName?: string; fingerprint?: string };
+  /** Header VALUES arrive redacted — this endpoint answers without auth. See `load()`. */
+  notifications?: {
+    tray?: { needsYou?: boolean; fails?: boolean; finishes?: boolean; updates?: boolean };
+    webhook?: {
+      url?: string;
+      headers?: Record<string, string>;
+      template?: string;
+      needsYou?: boolean;
+      fails?: boolean;
+      finishes?: boolean;
+      updates?: boolean;
+    };
+  };
   restart_required?: boolean;
 }
 
@@ -114,7 +195,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   let pendingToken = '';
   // The state when the drawer was last loaded/saved — used by Discard.
   let savedState: SavedState | null = null;
-  let dirty = false;
 
   // ── header button ──────────────────────────────────────────────────────────
   const btn = document.createElement('button');
@@ -160,7 +240,7 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
   </div>
   <div class="srow">
-    <div class="slabel">Open browser<br>on start</div>
+    <div class="slabel">Open browser on start</div>
     <div class="stoggle-wrap">
       <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
       <span id="s-open-label" class="stoggle-label">Yes</span>
@@ -209,6 +289,42 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   </div>
 </div>
 <div class="block">
+  <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Tray notifies you when<small>The menu-bar app on this machine. Its icon is never silenced by these — it costs nothing to ignore.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-tray-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-tray-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
+      <div class="shook-row"><div id="s-tray-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
+    </div>
+  </div>
+  <div class="srow">
+    <div class="slabel">Where notifications go<small>The tray shows them on this machine. Nothing else is sent anywhere unless you add an endpoint below.</small></div>
+    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Send to a webhook…</button>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Webhook URL<small>Where the POST goes. Any service that accepts one — leaving it empty keeps the webhook off.</small></div>
+    <input id="s-hook-url" class="sinput" type="text" placeholder="https://example.com/hook">
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Send when<small>Its own set: the same event can be worth a banner on the tray and not worth sending here.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
+    </div>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
+    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Authorization: Bearer …"></textarea>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
+    <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
+  </div>
+</div>
+<div class="block">
   <div class="blabel">About</div>
   <div class="srow">
     <div class="slabel">Version<small>The server answering</small></div>
@@ -223,8 +339,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   <span id="s-restart" class="srestart-hint" style="display:none">${RESTART_SVG}Restart required</span>
   <span id="s-msg" class="smsg" style="display:none"></span>
   <button id="s-restart-now" class="xbtn s-restart-btn" style="display:none">Restart now</button>
-  <button id="s-discard" class="xbtn">Discard</button>
-  <button id="s-save" class="xbtn s-save-btn" disabled>Save</button>
 </div>`;
   document.body.append(drawer);
 
@@ -254,8 +368,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   const restartEl = qd<HTMLSpanElement>('#s-restart');
   const msgEl = qd<HTMLSpanElement>('#s-msg');
   const restartNowBtn = qd<HTMLButtonElement>('#s-restart-now');
-  const discardBtn = qd<HTMLButtonElement>('#s-discard');
-  const saveBtn = qd<HTMLButtonElement>('#s-save');
 
   // ── helpers ────────────────────────────────────────────────────────────────
   function setOpen(on: boolean): void {
@@ -290,17 +402,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     }
   }
 
-  function setDirty(d: boolean): void {
-    dirty = d;
-    if (!d) {
-      saveBtn.disabled = true;
-      return;
-    }
-    // A bad CN still blocks the save even when the form is dirty. Asked of `resolveFormState`
-    // rather than re-derived here — that duplication is how a panel and its tests drift apart.
-    saveBtn.disabled = !resolveFormState(hostEl.value, cnEl.value).canSave;
-  }
-
   function setRestartAvailable(on: boolean): void {
     restartNowBtn.style.display = on ? '' : 'none';
   }
@@ -330,11 +431,11 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   }
 
   function updateRemote(): void {
-    const { remote, canSave, cnError } = resolveFormState(hostEl.value, cnEl.value);
+    const { remote, cnError } = resolveFormState(hostEl.value, cnEl.value);
     banner.style.display = remote ? '' : 'none';
     // Also revealed when the name is bad, even in loopback mode where TLS is not in use: the name
-    // is still on its way to config.json, so it still blocks Save — and a disabled Save whose
-    // reason is inside a hidden section is a dead end with no way out of the panel.
+    // is still on its way to config.json, so it still blocks the write — and an error inside a
+    // hidden section is a dead end with no way out of the panel.
     tlsSection.style.display = remote || cnError ? '' : 'none';
     const portChanged = portEl.value !== (savedState?.port ?? '');
     const hostChanged = hostEl.value.trim() !== (savedState?.host ?? '');
@@ -346,11 +447,63 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     // to ignore before it ever matters.
     const replacing = remote && !!savedState?.cn && !cnError && cnEl.value.trim() !== savedState.cn;
     cnNote.style.display = replacing ? '' : 'none';
-    saveBtn.disabled = !canSave || !dirty;
     urlEl.value = computeAccessUrl();
   }
 
   // ── load ───────────────────────────────────────────────────────────────────
+  const hookUrlEl = drawer.querySelector<HTMLInputElement>('#s-hook-url')!;
+  const hookHeadersEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-headers')!;
+  const hookTemplateEl = drawer.querySelector<HTMLTextAreaElement>('#s-hook-template')!;
+  const traySwitches = {
+    needsYou: drawer.querySelector<HTMLDivElement>('#s-tray-needsYou')!,
+    fails: drawer.querySelector<HTMLDivElement>('#s-tray-fails')!,
+    finishes: drawer.querySelector<HTMLDivElement>('#s-tray-finishes')!,
+    updates: drawer.querySelector<HTMLDivElement>('#s-tray-updates')!,
+  };
+  const hookSwitches = {
+    needsYou: drawer.querySelector<HTMLDivElement>('#s-hook-needsYou')!,
+    fails: drawer.querySelector<HTMLDivElement>('#s-hook-fails')!,
+    finishes: drawer.querySelector<HTMLDivElement>('#s-hook-finishes')!,
+  };
+  // The same control the rest of the drawer uses; `on` IS the state, as it is for Open browser.
+  //
+  // Concatenated, never spread into one object: the two channels carry the SAME four keys, so
+  // `{ ...tray, ...hook }` silently keeps four entries out of eight and leaves one channel's
+  // toggles with no listener at all — which is exactly what it did.
+  for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
+    track.parentElement?.addEventListener('click', () => {
+      track.classList.toggle('on');
+      void persist();
+    });
+  }
+
+  const customBtn = drawer.querySelector<HTMLButtonElement>('#s-hook-custom')!;
+  const customRows = [...drawer.querySelectorAll<HTMLElement>('.scustom')];
+  customBtn.addEventListener('click', () => {
+    const open = customBtn.getAttribute('aria-expanded') === 'true';
+    customBtn.setAttribute('aria-expanded', String(!open));
+    customBtn.textContent = open ? 'Send to a webhook…' : 'Hide webhook settings';
+    for (const row of customRows) row.hidden = open;
+  });
+
+  /** The webhook fields as a request body's worth of form state. */
+  /** The tray channel's four switches, read off the toggles. */
+  const trayForm = () => ({
+    needsYou: traySwitches.needsYou.classList.contains('on'),
+    fails: traySwitches.fails.classList.contains('on'),
+    finishes: traySwitches.finishes.classList.contains('on'),
+    updates: traySwitches.updates.classList.contains('on'),
+  });
+
+  const webhookForm = (): WebhookForm => ({
+    url: hookUrlEl.value.trim(),
+    headersText: hookHeadersEl.value,
+    template: hookTemplateEl.value,
+    needsYou: hookSwitches.needsYou.classList.contains('on'),
+    fails: hookSwitches.fails.classList.contains('on'),
+    finishes: hookSwitches.finishes.classList.contains('on'),
+  });
+
   async function load(): Promise<void> {
     try {
       const cfg = (await authFetch('/api/config').then((r) => r.json())) as ConfigResponse;
@@ -368,6 +521,21 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // so Discard must not revert it and a Save cannot change it (a new cert needs a restart).
       // Empty leaves the placeholder visible, which is the honest answer while there is none.
       fpEl.value = cfg.tls?.fingerprint ?? '';
+      const tray = cfg.notifications?.tray;
+      traySwitches.needsYou.classList.toggle('on', tray?.needsYou ?? true);
+      traySwitches.fails.classList.toggle('on', tray?.fails ?? true);
+      traySwitches.finishes.classList.toggle('on', tray?.finishes ?? false);
+      traySwitches.updates.classList.toggle('on', tray?.updates ?? true);
+      const hook = cfg.notifications?.webhook;
+      hookUrlEl.value = hook?.url ?? '';
+      // Values arrive redacted (`***`) because this endpoint answers without auth. Showing them is
+      // deliberate: the user sees WHICH headers exist, and posting `***` back is what the server
+      // reads as "keep the one you have" — a blank field would erase the token on the next Save.
+      hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
+      hookTemplateEl.value = hook?.template ?? '';
+      hookSwitches.needsYou.classList.toggle('on', hook?.needsYou ?? true);
+      hookSwitches.fails.classList.toggle('on', hook?.fails ?? true);
+      hookSwitches.finishes.classList.toggle('on', hook?.finishes ?? false);
       // The dash stays when the field is absent: a server too old to report its version is a
       // question this panel cannot answer, and a guess here would be the one number a bug report
       // quotes verbatim.
@@ -380,7 +548,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenNote.style.display = 'none';
       setRestartAvailable(false);
       updateRemote(); // also calls computeAccessUrl via urlEl.value update
-      setDirty(false);
     } catch {
       showMsg('Could not load config', true);
     }
@@ -408,22 +575,16 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   });
 
   // ── field interactions ─────────────────────────────────────────────────────
-  portEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
-  });
-  hostEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
-  });
+  // `input` still redraws what the form SAYS as you type — the remote banner, the CN error — while
+  // the `change` listeners above are what persist. Showing the consequence early and writing it
+  // late are two different jobs.
+  portEl.addEventListener('input', () => updateRemote());
+  hostEl.addEventListener('input', () => updateRemote());
+  cnEl.addEventListener('input', () => updateRemote());
   openTrack.addEventListener('click', () => {
     openTrack.classList.toggle('on');
     openLabel.textContent = openTrack.classList.contains('on') ? 'Yes' : 'No';
-    setDirty(true);
-  });
-  cnEl.addEventListener('input', () => {
-    setDirty(true);
-    updateRemote();
+    void persist();
   });
 
   regenBtn.addEventListener('click', () => {
@@ -434,8 +595,10 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
     // Shown only while a new token is pending: rotating it is the panel's other action that
     // breaks a client on a different machine, and nothing else here said so.
     tokenNote.style.display = '';
-    setDirty(true);
     urlEl.value = computeAccessUrl();
+    // Persisted at once like everything else: a token shown but not adopted is one the user would
+    // note down and then find refused.
+    void persist();
   });
 
   /** Copy an input's value to the clipboard and flash the button. No value → no-op, so the
@@ -455,35 +618,32 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
   wireCopy(copyUrlBtn, urlEl);
   wireCopy(copyFpBtn, fpEl);
 
-  discardBtn.addEventListener('click', () => {
-    if (!savedState) return;
-    portEl.value = savedState.port;
-    hostEl.value = savedState.host;
-    setOpen(savedState.open);
-    cnEl.value = savedState.cn;
-    pendingToken = '';
-    tokenEl.value = '***';
-    tokenEl.type = 'password';
-    tokenNote.style.display = 'none';
-    cnErr.style.display = 'none';
-    updateRemote(); // also recomputes URL
-    setDirty(false);
-  });
+  for (const field of [portEl, hostEl, cnEl, hookUrlEl, hookHeadersEl, hookTemplateEl]) {
+    // `change`, not `input`: a keystroke is not a decision, and posting one would send the server a
+    // port of `4` on the way to `45999`.
+    field.addEventListener('change', () => void persist());
+  }
 
-  saveBtn.addEventListener('click', async () => {
+  /**
+   * Persist the whole form. Called by every control that changes it — there is no Save button:
+   * a switch that has to be confirmed elsewhere reads as done the moment it moves, and the panel
+   * spent one release lying about exactly that.
+   */
+  async function persist(): Promise<void> {
     const host = hostEl.value.trim();
     if (!resolveFormState(host, cnEl.value).canSave) {
       updateRemote(); // shows the reason under the field
       cnEl.focus();
       return;
     }
-    saveBtn.disabled = true;
     const body = buildSaveBody(
-      Number(portEl.value),
+      usablePort(portEl.value),
       host,
       openTrack.classList.contains('on'),
       cnEl.value,
       pendingToken,
+      webhookForm(),
+      trayForm(),
     );
 
     try {
@@ -497,7 +657,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       // opposite of what happened, and the value the user typed was never stored.
       if (!res.ok) {
         showMsg(r.error ?? 'Save failed', true, 6000);
-        saveBtn.disabled = false;
         return;
       }
 
@@ -515,7 +674,6 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       tokenNote.style.display = 'none'; // the lockout has happened; warning about it is now noise
 
       updateRemote(); // also recomputes URL via computeAccessUrl → getToken
-      setDirty(false);
       if (r.restart_required) {
         setRestartAvailable(true);
         showMsg('Saved — restart to apply');
@@ -524,9 +682,8 @@ export function createSettingsPanel(headerEl: HTMLElement): void {
       }
     } catch {
       showMsg('Save failed', true);
-      saveBtn.disabled = false;
     }
-  });
+  }
 
   restartNowBtn.addEventListener('click', async () => {
     restartNowBtn.disabled = true;

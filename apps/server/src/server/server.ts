@@ -14,9 +14,11 @@ import { createCardsIndex, defaultCardsIndexFile } from './cards-index.ts';
 import { ClientRegistry, type SseSink } from './clients.ts';
 import { createProber, type PendingCommand, type Vanished } from './command-liveness.ts';
 import { buildComparison } from './compare.ts';
-import { defaultConfig, type SeedDeepConfig, writeConfig } from './config.ts';
-import { digestEntry } from './digest.ts';
+import { defaultConfig, type NotifyConfig, type SeedDeepConfig, writeConfig } from './config.ts';
+import { type DigestEntry, digestEntry } from './digest.ts';
 import { createLiveTrees } from './live-trees.ts';
+import { createNotifyEngine } from './notify-engine.ts';
+import { sendWebhook } from './notify-webhook.ts';
 import { streamReplay } from './replay.ts';
 import { buildSearchRows, createSearchIndex, defaultIndexFile } from './search-index.ts';
 import { cardsForSession } from './session-cards.ts';
@@ -136,6 +138,24 @@ export const HEARTBEAT_MS = 15_000;
  */
 export const LIVENESS_MS = 15_000;
 
+/**
+ * How long the notification engine waits after a transcript event before reading the digest.
+ *
+ * A turn appends many lines in a burst — a thinking block, a text block, then each tool call — and
+ * the digest is the same answer for all of them. Coalescing spends one reading instead of a dozen.
+ * It is far below the tray's own 1s open / 5s closed poll, so nothing here is the slower of the two.
+ */
+const NOTIFY_COALESCE_MS = 300;
+
+/**
+ * How often the notification engine looks even when the transcript has said nothing.
+ *
+ * A session waiting on an approval is SILENT — it writes its next line only once the user answers —
+ * so the state that matters changes with no event to hang an evaluation on. One second matches what
+ * the tray's own poll spent while its panel was open, and it runs only while `wanted()`.
+ */
+const NOTIFY_SWEEP_MS = 1_000;
+
 const encoder = new TextEncoder();
 
 /**
@@ -220,6 +240,9 @@ export function parseMarks(raw: string | null): Map<string, number> | undefined 
  * something about the operator's machine they could not already know (host and port are what they
  * used to arrive). The portal reads this through `authFetch`, so the mark works in both modes.
  */
+/** What a secret reads as on the wire. One constant, so redaction and its inverse cannot drift. */
+const REDACTED = '***';
+
 function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: boolean): object {
   const { tls, auth, ...rest } = cfg;
   const { cert: _c, key: _k, ...tlsRest } = tls;
@@ -232,6 +255,50 @@ function redactConfig(cfg: SeedDeepConfig, fingerprint: string | null, authed: b
     ...(authed ? { dev: FROM_SOURCE } : {}),
     auth: { token: '***' },
     tls: fingerprint === null ? tlsRest : { ...tlsRest, fingerprint },
+    // A header value is where every notification service puts its token, and this endpoint answers
+    // without auth. The panel is told a header EXISTS and never what it says — the same bargain
+    // `auth.token` already makes, and `POST` puts the stored value back when it sees `***`.
+    notifications: {
+      ...rest.notifications,
+      webhook: {
+        ...rest.notifications.webhook,
+        // The URL is a CREDENTIAL, not an address: for Slack, Discord and ntfy, whoever holds it can
+        // post into the channel. This endpoint answers without auth even in remote mode, so it says
+        // only whether one is configured.
+        url: rest.notifications.webhook.url === '' ? '' : REDACTED,
+        headers: Object.fromEntries(Object.keys(rest.notifications.webhook.headers).map((k) => [k, REDACTED])),
+      },
+    },
+  };
+}
+
+/**
+ * Merge a `POST /api/config` body's `notifications` onto the stored one, channel by channel.
+ *
+ * A header whose incoming value is exactly {@link REDACTED} keeps the value already stored: the
+ * panel reads `***` and posts the whole object back, so taking it literally would erase the token
+ * on the first save the user made for any other reason. A header the body omits is DELETED — that
+ * is how the panel removes one, and it is why this is not a blanket merge.
+ */
+function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unknown>): NotifyConfig {
+  const obj = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const hook = obj(given['webhook']);
+  // `***` means "keep what you have", for the URL exactly as for a header: the panel reads the
+  // redaction and posts the whole object back, and taking it literally would store the mask.
+  const url = hook['url'] === undefined || hook['url'] === REDACTED ? stored.webhook.url : String(hook['url']);
+  const headers =
+    hook['headers'] === undefined
+      ? stored.webhook.headers
+      : Object.fromEntries(
+          Object.entries(obj(hook['headers'])).map(([k, v]) => [
+            k,
+            v === REDACTED ? (stored.webhook.headers[k] ?? '') : String(v),
+          ]),
+        );
+  return {
+    tray: { ...stored.tray, ...obj(given['tray']) } as NotifyConfig['tray'],
+    webhook: { ...stored.webhook, ...hook, url, headers } as NotifyConfig['webhook'],
   };
 }
 
@@ -320,8 +387,112 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   // for a session nobody is watching, which is what keeps an idle process idle.
   const liveTrees = createLiveTrees({ watcher: deps.watcher });
 
-  const onEvent = (e: NormalizedEvent) => registry.broadcast(e.type, e);
-  const onAdded = (id: string) => registry.broadcast('session-added', id);
+  /**
+   * Every live session's digest entry — what `/api/digest` answers with, and what the notification
+   * engine reads. One session's failure must not answer for the others: a seed that throws would
+   * otherwise reject the whole response, and a polling client would see the digest 500 until that
+   * one file recovers.
+   */
+  const buildDigest = async (): Promise<DigestEntry[]> => {
+    const live = (await deps.discover()).filter(isLive);
+    liveTrees.retain(live.map((s) => s.sessionId));
+    const built = await Promise.all(
+      live.map(async (s) => {
+        try {
+          const snap = (await liveTrees.ensure(s)).snapshot();
+          // After `ensure`: the sighting is stamped by the seed, so reading it first would report
+          // "never seen" for every session the server has not held a tree for yet.
+          return digestEntry(s, snap, { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(s.sessionId) });
+        } catch (err) {
+          console.error(`seedeep: digest skipped ${s.sessionId} —`, err);
+          return null;
+        }
+      }),
+    );
+    return built.filter((e) => e !== null);
+  };
+
+  /**
+   * Who decides an event is worth interrupting the user for, and on which channel.
+   *
+   * `hasListeners` is what keeps an unwatched process idle: the tray is worth evaluating only while
+   * a client is subscribed — a closed tray has nobody to deliver to, and an open one is already
+   * asking for the digest on its own clock. A configured webhook always is, because its destination
+   * is not on this machine.
+   */
+  const notify = createNotifyEngine({
+    config: () => currentConfig.notifications,
+    deliver: (a, channel) => {
+      if (channel === 'tray') {
+        registry.broadcast('notification', a);
+        return;
+      }
+      // Not awaited: the engine must not be held while a user's endpoint answers, or the next
+      // event waits behind an address that may never answer at all. The outcome is logged once —
+      // a webhook that is silently failing is a setting the user cannot debug.
+      void sendWebhook(currentConfig.notifications.webhook, a).then((r) => {
+        if (!r.ok) console.warn(`seedeep: webhook POST failed${r.status === null ? '' : ` (HTTP ${r.status})`}`);
+      });
+    },
+    hasListeners: () => registry.size() > 0,
+  });
+
+  // Coalesced: a turn appends many lines in a burst and the digest is the same answer for all of
+  // them.
+  let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  // One build at a time. The first is materially slower than the rest — `liveTrees.ensure` seeds
+  // from disk on first sight — so two in flight would resolve out of order and rewind `seen` to an
+  // older reading, announcing the same finish twice.
+  let building = false;
+  // Whether anyone was listening last time, so the loss of the last one can RE-SEED. Without this,
+  // `seen` keeps a snapshot from whenever the tray was closed and the next reading announces a wait
+  // that happened half an hour ago — the exact misdating the seed rule exists to prevent.
+  let wasWanted = false;
+
+  const evaluate = () => {
+    const wanted = notify.wanted();
+    if (wasWanted && !wanted) {
+      // Nobody left to tell. Forget what was seen, so whoever arrives next starts from a seed.
+      notify.feed(null);
+    }
+    wasWanted = wanted;
+    if (notifyTimer !== null || building || !wanted) return;
+    notifyTimer = setTimeout(() => {
+      notifyTimer = null;
+      building = true;
+      // A reading that could not be made re-seeds rather than announcing a stale transition.
+      buildDigest()
+        .then(
+          (entries) => notify.feed(entries),
+          () => notify.feed(null),
+        )
+        .finally(() => {
+          building = false;
+        });
+    }, NOTIFY_COALESCE_MS);
+    (notifyTimer as { unref?: () => void }).unref?.();
+  };
+
+  /**
+   * The heartbeat the transcript cannot provide.
+   *
+   * `needsYou` and `finishes` are decided by `status`, which lives in `~/.claude/sessions/` and NOT
+   * in the transcript — and a session stopped on an approval writes nothing at all until the user
+   * answers. An edge trigger on transcript events therefore misses precisely the event the feature
+   * exists for. The tray's poll used to cover this; removing it without replacing it was the
+   * regression. Runs only while there is somebody to tell, so an unwatched process is still idle.
+   */
+  const notifySweep = setInterval(() => evaluate(), NOTIFY_SWEEP_MS);
+  (notifySweep as { unref?: () => void }).unref?.();
+
+  const onEvent = (e: NormalizedEvent) => {
+    registry.broadcast(e.type, e);
+    evaluate();
+  };
+  const onAdded = (id: string) => {
+    registry.broadcast('session-added', id);
+    evaluate();
+  };
   deps.watcher.on('event', onEvent);
   deps.watcher.on('session-added', onAdded);
 
@@ -490,6 +661,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             ...(body['tls'] as Record<string, unknown>),
           } as SeedDeepConfig['tls'];
         }
+        if (body['notifications'] && typeof body['notifications'] === 'object') {
+          currentConfig.notifications = mergeNotificationsPost(
+            currentConfig.notifications,
+            body['notifications'] as Record<string, unknown>,
+          );
+        }
         try {
           await writeConfig(currentConfig, deps.configPath);
         } catch {
@@ -566,10 +743,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       // the first ask — nothing polls, and `retain` drops what the same discovery just said is
       // no longer live, so a tree never outlives its session.
       if (pathname === '/api/digest') {
-        const live = (await deps.discover()).filter(isLive);
-        liveTrees.retain(live.map((s) => s.sessionId));
         const one = new URL(req.url).searchParams.get('sessionId');
         if (one !== null) {
+          const live = (await deps.discover()).filter(isLive);
+          liveTrees.retain(live.map((s) => s.sessionId));
           const rec = live.find((s) => s.sessionId === one);
           // 404 also covers a session that has ENDED: the digest serves live sessions, and a
           // client holding a stale entry is the one that knows it was watching it.
@@ -580,27 +757,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
             digestEntry(rec, tree.snapshot(), { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(rec.sessionId) }),
           );
         }
-        // One session's failure must not answer for the others: a seed that throws (an
-        // unreadable transcript, a permission error) would otherwise reject the whole response
-        // and a polling client would see the entire digest 500 until that one file recovers.
-        // The failed entry is already dropped by `ensure`, so the next poll retries it.
-        const built = await Promise.all(
-          live.map(async (s) => {
-            try {
-              const snap = (await liveTrees.ensure(s)).snapshot();
-              // After `ensure`: the sighting is stamped by the seed, so reading it first would
-              // report "never seen" for every session the server has not held a tree for yet.
-              return digestEntry(s, snap, { now: Date.now(), wordSeenAt: liveTrees.wordSeenAt(s.sessionId) });
-            } catch (err) {
-              console.error(`seedeep: digest skipped ${s.sessionId} —`, err);
-              return null;
-            }
-          }),
-        );
-        return json(
-          req,
-          built.filter((e) => e !== null),
-        );
+        // The same builder the notification engine reads, so the two can never disagree about what
+        // a session is doing. The failed entry is already dropped by `ensure`, so the next poll
+        // retries it.
+        return json(req, await buildDigest());
       }
 
       // Per-session turn count and total tokens from the aggregate cache — used by the session
@@ -873,6 +1033,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     tlsCertOrigin,
     stop() {
       clearInterval(heartbeat);
+      clearInterval(notifySweep);
       clearInterval(liveness);
       liveTrees.stop();
       deps.watcher.off('event', onEvent);

@@ -4,7 +4,7 @@ import { after, test } from 'node:test';
 // faithful fake DOM would be a second one to keep true.
 import { fakeDoc, findByClass, textOf } from '../../server/tests/fake-dom.ts';
 import type { Local, Status } from '../ui/connection.ts';
-import { type Prefs, renderSettings, type SettingsActions, type Versions } from '../ui/settings.ts';
+import { renderSettings, type SettingsActions, type Versions } from '../ui/settings.ts';
 
 const prevDoc = (globalThis as { document?: unknown }).document;
 after(() => {
@@ -29,7 +29,6 @@ const LOCAL = {
 /** Render the view and record every call it makes back into the app. */
 function mount(
   status: Extract<Status, { kind: 'connected' }>,
-  prefs: Partial<Prefs> = {},
   note?: { text: string; bad?: boolean },
   versions: Versions = { tray: '0.1.1' },
   local: Local = { start: { kind: 'elsewhere' }, canStop: false },
@@ -38,32 +37,28 @@ function mount(
   const calls: string[] = [];
   const actions: SettingsActions = {
     back: () => calls.push('back'),
-    setNotify: (on) => calls.push(`setNotify:${on}`),
-    setNotifyFinished: (on) => calls.push(`setNotifyFinished:${on}`),
-    setNotifyFailed: (on) => calls.push(`setNotifyFailed:${on}`),
-    setNotifyUpdate: (on) => calls.push(`setNotifyUpdate:${on}`),
     connect: (url) => calls.push(`connect:${url}`),
     test: () => calls.push('test'),
     stop: () => calls.push('stop'),
   };
-  // The app's own defaults, so a case that cares about one switch does not have to state the other.
-  const stored: Prefs = { notify: true, notifyFinished: false, notifyFailed: true, notifyUpdate: true, ...prefs };
-  return { node: renderSettings(status, stored, actions, versions, local, note) as unknown, calls };
+  return { node: renderSettings(status, actions, versions, local, note) as unknown, calls };
 }
 
 const find = (node: unknown, cls: string) => findByClass(node, cls);
 const text = (node: unknown) => textOf(node);
 const all = (node: unknown) => text(node);
 
-// The card's four things, on one surface. Asserted together because "the settings panel" is the
-// claim — a view missing one of them is not a smaller version of it, it is a different screen.
-test('the four things the card asks for are all on the surface', () => {
-  const { node } = mount(REMOTE, { notify: true });
+// What this surface is for, asserted together because "the settings panel" is the claim — a view
+// missing one of them is not a smaller version of it, it is a different screen. WHICH events notify
+// is no longer among them: the server decides that, and its own panel configures both channels.
+test('the things the panel is for are all on the surface', () => {
+  const { node } = mount(REMOTE);
 
   assert.ok(find(node, 'set-host').length, 'the server it is talking to');
   assert.ok(find(node, 'fp-value').length, 'the certificate fingerprint');
   assert.ok(find(node, 'conn-input').length, 'the one field a remote server needs');
-  assert.ok(find(node, 'set-toggle').length, 'the notification toggle');
+  assert.ok(find(node, 'set-test').length, 'the one honest check that notifications arrive at all');
+  assert.equal(find(node, 'set-toggle').length, 0, 'and no switch: two places to answer one question');
 });
 
 // An abbreviated hash teaches the habit of comparing the first three groups, which is not a
@@ -93,67 +88,10 @@ test('a plaintext server that is not the default says what is not verified', () 
   assert.match(all(node), /nothing here is verified/);
   assert.doesNotMatch(all(node), /Pinned certificate/, 'there is nothing to pin');
 });
-
-// The toggle draws the stored value and asks for the opposite — the two halves of a switch that
-// cannot end up showing one thing and meaning another.
-test('the toggle shows what is stored and asks for the other', () => {
-  for (const notify of [true, false]) {
-    const { node, calls } = mount(REMOTE, { notify });
-    const button = find(node, 'set-toggle')[0] as {
-      onclick: () => void;
-      getAttribute(k: string): string | null;
-    };
-
-    assert.equal(button.getAttribute('aria-checked'), String(notify));
-    assert.equal(button.getAttribute('role'), 'switch');
-
-    button.onclick();
-
-    assert.deepEqual(calls, [`setNotify:${!notify}`]);
-  }
-});
-
-// Four switches, and each one has to reach its OWN setting. Written because the cheap way to add
-// the second — one handler for all of them — sends the wrong command with no visible symptom until
-// a user finds that turning one off turned another off too.
-test('each notification switch stores its own setting', () => {
-  const { node, calls } = mount(REMOTE, {
-    notify: true,
-    notifyFailed: true,
-    notifyFinished: false,
-    notifyUpdate: true,
-  });
-  const switches = find(node, 'set-toggle') as Array<{
-    onclick: () => void;
-    getAttribute(k: string): string | null;
-  }>;
-
-  assert.equal(switches.length, 4);
-  // The order is the urgency the whole app is built on: what stopped a session first, what merely
-  // finished one next — and last the one switch that is not about a session at all.
-  assert.equal(switches[0]!.getAttribute('aria-label'), 'A session needs you');
-  // "fails", never "breaks": the label is about a model call that FAILED, and "a session breaks"
-  // reads just as easily as a session taking a break — which is how it was misread in review.
-  assert.equal(switches[1]!.getAttribute('aria-label'), 'A session fails');
-  // The interruption rule is NOT on the label: a turn you stopped yourself never notifies, and
-  // saying so only made a reader wonder what the exception was for. If you pressed Esc you know.
-  assert.equal(switches[2]!.getAttribute('aria-label'), 'A session finishes');
-  assert.equal(switches[3]!.getAttribute('aria-label'), 'A new server version is out');
-  assert.equal(switches[1]!.getAttribute('aria-checked'), 'true', 'a broken session notifies by default');
-  assert.equal(switches[2]!.getAttribute('aria-checked'), 'false', 'finished turns are off by default');
-  assert.equal(switches[3]!.getAttribute('aria-checked'), 'true', 'a new release notifies by default');
-
-  switches[2]!.onclick();
-  switches[1]!.onclick();
-  switches[3]!.onclick();
-
-  assert.deepEqual(calls, ['setNotifyFinished:true', 'setNotifyFailed:false', 'setNotifyUpdate:false']);
-});
-
 // The About section stays silent about updates until there IS one: a line saying an install is
 // current would say nothing on every day but release day.
 test('the available update is named only when one exists', () => {
-  const current = mount(REMOTE, {}, undefined, { tray: '0.9.0', server: '0.9.0' });
+  const current = mount(REMOTE, undefined, { tray: '0.9.0', server: '0.9.0' });
   assert.doesNotMatch(all(current.node), /available/);
 });
 
@@ -161,7 +99,7 @@ test('the available update is named only when one exists', () => {
 // work out WHICH install it applied to — and the case that prompted this had a current tray and a
 // stale server, so the answer was not the obvious one.
 test('the behind install is the one marked, not both', () => {
-  const staleServer = mount(REMOTE, {}, undefined, {
+  const staleServer = mount(REMOTE, undefined, {
     tray: '1.0.0',
     server: '0.9.0',
     latest: '1.0.0',
@@ -173,7 +111,7 @@ test('the behind install is the one marked, not both', () => {
   assert.doesNotMatch(text, /seedeep tray 1\.0\.0 — /, 'a current tray is not marked');
   assert.match(text, /`seedeep restart`/, 'and the server needs a restart, not just an install');
 
-  const staleTray = mount(REMOTE, {}, undefined, {
+  const staleTray = mount(REMOTE, undefined, {
     tray: '0.9.0',
     server: '1.0.0',
     latest: '1.0.0',
@@ -193,7 +131,7 @@ test('the behind install is the one marked, not both', () => {
 test('the panel says how to update the server, and never guesses when it was not told', () => {
   const behind = (extra: Partial<Versions>) =>
     all(
-      mount(REMOTE, {}, undefined, {
+      mount(REMOTE, undefined, {
         tray: '1.0.0',
         server: '0.9.0',
         latest: '1.0.0',
@@ -214,17 +152,6 @@ test('the panel says how to update the server, and never guesses when it was not
   assert.doesNotMatch(unknown, /Replace the server executable/, 'never the download sentence by default');
   assert.doesNotMatch(unknown, /Run `/, 'and never an invented command');
 });
-
-// It is not a label with a colour: assistive tech and the CSS read the same state, so the class the
-// knob is positioned by cannot disagree with what the switch announces.
-test('the switch looks like what it announces', () => {
-  const on = find(mount(REMOTE, { notify: true }).node, 'set-toggle')[0] as { className: string };
-  const off = find(mount(REMOTE, { notify: false }).node, 'set-toggle')[0] as { className: string };
-
-  assert.ok(on.className.includes('set-toggle--on'));
-  assert.ok(!off.className.includes('set-toggle--on'));
-});
-
 test('the field hands the pasted URL over, and the back button goes back', () => {
   const { node, calls } = mount(REMOTE);
   const form = find(node, 'conn-form')[0] as { onsubmit: (e: { preventDefault(): void }) => void };
@@ -253,8 +180,8 @@ test('a test notification can be sent, and the caveat is on the surface', () => 
 // One slot, two tones: a receipt and a failure must not look alike, or "Sent." and "could not be
 // saved" would read the same at a glance.
 test('a receipt and a failure are told apart', () => {
-  const sent = mount(REMOTE, { notify: true }, { text: 'Sent. If no banner appeared, the system is hiding them.' });
-  const failed = mount(REMOTE, { notify: true }, { text: 'Could not save the setting: read-only', bad: true });
+  const sent = mount(REMOTE, { text: 'Sent.' });
+  const failed = mount(REMOTE, { text: 'Could not be saved', bad: true });
 
   assert.ok(find(sent.node, 'set-said').length, 'a receipt is an ordinary line');
   assert.equal(find(sent.node, 'conn-error').length, 0);
@@ -265,7 +192,7 @@ test('a receipt and a failure are told apart', () => {
 // Above everything, not under the control that produced it: this surface is taller than the popover
 // and every render starts it at the top, so a message at the end is one nobody sees.
 test('a message is the first thing on the surface', () => {
-  const { node } = mount(REMOTE, { notify: true }, { text: 'Sent.' });
+  const { node } = mount(REMOTE, { text: 'Sent.' });
   const main = find(node, 'set-main')[0] as { children: Array<{ className: string } | undefined> };
 
   assert.equal(main.children[0]?.className, 'set-said');
@@ -276,7 +203,7 @@ test('a message is the first thing on the surface', () => {
 // Trimming the panel's prose must not take this with it — it prevents a misreading, it does not
 // justify a default.
 test('the surface says the icon is not what is being turned off', () => {
-  const { node } = mount(REMOTE, { notify: false });
+  const { node } = mount(REMOTE);
 
   assert.match(all(node), /icon is never silenced/);
 });
@@ -287,7 +214,7 @@ test('the surface says the icon is not what is being turned off', () => {
 // is — no warning, because a tray that called a working pair "mismatched" would be inventing a
 // problem out of a version string.
 test('each version says whose it is, and a difference is not a verdict', () => {
-  const { node } = mount(REMOTE, { notify: true }, undefined, { tray: '2.4.0', server: '0.5.0' });
+  const { node } = mount(REMOTE, undefined, { tray: '2.4.0', server: '0.5.0' });
 
   assert.deepEqual(find(node, 'set-version').map(text), ['seedeep tray 2.4.0', 'seedeep server 0.5.0']);
   // The prose may explain that the two update separately — that is what makes a difference readable.
@@ -298,7 +225,7 @@ test('each version says whose it is, and a difference is not a verdict', () => {
 // Absent, never "unknown": the value comes from a request that a server too old to carry the field
 // answers without it, and a placeholder line would be a fact the tray has not got.
 test('a server that did not say its version gets no line', () => {
-  const { node } = mount(REMOTE, { notify: true }, undefined, { tray: '2.4.0' });
+  const { node } = mount(REMOTE, undefined, { tray: '2.4.0' });
 
   assert.deepEqual(find(node, 'set-version').map(text), ['seedeep tray 2.4.0']);
 });
@@ -306,7 +233,7 @@ test('a server that did not say its version gets no line', () => {
 // A heading over a blank line would state that the tray does not know what it is — worse than not
 // asking. The version comes from a call that can fail, so this is the case that decides the rule.
 test('no version means no About section at all', () => {
-  const { node } = mount(REMOTE, { notify: true }, undefined, { tray: '' });
+  const { node } = mount(REMOTE, undefined, { tray: '' });
 
   assert.equal(find(node, 'set-version').length, 0);
   assert.doesNotMatch(all(node), /About/);
@@ -318,7 +245,6 @@ test('no version means no About section at all', () => {
 test('stopping is offered only when Rust can name the process', () => {
   const { node, calls } = mount(
     LOCAL,
-    {},
     undefined,
     { tray: '0.1.1' },
     { start: { kind: 'elsewhere' }, canStop: true },
@@ -330,7 +256,6 @@ test('stopping is offered only when Rust can name the process', () => {
 
   const { node: remote } = mount(
     REMOTE,
-    {},
     undefined,
     { tray: '0.1.1' },
     { start: { kind: 'elsewhere' }, canStop: false },
@@ -342,7 +267,7 @@ test('stopping is offered only when Rust can name the process', () => {
 // it, and quitting the tray does not do the same thing. Both were decided on the card, and a button
 // that stated neither would be read as "hide this".
 test('the stop says what it ends, and what quitting the tray does not', () => {
-  const { node } = mount(LOCAL, {}, undefined, { tray: '0.1.1' }, { start: { kind: 'elsewhere' }, canStop: true });
+  const { node } = mount(LOCAL, undefined, { tray: '0.1.1' }, { start: { kind: 'elsewhere' }, canStop: true });
 
   assert.match(all(node), /Stops the server itself/);
   assert.match(all(node), /Quitting the tray does not/);

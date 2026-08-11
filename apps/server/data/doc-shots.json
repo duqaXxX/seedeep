@@ -348,7 +348,7 @@
     },
     {
       "id": "settings-panel",
-      "subject": "The settings panel: the posture the server is running with, and the version answering",
+      "subject": "The settings panel: the posture the server is running with, and where a notification is sent",
       "cue": "end",
       "scene": "commands",
       "click": [

@@ -20,7 +20,7 @@ import {
   renderLooking,
   type Status,
 } from './connection.ts';
-import { type Note, type Prefs, renderSettings, type SettingsActions } from './settings.ts';
+import { type Note, renderSettings, type SettingsActions } from './settings.ts';
 import { Surface } from './surface.ts';
 
 /**
@@ -73,7 +73,6 @@ let rows: Row[] = [];
 let view: 'live' | 'settings' = 'live';
 
 /** What the app has stored, read when the settings view opens so it is never a stale copy. */
-let prefs: Prefs = { notify: true, notifyFinished: false, notifyFailed: true, notifyUpdate: true };
 
 /**
  * The connected server's own release, read when the settings view opens.
@@ -178,7 +177,6 @@ function draw(error?: string): void {
     surface.put(
       renderSettings(
         status,
-        prefs,
         settings,
         { tray: version, server: serverVersion, ...updateView },
         local,
@@ -385,7 +383,6 @@ const actions: Actions = {
 async function openSettings(): Promise<void> {
   note = undefined;
   try {
-    prefs = await invoke<Prefs>('read_settings');
     // Asked here and not on the poll: a version cannot change while a process lives, and the About
     // section is the only thing that reads it. A failure leaves it absent — the section then draws
     // one line instead of two, which is honest, where the tray's own number under the server's
@@ -402,23 +399,6 @@ async function openSettings(): Promise<void> {
   }
 }
 
-/**
- * Store one toggle, and draw what came back — the disk's answer, never the click's intent. Each
- * command returns the WHOLE settings, so a switch cannot be left showing a value the file does not
- * hold, whichever one was clicked.
- */
-async function toggleNotify(
-  command: 'set_notify' | 'set_notify_finished' | 'set_notify_failed' | 'set_notify_update',
-  on: boolean,
-): Promise<void> {
-  try {
-    prefs = await invoke<Prefs>(command, { on });
-    note = undefined;
-  } catch (e) {
-    note = { text: String(e), bad: true };
-  }
-  show();
-}
 
 /**
  * Send one notification. The receipt says SENT, never delivered: the platform reports success even
@@ -440,10 +420,6 @@ const settings: SettingsActions = {
     note = undefined;
     show();
   },
-  setNotify: (on) => void toggleNotify('set_notify', on),
-  setNotifyFinished: (on) => void toggleNotify('set_notify_finished', on),
-  setNotifyFailed: (on) => void toggleNotify('set_notify_failed', on),
-  setNotifyUpdate: (on) => void toggleNotify('set_notify_update', on),
   // The same command the connection screen sends, so a server changed from here goes through the
   // same trust and mismatch screens rather than a second, laxer path.
   connect: (url) => void run('connect', { url }, 'Connecting…'),

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildSaveBody, isLoopback, randomToken, resolveFormState } from '../src/client/settings.ts';
+import {
+  buildSaveBody,
+  formatHeaders,
+  isLoopback,
+  parseHeaders,
+  randomToken,
+  resolveFormState,
+  usablePort,
+} from '../src/client/settings.ts';
 
 // ── isLoopback ───────────────────────────────────────────────────────────────
 
@@ -136,4 +144,59 @@ test('buildSaveBody: both CN and token present', () => {
     tls: { commonName: 'box.local' },
     auth: { token: 'tok42' },
   });
+});
+
+// ── webhook headers ──────────────────────────────────────────────────────────
+
+test('headers are one Name: value per line, and round-trip', () => {
+  const parsed = parseHeaders('Authorization: Bearer t\nTitle: seedeep');
+  assert.deepEqual(parsed, { Authorization: 'Bearer t', Title: 'seedeep' });
+  assert.equal(formatHeaders(parsed), 'Authorization: Bearer t\nTitle: seedeep');
+});
+
+test('a value containing a colon survives, because URLs and times both have one', () => {
+  assert.deepEqual(parseHeaders('X-Target: https://example.test:8443/x'), {
+    'X-Target': 'https://example.test:8443/x',
+  });
+});
+
+test('a line with no name is dropped rather than guessed at', () => {
+  // A header with no name is not a header, and inventing one would send it to the user's service
+  // without them having written it.
+  assert.deepEqual(parseHeaders('nonsense\n: novalue\n\nTitle: ok'), { Title: 'ok' });
+});
+
+test('the save body carries the webhook with its headers parsed', () => {
+  const body = buildSaveBody(4571, '127.0.0.1', true, '', '', {
+    url: 'https://example.test/hook',
+    headersText: 'Title: seedeep',
+    template: '{{title}}',
+    needsYou: true,
+    fails: false,
+    finishes: false,
+  });
+  assert.deepEqual(body['notifications'], {
+    webhook: {
+      url: 'https://example.test/hook',
+      headers: { Title: 'seedeep' },
+      template: '{{title}}',
+      needsYou: true,
+      fails: false,
+      finishes: false,
+    },
+  });
+});
+
+test('a port the server could not bind is left out of the body, never sent as zero', () => {
+  // With no Save button every toggle posts the whole form. An empty field used to travel as
+  // Number('') === 0, which the server accepts as a number and then binds at random on next start.
+  assert.equal(usablePort(''), null);
+  assert.equal(usablePort('45x'), null);
+  assert.equal(usablePort('0'), null);
+  assert.equal(usablePort('70000'), null);
+  assert.equal(usablePort(' 45999 '), 45999);
+
+  const body = buildSaveBody(null, '127.0.0.1', true, '', '');
+  assert.ok(!('port' in body), 'the server keeps the port it already had');
+  assert.equal(body['host'], '127.0.0.1');
 });

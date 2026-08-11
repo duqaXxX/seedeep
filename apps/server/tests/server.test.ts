@@ -1114,3 +1114,50 @@ test('a checkout is told to pull; a downloaded file is given no command at all',
   assert.equal(downloaded.channel, 'download');
   assert.equal(downloaded.command, null, 'replacing a file by hand is not a command');
 });
+
+test('GET /api/config redacts webhook headers, which is where a service token lives', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'seedeep-hook-'));
+  const config = defaultConfig(home);
+  config.notifications.webhook.url = 'https://example.test/hook';
+  config.notifications.webhook.headers = { Authorization: 'Bearer real-secret', Title: 'seedeep' };
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, config });
+  try {
+    // This endpoint answers WITHOUT auth, by design — the version has to be readable before a token
+    // exists. Anything secret behind it has to be redacted, exactly as `auth.token` already is.
+    const body = (await (await fetch(`${srv.url}/api/config`)).json()) as {
+      notifications: { webhook: { url: string; headers: Record<string, string> } };
+    };
+    // The URL IS a secret: for Slack, Discord and ntfy it is the whole credential, and this
+    // endpoint answers without auth. It says only whether one is configured.
+    assert.equal(body.notifications.webhook.url, '***');
+    assert.deepEqual(body.notifications.webhook.headers, { Authorization: '***', Title: '***' });
+  } finally {
+    await srv.stop();
+  }
+});
+
+test('POST /api/config keeps a stored header when the panel sends back the redacted value', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'seedeep-hook-'));
+  const configPath = join(home, 'config.json');
+  const config = defaultConfig(home);
+  config.notifications.webhook.headers = { Authorization: 'Bearer real-secret' };
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, config, configPath });
+  try {
+    // The panel GETs `***` and POSTs the whole object back. Taking that literally would erase the
+    // secret on the first save the user makes for any other reason.
+    await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        notifications: { webhook: { headers: { Authorization: '***' }, url: 'https://new.test/h' } },
+      }),
+    });
+    const written = JSON.parse(readFileSync(configPath, 'utf8')) as {
+      notifications: { webhook: { url: string; headers: Record<string, string> } };
+    };
+    assert.equal(written.notifications.webhook.headers['Authorization'], 'Bearer real-secret');
+    assert.equal(written.notifications.webhook.url, 'https://new.test/h', 'the rest of the POST still applied');
+  } finally {
+    await srv.stop();
+  }
+});

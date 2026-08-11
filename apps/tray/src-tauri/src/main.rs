@@ -4,7 +4,6 @@ mod icon;
 mod local;
 mod pin;
 mod poll;
-mod settings;
 mod store;
 mod update;
 
@@ -13,7 +12,6 @@ use std::sync::Arc;
 use client::{Conn, Status};
 use local::LocalServer;
 use poll::{Poller, Tick};
-use settings::{Prefs, Settings};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, Rect, State, WindowEvent};
@@ -362,39 +360,6 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
     Ok(fitted)
 }
 
-/// The settings as they stand. Read when the panel opens its settings view, never held by the
-/// webview between opens: the file is the truth and it costs a mutex to ask.
-#[tauri::command]
-fn read_settings(prefs: State<'_, Arc<Prefs>>) -> Settings {
-    prefs.get()
-}
-
-/// Turn the approval notification on or off, and answer with what is now stored — so the toggle
-/// draws the disk's answer rather than the click's intent, and a write that failed leaves it where
-/// it was.
-#[tauri::command]
-fn set_notify(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify(on)
-}
-
-/// The same, for the banner a session sends when it finishes a turn.
-#[tauri::command]
-fn set_notify_finished(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_finished(on)
-}
-
-/// The same, for the banner a session sends when one of its API calls fails.
-#[tauri::command]
-fn set_notify_failed(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_failed(on)
-}
-
-/// The same, for the banner that says a newer seedeep has been published.
-#[tauri::command]
-fn set_notify_update(on: bool, prefs: State<'_, Arc<Prefs>>) -> Result<Settings, String> {
-    prefs.set_notify_update(on)
-}
-
 /// Send one notification now, on purpose.
 ///
 /// This is the ONLY honest way to surface the platform's own silence. The plugin's
@@ -427,11 +392,6 @@ fn main() {
             stop_server,
             server_version,
             update_view,
-            read_settings,
-            set_notify,
-            set_notify_finished,
-            set_notify_failed,
-            set_notify_update,
             test_notification,
             resize
         ])
@@ -451,15 +411,10 @@ fn main() {
             // cannot be looking at two different servers.
             let conn = Arc::new(Conn::new(connection::store_path(&config_dir), local.clone()));
             app.manage(conn.clone());
-            // Loaded once and shared: the poll asks on every reading, and the panel's toggle writes
-            // through the same instance, so a change is in force on the next tick without either
-            // side re-reading the file.
-            let prefs = Arc::new(Prefs::load(settings::store_path(&config_dir)));
-            app.manage(prefs.clone());
             // Which versions THIS RUN has announced — held in memory, so a restart is a second
             // chance at a banner the system may never have shown (`update.rs`).
             let notices = Arc::new(update::Notices::new(&config_dir));
-            let poller = Poller::new(conn, prefs, local.clone(), notices);
+            let poller = Poller::new(conn, local.clone(), notices);
             app.manage(poller.clone());
 
             // A menu-bar app owns no Dock tile and no app-switcher entry: `Accessory` is what

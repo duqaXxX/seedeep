@@ -1188,6 +1188,16 @@ which is unambiguous.
 
 ### Live events — `GET /api/stream`
 
+It also carries the one event the watcher does NOT emit: **`notification`**, the
+server's own verdict that something is worth interrupting the user for. The
+transition detector (`notify-watch.ts`) folds each reading of the digest and the
+engine (`notify-engine.ts`) gates its output per channel — the tray subscribes
+here, a configured webhook is POSTed to instead. The switches filter that output
+and never the detector's input, so turning one back on announces what happens
+next and not the backlog it slept through. Evaluation is skipped entirely when
+nobody is subscribed and no webhook is configured, which is what keeps a process
+nobody is watching idle.
+
 A **single multiplexed** Server-Sent Events stream. Every event the watcher
 emits, across all active sessions, is framed and pushed on this one connection,
 each frame carrying its `sessionId`; the browser demultiplexes by session. One

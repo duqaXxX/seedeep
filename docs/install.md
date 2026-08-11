@@ -254,6 +254,15 @@ local network — is in [`tray.md`](tray.md#the-one-permission-the-tray-asks-for
 
 Session data flows one way: the server pushes to the browser (Server-Sent Events)
 and the browser never sends any of it back — nothing seedeep reads is ever written.
+
+**One exception, and it is off until you turn it on: the notification webhook.**
+It is the only thing in seedeep that sends your session data anywhere. Configured
+under `notifications.webhook` in `~/.seedeep/config.json`, it POSTs to whatever
+address you put there — your own ntfy, Pushover, a Telegram bot, a script on your
+LAN — when a session stops on you, breaks, or hands the turn back. What leaves the
+machine is what the banner says: the project name, the session's subject, and the
+tool and command a session is waiting on. Nothing else, and nothing at all while
+`url` is empty, which is how it ships. Emptying `url` turns it off again.
 The browser does POST two things, and both are seedeep's own state, never yours: the
 settings, and a restart. (The share card's PNG is drawn by the page itself — it
 never leaves your browser.)

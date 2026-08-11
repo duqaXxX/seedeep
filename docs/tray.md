@@ -826,7 +826,8 @@ connection is abandoned, not migrated. It is an identity, not a setting.
 
 Two files in it — or in `<SEEDEEP_HOME>/tray` when a dev run sets that
 ([Running it](#running-it)) — both mode **0600**, both written and read by Rust only:
-`connection.json` (below) and `settings.json` (the notification switches — see
+`connection.json` (below) — `settings.json` no longer holds the notification switches, which moved
+to the server's own config (see
 [Settings](#settings)). The write is one function, `src/store.rs`: a preference and a token need the
 same atomicity, and a file nobody can parse reads as absent in both cases.
 
@@ -1194,6 +1195,19 @@ notifies: the event is the session becoming yours again, not the text. The title
 still tracked, so turning them back on does not then announce every session that had been waiting all
 along. The menu-bar icon is not covered by either setting: it is peripheral information that
 costs nothing to ignore, and a user who silenced the interruption has not asked to be blinded.
+
+**None of the above is decided HERE any more.** The rules on this page are still the rules — they
+just live in the server (`notify-watch.ts`, `notify-engine.ts`), which already held the state and
+the words. The tray subscribes to `/api/stream` and shows the `notification` events it receives; it
+composes no title, no body, and no verdict about what counts as an event. Two implementations of one
+rule were free to diverge, which is how a phone and a menu bar end up disagreeing about one session.
+
+**The four switches live in the server's config**, under `notifications.tray` in
+`~/.seedeep/config.json`, alongside a second set for the webhook channel. Moving one is therefore a
+request that can fail: the toggle draws what the server answered, not what was clicked, and a
+failure leaves it where it was under **`Not saved — seedeep is not running`** — the same words the
+panel already uses for a server that is not there. The webhook's own set is edited from the portal,
+not from here: the tray's panel governs the tray.
 
 **Verified end to end from the bundled app** (2026-07-30, macOS 26.5.2, unsigned `.app`), because
 `docs/tray.md`'s own rule says a dev run cannot confirm this feature. A stub digest was flipped from

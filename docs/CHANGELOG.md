@@ -2,6 +2,30 @@
 
 All notable structural changes to seedeep are recorded here, newest first.
 
+## Unreleased
+
+**Notifications are decided by the server, not by the tray.** The diffing between two readings —
+the only part of notifying the tray still owned — moved into the server, which already held the
+state and the wording. The tray subscribes to the event stream and shows what arrives; it composes
+nothing. Two implementations of one rule were free to diverge, which is how a phone and a menu bar
+end up disagreeing about the same session.
+
+**The switches moved with it,** into `notifications` in `~/.seedeep/config.json`, and are now **per
+channel**: the same event can be worth a banner where you are sitting and not worth a push
+somewhere else, which one shared set cannot express. The tray's four keep their defaults exactly —
+moving where a setting lives may not also change what it says.
+
+**A notification webhook,** off until it has a URL. It POSTs the announcement to any address, with
+your headers and your template (`{{title}}`, `{{body}}`, `{{project}}`, `{{subject}}`, `{{kind}}`),
+so ntfy, Pushover, Telegram or a script of your own all work without seedeep knowing any of them.
+It never retries and never throws: a broken address must not take down the banner that shares the
+path. It is the one thing in seedeep that sends session data off the machine — see
+`docs/install.md`.
+
+**A finished turn now says `Turn finished`.** `Finished` claimed the session had ended; it had not —
+the turn closed and the session became yours again. In the case where the turn left nothing on
+record, that line is the whole notification.
+
 ## 0.17.0 (2026-08-10)
 
 ### A scene can build a repository, so three more cards have a figure (2026-08-11)

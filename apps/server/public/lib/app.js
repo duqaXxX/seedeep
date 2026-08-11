@@ -2905,13 +2905,42 @@ function resolveFormState(host, cn) {
   }
   return { remote, canSave: !cnError, cnError };
 }
-function buildSaveBody(port, host, open, cn, pendingToken) {
-  const body = { port, host, open };
+function buildSaveBody(port, host, open, cn, pendingToken, webhook, tray) {
+  const body = port === null ? { host, open } : { port, host, open };
   if (cn.trim())
     body["tls"] = { commonName: cn.trim() };
   if (pendingToken)
     body["auth"] = { token: pendingToken };
+  if (webhook) {
+    const { headersText, ...rest } = webhook;
+    body["notifications"] = { webhook: { ...rest, headers: parseHeaders(headersText) } };
+  }
+  if (tray) {
+    const n = body["notifications"] ?? {};
+    body["notifications"] = { ...n, tray };
+  }
   return body;
+}
+function usablePort(value) {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+}
+function parseHeaders(text) {
+  const out = {};
+  for (const line of text.split(`
+`)) {
+    const at = line.indexOf(":");
+    if (at <= 0)
+      continue;
+    const name = line.slice(0, at).trim();
+    if (name)
+      out[name] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+function formatHeaders(headers) {
+  return Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join(`
+`);
 }
 var SLIDERS_SVG = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
   <line x1="2" y1="4" x2="14" y2="4"/>
@@ -2931,7 +2960,6 @@ var RESTART_SVG = `<svg width="12" height="12" viewBox="0 0 16 16" fill="current
 function createSettingsPanel(headerEl) {
   let pendingToken = "";
   let savedState = null;
-  let dirty = false;
   const btn = document.createElement("button");
   btn.className = "settings-btn";
   btn.title = "Settings";
@@ -2970,7 +2998,7 @@ function createSettingsPanel(headerEl) {
     <input id="s-host" class="sinput" type="text" placeholder="127.0.0.1">
   </div>
   <div class="srow">
-    <div class="slabel">Open browser<br>on start</div>
+    <div class="slabel">Open browser on start</div>
     <div class="stoggle-wrap">
       <div id="s-open-track" class="stoggle-track"><div class="stoggle-thumb"></div></div>
       <span id="s-open-label" class="stoggle-label">Yes</span>
@@ -3019,6 +3047,42 @@ function createSettingsPanel(headerEl) {
   </div>
 </div>
 <div class="block">
+  <div class="blabel">Notifications</div>
+  <div class="srow">
+    <div class="slabel">Tray notifies you when<small>The menu-bar app on this machine. Its icon is never silenced by these — it costs nothing to ignore.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-tray-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-tray-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-tray-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
+      <div class="shook-row"><div id="s-tray-updates" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A new server version is out</span></div>
+    </div>
+  </div>
+  <div class="srow">
+    <div class="slabel">Where notifications go<small>The tray shows them on this machine. Nothing else is sent anywhere unless you add an endpoint below.</small></div>
+    <button id="s-hook-custom" class="sdisclose" aria-expanded="false">Send to a webhook…</button>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Webhook URL<small>Where the POST goes. Any service that accepts one — leaving it empty keeps the webhook off.</small></div>
+    <input id="s-hook-url" class="sinput" type="text" placeholder="https://example.com/hook">
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Send when<small>Its own set: the same event can be worth a banner on the tray and not worth sending here.</small></div>
+    <div class="shooks">
+      <div class="shook-row"><div id="s-hook-needsYou" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session needs you</span></div>
+      <div class="shook-row"><div id="s-hook-fails" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session fails</span></div>
+      <div class="shook-row"><div id="s-hook-finishes" class="stoggle-track"><div class="stoggle-thumb"></div></div><span>A session finishes a turn</span></div>
+    </div>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Headers<small>Sent with every POST, one <code>Name: value</code> per line. This is where a service's auth token goes.</small></div>
+    <textarea id="s-hook-headers" class="sinput" rows="2" placeholder="Authorization: Bearer …"></textarea>
+  </div>
+  <div class="srow scustom" hidden>
+    <div class="slabel">Body template<small>What gets posted. Use {{title}}, {{body}}, {{project}}, {{subject}}, {{kind}}. Empty posts the body alone.</small></div>
+    <textarea id="s-hook-template" class="sinput" rows="2" placeholder="{{title}}"></textarea>
+  </div>
+</div>
+<div class="block">
   <div class="blabel">About</div>
   <div class="srow">
     <div class="slabel">Version<small>The server answering</small></div>
@@ -3033,8 +3097,6 @@ function createSettingsPanel(headerEl) {
   <span id="s-restart" class="srestart-hint" style="display:none">${RESTART_SVG}Restart required</span>
   <span id="s-msg" class="smsg" style="display:none"></span>
   <button id="s-restart-now" class="xbtn s-restart-btn" style="display:none">Restart now</button>
-  <button id="s-discard" class="xbtn">Discard</button>
-  <button id="s-save" class="xbtn s-save-btn" disabled>Save</button>
 </div>`;
   document.body.append(drawer);
   const qd = (sel) => drawer.querySelector(sel);
@@ -3061,8 +3123,6 @@ function createSettingsPanel(headerEl) {
   const restartEl = qd("#s-restart");
   const msgEl = qd("#s-msg");
   const restartNowBtn = qd("#s-restart-now");
-  const discardBtn = qd("#s-discard");
-  const saveBtn = qd("#s-save");
   function setOpen(on) {
     openTrack.classList.toggle("on", on);
     openLabel.textContent = on ? "Yes" : "No";
@@ -3078,14 +3138,6 @@ function createSettingsPanel(headerEl) {
     } catch {
       updateRow.style.display = "none";
     }
-  }
-  function setDirty(d) {
-    dirty = d;
-    if (!d) {
-      saveBtn.disabled = true;
-      return;
-    }
-    saveBtn.disabled = !resolveFormState(hostEl.value, cnEl.value).canSave;
   }
   function setRestartAvailable(on) {
     restartNowBtn.style.display = on ? "" : "none";
@@ -3114,7 +3166,7 @@ function createSettingsPanel(headerEl) {
     return token ? `${base}/?token=${encodeURIComponent(token)}` : base;
   }
   function updateRemote() {
-    const { remote, canSave, cnError } = resolveFormState(hostEl.value, cnEl.value);
+    const { remote, cnError } = resolveFormState(hostEl.value, cnEl.value);
     banner.style.display = remote ? "" : "none";
     tlsSection.style.display = remote || cnError ? "" : "none";
     const portChanged = portEl.value !== (savedState?.port ?? "");
@@ -3125,9 +3177,51 @@ function createSettingsPanel(headerEl) {
     cnErr.style.display = cnError ? "" : "none";
     const replacing = remote && !!savedState?.cn && !cnError && cnEl.value.trim() !== savedState.cn;
     cnNote.style.display = replacing ? "" : "none";
-    saveBtn.disabled = !canSave || !dirty;
     urlEl.value = computeAccessUrl();
   }
+  const hookUrlEl = drawer.querySelector("#s-hook-url");
+  const hookHeadersEl = drawer.querySelector("#s-hook-headers");
+  const hookTemplateEl = drawer.querySelector("#s-hook-template");
+  const traySwitches = {
+    needsYou: drawer.querySelector("#s-tray-needsYou"),
+    fails: drawer.querySelector("#s-tray-fails"),
+    finishes: drawer.querySelector("#s-tray-finishes"),
+    updates: drawer.querySelector("#s-tray-updates")
+  };
+  const hookSwitches = {
+    needsYou: drawer.querySelector("#s-hook-needsYou"),
+    fails: drawer.querySelector("#s-hook-fails"),
+    finishes: drawer.querySelector("#s-hook-finishes")
+  };
+  for (const track of [...Object.values(traySwitches), ...Object.values(hookSwitches)]) {
+    track.parentElement?.addEventListener("click", () => {
+      track.classList.toggle("on");
+      persist();
+    });
+  }
+  const customBtn = drawer.querySelector("#s-hook-custom");
+  const customRows = [...drawer.querySelectorAll(".scustom")];
+  customBtn.addEventListener("click", () => {
+    const open2 = customBtn.getAttribute("aria-expanded") === "true";
+    customBtn.setAttribute("aria-expanded", String(!open2));
+    customBtn.textContent = open2 ? "Send to a webhook…" : "Hide webhook settings";
+    for (const row of customRows)
+      row.hidden = open2;
+  });
+  const trayForm = () => ({
+    needsYou: traySwitches.needsYou.classList.contains("on"),
+    fails: traySwitches.fails.classList.contains("on"),
+    finishes: traySwitches.finishes.classList.contains("on"),
+    updates: traySwitches.updates.classList.contains("on")
+  });
+  const webhookForm = () => ({
+    url: hookUrlEl.value.trim(),
+    headersText: hookHeadersEl.value,
+    template: hookTemplateEl.value,
+    needsYou: hookSwitches.needsYou.classList.contains("on"),
+    fails: hookSwitches.fails.classList.contains("on"),
+    finishes: hookSwitches.finishes.classList.contains("on")
+  });
   async function load() {
     try {
       const cfg = await authFetch("/api/config").then((r) => r.json());
@@ -3142,6 +3236,18 @@ function createSettingsPanel(headerEl) {
       setOpen(savedState.open);
       cnEl.value = savedState.cn;
       fpEl.value = cfg.tls?.fingerprint ?? "";
+      const tray = cfg.notifications?.tray;
+      traySwitches.needsYou.classList.toggle("on", tray?.needsYou ?? true);
+      traySwitches.fails.classList.toggle("on", tray?.fails ?? true);
+      traySwitches.finishes.classList.toggle("on", tray?.finishes ?? false);
+      traySwitches.updates.classList.toggle("on", tray?.updates ?? true);
+      const hook = cfg.notifications?.webhook;
+      hookUrlEl.value = hook?.url ?? "";
+      hookHeadersEl.value = formatHeaders(hook?.headers ?? {});
+      hookTemplateEl.value = hook?.template ?? "";
+      hookSwitches.needsYou.classList.toggle("on", hook?.needsYou ?? true);
+      hookSwitches.fails.classList.toggle("on", hook?.fails ?? true);
+      hookSwitches.finishes.classList.toggle("on", hook?.finishes ?? false);
       versionEl.textContent = cfg.version ?? "—";
       showUpdate();
       pendingToken = "";
@@ -3150,7 +3256,6 @@ function createSettingsPanel(headerEl) {
       tokenNote.style.display = "none";
       setRestartAvailable(false);
       updateRemote();
-      setDirty(false);
     } catch {
       showMsg("Could not load config", true);
     }
@@ -3173,30 +3278,21 @@ function createSettingsPanel(headerEl) {
     if (e.key === "Escape" && drawer.classList.contains("on"))
       close();
   });
-  portEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
-  });
-  hostEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
-  });
+  portEl.addEventListener("input", () => updateRemote());
+  hostEl.addEventListener("input", () => updateRemote());
+  cnEl.addEventListener("input", () => updateRemote());
   openTrack.addEventListener("click", () => {
     openTrack.classList.toggle("on");
     openLabel.textContent = openTrack.classList.contains("on") ? "Yes" : "No";
-    setDirty(true);
-  });
-  cnEl.addEventListener("input", () => {
-    setDirty(true);
-    updateRemote();
+    persist();
   });
   regenBtn.addEventListener("click", () => {
     pendingToken = randomToken();
     tokenEl.value = pendingToken;
     tokenEl.type = "text";
     tokenNote.style.display = "";
-    setDirty(true);
     urlEl.value = computeAccessUrl();
+    persist();
   });
   function wireCopy(btn2, input) {
     btn2.addEventListener("click", () => {
@@ -3211,30 +3307,17 @@ function createSettingsPanel(headerEl) {
   }
   wireCopy(copyUrlBtn, urlEl);
   wireCopy(copyFpBtn, fpEl);
-  discardBtn.addEventListener("click", () => {
-    if (!savedState)
-      return;
-    portEl.value = savedState.port;
-    hostEl.value = savedState.host;
-    setOpen(savedState.open);
-    cnEl.value = savedState.cn;
-    pendingToken = "";
-    tokenEl.value = "***";
-    tokenEl.type = "password";
-    tokenNote.style.display = "none";
-    cnErr.style.display = "none";
-    updateRemote();
-    setDirty(false);
-  });
-  saveBtn.addEventListener("click", async () => {
+  for (const field of [portEl, hostEl, cnEl, hookUrlEl, hookHeadersEl, hookTemplateEl]) {
+    field.addEventListener("change", () => void persist());
+  }
+  async function persist() {
     const host = hostEl.value.trim();
     if (!resolveFormState(host, cnEl.value).canSave) {
       updateRemote();
       cnEl.focus();
       return;
     }
-    saveBtn.disabled = true;
-    const body = buildSaveBody(Number(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken);
+    const body = buildSaveBody(usablePort(portEl.value), host, openTrack.classList.contains("on"), cnEl.value, pendingToken, webhookForm(), trayForm());
     try {
       const res = await authFetch("/api/config", {
         method: "POST",
@@ -3244,7 +3327,6 @@ function createSettingsPanel(headerEl) {
       const r = await res.json();
       if (!res.ok) {
         showMsg(r.error ?? "Save failed", true, 6000);
-        saveBtn.disabled = false;
         return;
       }
       savedState = {
@@ -3260,7 +3342,6 @@ function createSettingsPanel(headerEl) {
       tokenEl.type = "password";
       tokenNote.style.display = "none";
       updateRemote();
-      setDirty(false);
       if (r.restart_required) {
         setRestartAvailable(true);
         showMsg("Saved — restart to apply");
@@ -3269,9 +3350,8 @@ function createSettingsPanel(headerEl) {
       }
     } catch {
       showMsg("Save failed", true);
-      saveBtn.disabled = false;
     }
-  });
+  }
   restartNowBtn.addEventListener("click", async () => {
     restartNowBtn.disabled = true;
     restartNowBtn.textContent = "Restarting…";

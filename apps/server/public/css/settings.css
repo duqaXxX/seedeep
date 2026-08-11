@@ -52,11 +52,14 @@
 
 /* ── form rows ───────────────────────────────────────────────────── */
 .srow {
+  /* One column: the label and its explanation sit ABOVE the control. Side by side, a description
+     any longer than a few words wrapped into a 120px gutter and broke the row it belonged to —
+     which is what a settings panel with real sentences in it always ends up having. */
   display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
   align-items: start;
-  padding: 0.55rem 0;
+  padding: 0.65rem 0;
   border-bottom: 1px solid var(--border);
 }
 .srow:last-child {
@@ -66,7 +69,6 @@
 .slabel {
   font-size: 0.8rem;
   color: var(--lo);
-  padding-top: 0.35rem;
   line-height: 1.3;
 }
 .slabel small {
@@ -251,4 +253,39 @@
   opacity: 0.4;
   cursor: default;
   filter: none;
+}
+
+/* The webhook's four events, one per line, with the same toggle the rest of the panel uses —
+   a checkbox here would be the only one in the drawer. */
+.shooks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.shook-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--lo);
+  cursor: pointer;
+}
+
+/* Progressive disclosure: an address and four toggles are all most people need, and headers and a
+   template are what somebody with their own endpoint came for. */
+.sdisclose {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--lo);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+.sdisclose:hover {
+  color: var(--hi);
+}
+.scustom[hidden] {
+  display: none;
 }
