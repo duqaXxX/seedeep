@@ -1429,8 +1429,8 @@ mod stream_tests {
     #[test]
     fn survives_a_heartbeat_comment_and_field_order() {
         assert!(parse_notification(": keepalive").is_none());
-        let a = parse_notification("id: 3\ndata: {\"kind\":\"finishes\",\"title\":\"t\",\"body\":\"Back to you\"}\nevent: notification");
-        assert_eq!(a.unwrap().body, "Back to you");
+        let a = parse_notification("id: 3\ndata: {\"kind\":\"finishes\",\"title\":\"t\",\"body\":\"Turn finished\"}\nevent: notification");
+        assert_eq!(a.unwrap().body, "Turn finished");
     }
 
     #[test]
