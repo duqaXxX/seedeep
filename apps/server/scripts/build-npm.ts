@@ -49,7 +49,14 @@ async function main(): Promise<void> {
   await mkdir(join(wrapperDir, 'bin'), { recursive: true });
   await writeJson(join(wrapperDir, 'package.json'), wrapper);
   await cp(join(SOURCE_DIR, 'install.cjs'), join(wrapperDir, 'install.cjs'));
-  await cp(join(SOURCE_DIR, 'README.md'), join(wrapperDir, 'README.md'));
+  // The only file here that is rewritten rather than copied. Its figure is served from GitHub by
+  // absolute URL (npm renders the README as GFM, with no repository to resolve a relative path
+  // against), and it is pinned to THIS version's tag: a page published once must keep showing what
+  // it showed, whatever `main` does to the file afterwards.
+  await writeFile(
+    join(wrapperDir, 'README.md'),
+    (await Bun.file(join(SOURCE_DIR, 'README.md')).text()).replaceAll('{{VERSION}}', VERSION),
+  );
   await cp('LICENSE', join(wrapperDir, 'LICENSE'));
   // The placeholder the `bin` field points at, and the postinstall overwrites. Executable, because
   // on a machine where the postinstall never ran this file is what `seedeep` runs.

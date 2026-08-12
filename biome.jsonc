@@ -77,6 +77,43 @@
       // yield IS the failure under test, and rewriting it to satisfy the rule would test nothing.
       "includes": ["apps/server/tests/**", "apps/tray/tests/**"],
       "linter": { "rules": { "correctness": { "useYield": "off" } } }
+    },
+    {
+      // seedeep's whole claim is that session content never leaves the machine, and the server is
+      // where it could. In this half of the codebase the network is an INJECTED dependency, not an
+      // ambient global — `update-check.ts` takes a `fetchImpl`, which is what lets a test count the
+      // calls rather than trust a comment. Naming `fetch` here is therefore a new outbound
+      // capability, and the three files that legitimately hold one are exempted below, by name.
+      // The browser client is out of scope on purpose: it fetches its own origin.
+      "includes": ["apps/server/src/server/**", "apps/server/src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "on",
+              "options": {
+                "deniedGlobals": {
+                  "fetch": "Network is injected here, never ambient: take a `fetchImpl` so a test can count the calls. If this really is a new outbound destination, it is a product decision — exempt the file in biome.jsonc and say why."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      // The four that may. Two HOLD the seam, naming the global once as the default for their own
+      // `fetchImpl` parameter: `update-check.ts` (npm's dist-tags) and `notify-webhook.ts` (an
+      // address the user typed, and the only outbound destination seedeep does not choose). The
+      // other two dial seedeep's own server on loopback — this machine, by construction.
+      // Adding a fifth line here is the decision this rule exists to make visible.
+      "includes": [
+        "apps/server/src/server/update-check.ts",
+        "apps/server/src/server/notify-webhook.ts",
+        "apps/server/src/server/restart-cmd.ts",
+        "apps/server/src/server/own-server.ts"
+      ],
+      "linter": { "rules": { "style": { "noRestrictedGlobals": "off" } } }
     }
   ]
 }

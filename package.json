@@ -23,6 +23,7 @@
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "generate:favicon": "bun run apps/server/scripts/generate-favicon.ts",
+    "social-card": "bun run apps/server/scripts/social-card.ts",
     "doc-shots": "bun run apps/server/scripts/capture-demo.ts doc-shots",
     "doc-shots:check": "bun run apps/server/scripts/doc-shots-check.ts"
   },

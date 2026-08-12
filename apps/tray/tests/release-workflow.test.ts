@@ -26,12 +26,25 @@ function job(name: string): string {
 test('only a tag can write to the repository', () => {
   const writers = [...WORKFLOW.matchAll(/gh release (create|upload|edit)/g)].map((m) => m[1]).sort();
   assert.deepEqual(writers, ['create', 'edit', 'upload', 'upload'], 'the draft, both halves, the flip');
-  // One `if:` on the ref type per writing site — the count is what makes a new, ungated upload fail
-  // here rather than on the day someone runs the workflow by hand. Counted with the npm job removed:
-  // it writes to a place GitHub knows nothing about, is gated once for the whole job, and has its
-  // own test below.
-  const gates = WORKFLOW.replace(job('npm'), '').match(/if: github\.ref_type == 'tag'/g);
-  assert.equal(gates?.length, writers.length);
+  // Each writing site carries the gate on its own step, or on the job around it — `publish` is
+  // gated once for the whole job, and the npm job likewise. This used to count the gates in the
+  // file instead and require one per writer, which said something weaker than it looked: a new
+  // writer could inherit a gate written for something else, and any gated step that writes NOTHING
+  // broke it (the attestation steps did exactly that). The count of sites is still asserted, so a
+  // writer appearing in a fifth job fails here rather than on the day someone runs this by hand.
+  const GATE = /if: github\.ref_type == 'tag'/;
+  const WRITES = /gh release (?:create|upload|edit)/;
+  let gated = 0;
+  for (const name of ['draft', 'tray', 'server', 'publish']) {
+    const block = job(name);
+    const header = block.split('\n    steps:')[0] ?? '';
+    for (const step of block.split(/\n {6}- /).slice(1)) {
+      if (!WRITES.test(step)) continue;
+      assert.ok(GATE.test(header) || GATE.test(step), `an ungated writer in the ${name} job`);
+      gated++;
+    }
+  }
+  assert.equal(gated, writers.length, 'a writing site outside the four jobs allowed to write');
 });
 
 // The registry is the second thing in this repo that cannot be taken back — more absolutely than a

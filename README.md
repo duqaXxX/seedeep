@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="apps/server/public/favicon.svg" width="96" height="96" alt="">
+
 # seedeep
 
 ### *See deep into your agent's context.*

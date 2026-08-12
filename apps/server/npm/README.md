@@ -7,6 +7,11 @@ fills, live, during a turn** — and what the subagents are doing while it happe
 It reads the session logs Claude Code already writes on your machine. Nothing is
 sent anywhere, nothing is written back.
 
+![The context window filling live while six subagents run on three models](https://raw.githubusercontent.com/duqaXxX/seedeep/v{{VERSION}}/docs/assets/hero.gif)
+
+*3% → 26% of the window, six subagents on three different models, 2.9M tokens
+billed — 2.5M of them the same context read again.*
+
 ```sh
 npm i -g seedeep                       # or: bun install -g seedeep --trust
 seedeep

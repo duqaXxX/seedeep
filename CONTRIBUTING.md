@@ -308,7 +308,9 @@ Windows build. Something broken is its own issue, not a footnote to this one.
    change under `apps/tray/src-tauri/`).
 4. Open a pull request describing **what** changed and **why**.
 
-Two CI jobs then run on the pull request:
+Two CI jobs then run on the pull request, and **both must be green before it can be
+merged** — `main` takes no direct pushes, from anyone, and cannot be force-pushed or
+deleted. The maintainer goes through a pull request on the same terms:
 
 - **Tests, types, client bundle** — the suite, the type-checker, and a rebuild of
   `apps/server/public/lib/app.js` that fails if the committed bundle no longer

@@ -70,8 +70,36 @@ export function npmManifests(version: string): {
   const wrapper = {
     name: WRAPPER,
     version,
-    description: 'Live context & subagent visualizer for Claude Code — see deep into your agent.',
-    keywords: ['claude-code', 'claude', 'observability', 'context-window', 'subagents', 'cli'],
+    description:
+      'Live context-window & subagent visualizer for Claude Code. Reads your local session logs — nothing leaves your machine.',
+    // The same list as the repository's GitHub topics, deliberately: they are the two shop windows
+    // of one project, and a term that earns a search on one earns it on the other. The one topic
+    // held back is `node`, which says nothing on a registry where every package is a Node package.
+    // The order is measured rather than alphabetical — the narrow terms first. On npm this package
+    // sits at #16 of the 426 carrying `context-window` and past #50 of the 19160 carrying
+    // `claude-code` (measured 2026-08-12): a page small enough to be browsed to the end is the only
+    // one where being found is a matter of being listed at all.
+    keywords: [
+      'llm-observability',
+      'agent-observability',
+      'context-window',
+      'subagents',
+      'token-usage',
+      'usage-tracking',
+      'cost-tracking',
+      'context-engineering',
+      'agentic-coding',
+      'ai-coding',
+      'claude-code',
+      'claude',
+      'anthropic',
+      'ai-agents',
+      'llm',
+      'observability',
+      'developer-tools',
+      'typescript',
+      'bun',
+    ],
     ...COMMON,
     bin: { [WRAPPER]: BIN_PATH },
     // Not a build step to skip: without it the placeholder stays on PATH and `seedeep` explains

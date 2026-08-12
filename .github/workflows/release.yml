@@ -112,7 +112,20 @@ jobs:
             targets: ''
             args: --bundles nsis
     runs-on: ${{ matrix.runner }}
+    # A job-level block REPLACES the workflow's, so `contents: write` is restated here or the upload
+    # below loses the permission it has today. The other two are what signs the installer's identity.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
+      # Watches this job's egress, blocking nothing — the reasoning is in `ci.yml`, where the same
+      # step runs. This matrix is macOS and Windows, where StepSecurity supports audit mode ONLY, so
+      # here it could never be more than a recording however the policy were written.
+      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -195,6 +208,15 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      # seedeep ships unsigned, so nothing in the installer itself says where it came from. This
+      # does: it records, in a public transparency log, that THIS file was built by THIS workflow
+      # from THIS commit, and `gh attestation verify <file> -R duqaXxX/seedeep` checks it against a
+      # download. Only on a tag, and before the upload, so what is attested is the file that ships.
+      - if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
       # `--clobber` for the same reason the draft is created idempotently: "Re-run all jobs" is the
       # standard recovery gesture after a flaky runner, and without it the second run dies on the
       # assets the first one already uploaded (gh: "Delete and re-upload existing assets of the same
@@ -220,7 +242,17 @@ jobs:
   server:
     needs: draft
     runs-on: ubuntu-latest
+    # Restated for the reason the tray's block gives: a job-level block replaces the workflow's.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
+      # Ubuntu, so this is the one build job where a policy COULD block rather than only record.
+      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -236,6 +268,14 @@ jobs:
           name: server-binaries
           path: dist/*
           if-no-files-found: error
+
+      # The five executables, attested for the reason the tray's step spells out — and here it also
+      # covers the npm channel, which carries these same files: npm attaches its own provenance to
+      # the packages, this attests the binaries inside them.
+      - if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
 
       # `--clobber`, for the reason spelled out in the tray's job: a re-run must not die on its own
       # first run's uploads.
@@ -277,6 +317,12 @@ jobs:
       id-token: write
       contents: read
     steps:
+      # The job that holds the OIDC credential and writes to a public registry: of the five, the one
+      # whose egress is worth a record.
+      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
