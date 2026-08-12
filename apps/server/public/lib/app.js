@@ -4766,7 +4766,7 @@ function kTok(n) {
 }
 var MIN_BASELINE = 20;
 function bucketFor(baseline, effort) {
-  if (!baseline)
+  if (!baseline?.byEffort)
     return null;
   const b = baseline.byEffort[effort];
   return b && b.count >= MIN_BASELINE ? b : null;

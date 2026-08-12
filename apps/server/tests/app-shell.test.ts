@@ -45,19 +45,22 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
   g.document = doc;
   g.EventSource = FakeES;
   // Served the way the server serves it: the shell must boot from the two halves, not from a
-  // whole roster no endpoint returns any more.
-  g.fetch = (input: any) =>
-    Promise.resolve({
-      ok: true,
-      json: () =>
-        Promise.resolve(
-          String(input).startsWith('/api/commits')
-            ? { commits: [], remote: null }
-            : input === '/api/live'
-              ? liveOf(roster)
-              : roster.map(toCatalogue),
-        ),
-    });
+  // whole roster no endpoint returns any more — and ONLY from those, everything else 404.
+  // Answering the roster to every unrecognised URL is what made the share-card test flaky: the
+  // shell reaches further than its own boot, a graph asked for `/api/baseline`, got a list of
+  // sessions with an `ok` on it, and stored it in a module-level memo shared by the whole process
+  // — so Share threw in every later test in every later file, silently, on whichever machine won
+  // that race. A fake that says `ok` to an endpoint it knows nothing about is not a stub, it is a
+  // wrong answer with a stub's confidence.
+  g.fetch = (input: any) => {
+    const url = String(input);
+    if (url.startsWith('/api/commits'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ commits: [], remote: null }) });
+    if (url === '/api/live') return Promise.resolve({ ok: true, json: () => Promise.resolve(liveOf(roster)) });
+    if (url === '/api/sessions')
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(roster.map(toCatalogue)) });
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error(`no fake for ${url}`)) });
+  };
   try {
     await import('../src/client/app.ts');
     await new Promise((r) => setTimeout(r, 0)); // let roster.start() → fetch → openTab settle

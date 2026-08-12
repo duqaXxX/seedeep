@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { AgentNode, ToolNode, TreeSnapshot, TurnNode } from '../src/core/session-tree.ts';
 import {
+  bucketFor,
   compactionCost,
   compactionTail,
   computeVerdict,
@@ -448,4 +449,24 @@ test('cost invariant: no turn can attribute more tokens to its findings than it 
     `attributed ${sum(v.findings)} must not exceed the turn's ${billable} — findings: ` +
       v.findings.map((f) => `${f.kind}=${f.cost ?? '-'}`).join(', '),
   );
+});
+
+// `/api/baseline` is a network answer, and this function is what a share card runs it through. It
+// used to reach straight into `.byEffort`, so anything that was not a baseline threw a TypeError —
+// which the Share button catches and discards, leaving no card and no message. That is not a
+// hypothetical: a test fake answering `ok` to every URL put a session ROSTER in there, and because
+// the value is memoised for the life of the page, every later share was silently dead. A shape it
+// cannot read is the same situation as no baseline at all, and that case already has an answer.
+test('bucketFor: an answer that is not a baseline is no baseline, never a throw', () => {
+  const good = { byEffort: { high: { p50: 10, p90: 20, p95: 30, count: 50 } } } as any;
+  assert.deepEqual(bucketFor(good, 'high'), { p50: 10, p90: 20, p95: 30, count: 50 });
+
+  // The roster shape that actually caused it, plus the neighbours of the same mistake.
+  for (const notABaseline of [[], [{ sessionId: 'a', project: 'p' }], {}, { byEffort: null }, 'nope', 7]) {
+    assert.equal(
+      bucketFor(notABaseline as any, 'high'),
+      null,
+      `bucketFor(${JSON.stringify(notABaseline)}) must be null`,
+    );
+  }
 });

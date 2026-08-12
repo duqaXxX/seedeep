@@ -196,7 +196,12 @@ const MIN_BASELINE = 20; // a percentile from fewer turns than this is noise; re
  * placed against the user's own history without being judged for it.
  */
 export function bucketFor(baseline: Baseline | null, effort: string): Bucket | null {
-  if (!baseline) return null;
+  // The argument arrives from `/api/baseline` and is typed, not validated. Reaching straight into
+  // `.byEffort` made anything else a TypeError, and the only caller is the Share button, whose
+  // catch discards it: no card, no message, and — because the value is memoised for the life of
+  // the page — every later share dead too. A shape this cannot read is the case it already
+  // handles, which is having no baseline: the card simply omits its scale bar.
+  if (!baseline?.byEffort) return null;
   // Compare a turn only against its OWN effort bucket — a `high` turn placed against the overall
   // baseline (98% `unknown`) would read as far larger than it is. Too few turns → no bucket.
   const b = baseline.byEffort[effort];
