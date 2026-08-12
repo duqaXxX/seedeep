@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.21.0 (2026-08-12)
+
 **Three tests that were green on a pull request and red on `main` two minutes later.** A test file
 installs a stub `window` on the GLOBAL and only restores it in `after()`, so for the whole length of
 that file any other file's test that node:test happens to interleave sees it — and the stub carried
