@@ -174,6 +174,30 @@ export function fakeDoc() {
   };
 }
 
+/**
+ * A fake `window` carrying the WHOLE contract the code under test may reach for, whatever the
+ * caller happens to need.
+ *
+ * It exists because a `window` goes on the GLOBAL, and a global installed by one test file is seen
+ * by every other file in the run — `bun test` shares one process and `node:test` interleaves.
+ * A stub that carries only what its own file needs therefore crashes somebody else's code, on a
+ * schedule nobody controls: `panel-tick.test.ts` installed `{ addEventListener }` at module scope
+ * and never took it down, and three graph tests died in `trace.ts`'s `destroy()` on
+ * `window.removeEventListener` — green locally, red on CI, and green again on a re-run of the same
+ * commit. One definition, so a third file cannot get it wrong.
+ *
+ * Pass `over` to observe a member (a test that wants to see what `open` was called with).
+ */
+export function fakeWindow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    open: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    location: { href: '' },
+    ...over,
+  };
+}
+
 /** The text a user would read in a fake-DOM subtree: leaf textContent, children joined in order. */
 export function textOf(n: any): string {
   const own = n.children?.length ? '' : (n.textContent ?? '');
