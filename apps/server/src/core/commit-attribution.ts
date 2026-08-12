@@ -154,5 +154,12 @@ export function looksLikeCommitHash(query: string): boolean {
 /** True when a shell command runs `git commit` — `git -C <path> commit` and `git -c k=v commit`
  *  included, which a bare `includes('git commit')` misses (measured: 34 commits lost that way). */
 export function isGitCommit(command: string): boolean {
-  return /\bgit\b(?:\s+-\S+(?:\s+\S+)?)*\s+commit\b/.test(command);
+  // A flag's VALUE may not itself start with `-`, and that restriction is what keeps this regex
+  // linear rather than merely correct. With `\S+` there, a run of `-a -a -a …` could be split into
+  // groups of one or two in Fibonacci-many ways, all of which are explored before a command that
+  // never reaches `commit` is rejected: measured 685ms at 40 flags, and every four more multiply it
+  // by three. Nothing is lost by the restriction — a `-`-leading token still matches, as the flag
+  // of the next iteration. The input is the `command` field of a transcript's Bash lines, which
+  // seedeep does not control.
+  return /\bgit\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+commit\b/.test(command);
 }

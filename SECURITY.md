@@ -51,10 +51,13 @@ The interesting surface is small, and specific:
   workflow be triggered into publishing by someone who cannot push a tag.
 - **Your session files leaving the machine.** seedeep reads Claude Code's local session
   logs — your prompts, your file paths, your project names — and never writes them back.
-  The only outbound request it makes is the update check against
-  `registry.npmjs.org`. Anything that serves a path outside what an endpoint should
-  reach, or that sends session content anywhere at all, is exactly the bug worth
-  reporting.
+  The only outbound request it makes **on its own** is the update check against
+  `registry.npmjs.org`. The one exception is the notification webhook, which is off
+  until you configure it and then POSTs to an address you chose yourself
+  ([what it sends](docs/install.md#data-flow)) — so a report about it is about seedeep
+  sending more than the banner says, or sending it somewhere you did not name. Anything
+  that serves a path outside what an endpoint should reach, or that sends session
+  content anywhere at all, is exactly the bug worth reporting.
 
 ## Not a vulnerability
 

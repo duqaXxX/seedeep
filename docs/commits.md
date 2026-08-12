@@ -86,7 +86,9 @@ Rules that follow from how the data really behaves — each was learned by getti
   report different toplevels and the same common dir, and `git log --all` from either sees both
   their commits — so parallel worktree sessions collapse to one reader.
 - **`git -C <path> commit` does not contain the string `git commit`.** The command test tolerates
-  options between the two words.
+  options between the two words — a flag may carry a value, and that value may not itself begin with
+  `-`. The restriction is what keeps the match linear on a command that never reaches `commit`, and
+  it costs nothing: a `-`-leading token is read as the next flag and still matches.
 - **Subagents commit too.** Their sidecar transcripts (`<slug>/<uuid>/subagents/agent-*.jsonl`) are
   scanned with the parent's, and their commits are the parent session's.
 - **Attribution is exclusive across sessions**, computed once per repo over every session whose

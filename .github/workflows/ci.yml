@@ -61,6 +61,16 @@ jobs:
     name: Tests, types, client bundle
     runs-on: ubuntu-latest
     steps:
+      # First step by requirement — it instruments the runner before anything else can reach the
+      # network. `audit` only WATCHES: it blocks nothing here, and exists to answer a question the
+      # linter cannot, because a dependency's install script phones home without ever appearing in
+      # this repository's source. A policy can only be written once the real destinations are known,
+      # and writing one from intuition is how a gate becomes noise. StepSecurity's own block list of
+      # known-malicious domains applies even in this mode.
+      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

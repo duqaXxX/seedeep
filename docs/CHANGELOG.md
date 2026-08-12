@@ -4,6 +4,97 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The network is a named capability now, and the linter is what names it.** seedeep's claim is that
+session content does not leave the machine, and until now nothing checked it: a pull request adding
+an outbound call would have passed every gate. The first attempt at a check was a bespoke test that
+scanned the source for URLs — it was dropped, and the reason is worth keeping: run against the real
+tree it reported **eighteen "hosts", of which one was real**, the rest being XML namespaces, doc
+strings and fixtures, and it could not see the outbound call whose address comes from configuration.
+Biome's own `noRestrictedGlobals` does the job properly, on the half of the codebase where it
+matters (`src/server`, `src/core`), because the network here is an INJECTED dependency: the four
+files that may name `fetch` are listed with the reason each is allowed — two hold the seam
+(`update-check.ts`, `notify-webhook.ts`, each naming the global once as its own parameter's default)
+and two dial seedeep's own server on loopback. A fifth entry in that list is the decision the rule
+exists to make visible. It runs where the linter already runs, which is every push and every pull
+request, blocking.
+
+**CI records what it dials.** `step-security/harden-runner` in `audit` mode on the four jobs that
+install, build or publish — never on the three that only call the GitHub API. It blocks nothing: a
+dependency's install script can reach the network without appearing anywhere in this repository's
+source, and a policy written before the real destinations are known is a gate that becomes noise.
+On the tray's macOS and Windows runners audit is all StepSecurity supports, so there it could never
+be more than a recording. **It reports the runner's egress to a third-party service** — CI
+telemetry, never user data, but a project that advertises no outbound traffic should say so out
+loud.
+
+**Two documents were denying that the webhook exists.** The rule above found `notify-webhook.ts` in
+its first run — a second outbound capability, opt-in and user-addressed, that no scan of URL
+literals could ever see. `SECURITY.md` claimed the update check was the only outbound request, and
+`docs/install.md` said the same at one line while describing the webhook correctly seventy lines
+later, contradicting itself inside one file. Both now say **on its own** and point at the paragraph
+that was already right.
+
+**CodeQL now gates a merge.** `Analyze (actions)` and `Analyze (javascript-typescript)` joined the
+two CI checks the `main` ruleset requires, so a pull request that introduces an alert cannot be
+merged. Rust remains uncovered: default setup rejects it, and advanced setup would replace default
+setup with a workflow that has to build the Tauri crate on a Linux runner — the thing `ci.yml`
+already refuses to do, for a reason it states.
+
+**The mark reaches GitHub.** It already existed — the eye is the browser favicon and the tray's app
+icon — and was the one place the project looked anonymous: the card GitHub renders when the
+repository is shared was its auto-generated default. `bun run social-card` draws the real one at
+1280×640 (GitHub recommends exactly that, under 1 MB, and refuses more), reading the mark from
+`public/favicon.svg` and the colours from the client's own stylesheets, so neither can drift from
+the product it advertises. The bar along its foot is a context window filling, in the app's own
+per-token colours. The README header carries the same mark, from the same file rather than a copy.
+Uploading the card is manual: GitHub exposes no REST endpoint for the social preview.
+
+**`main` is protected, and every change now arrives as a pull request.** Two rulesets: the default
+branch refuses direct pushes, force-pushes and deletion, and needs both CI jobs green to merge; tags
+matching `v*` cannot be deleted or moved. The tag rule is the one that did not exist a week ago — a
+tag now anchors the release binaries' provenance attestation and the figure on the npm page, so
+moving one would invalidate both silently. The maintainer goes through a pull request on the same
+terms as anyone else, which is a deliberate choice rather than an oversight: it is what makes CI run
+before a change is on `main` rather than after. `CONTRIBUTING.md` states the merge gate.
+
+**The commit matcher no longer backtracks, and CodeQL is what found it.** `isGitCommit` tolerates
+options between `git` and `commit`, and the group that did so let a run of flags be split into
+groups of one or two in Fibonacci-many ways: a command that never reaches `commit` took **685ms at
+40 flags**, and every four more multiplied that by three. Its input is the `command` field of a
+transcript's Bash lines, which seedeep does not control. A flag's value may now not begin with `-`,
+which makes the parse unique — and changes no verdict, since a `-`-leading token is read as the
+next flag and still matches. The regression test asserts the rejection takes under 200ms where the
+shipped regex took 676ms, a margin of four orders of magnitude, so it says nothing about how fast
+the machine is. Found by CodeQL's default setup within a minute of enabling it (`js/redos`, high),
+which is the argument for having enabled it.
+
+**Every release asset is attested now.** The binaries are the project's main channel — download the
+file and run it — and until now nothing tied one to the commit it came from: npm attaches provenance
+to the packages by itself, the seven files on the release page had none. Both build jobs run
+`actions/attest-build-provenance` on a tag, before the upload, so what is attested is what ships, and
+`gh attestation verify <file> -R duqaXxX/seedeep` answers with the workflow and the commit. It does
+not make the binaries signed — Gatekeeper asks a different question, and still warns — it makes them
+attributable. The two jobs restate `contents: write` alongside the new `id-token`/`attestations`
+permissions: a job-level block replaces the workflow's rather than adding to it, and dropping that
+line would have cost the upload its permission.
+
+**The npm page is a shop window again, now that the repository is public.** Its README carries the
+hero figure, which had been impossible before: npm renders the file as GFM with no repository behind
+it, so a relative path resolves against nothing, and an absolute one to a private repository is a
+404 for everyone. It is served from GitHub by absolute URL, **pinned to the version's own tag** — a
+page published once keeps showing what it showed, whatever `main` does to the file afterwards — so
+the packager rewrites that README rather than copying it. `tests/npm-package.test.ts` holds both
+halves of the contract: the file declares exactly the one token the packager substitutes, and every
+figure in it is absolute and pinned. The wrapper's `description` drops the tagline it was repeating
+two lines below itself and states what the tool reads instead, and its `keywords` are now the
+repository's GitHub topics, the two lists being one project's two shop windows. Which terms those
+are was measured rather than guessed: the package sits at **#16 of the 426 packages carrying
+`context-window`** and past #50 of the 19160 carrying `claude-code`, so the list leads with the
+narrow terms — a page short enough to be browsed to the end is the only one where being listed is
+the same thing as being found.
+
+## 0.20.0 (2026-08-12)
+
 **`Use a different URL` now stays up.** The click was answered by setting the panel's own status to
 `needsUrl`, which the next tick overwrote a second later with the stored server it was still
 reporting — the field appeared and was gone, so a second server could not be typed in at all. It is
@@ -25,6 +116,8 @@ the tray's own probe returns `Ok(())`, and nothing appears), which is a fact abo
 not only about the capture; and a banner's body differs from what is behind it by a step of three or
 four against the lettering's hundred and eighty, so the edges have to be read at a threshold that
 would be noise for text.
+
+## 0.19.0 (2026-08-12)
 
 **The session's two work counts moved into the summary bar.** `18 turns · 422 calls · 437 tools`,
 beside the durations, at both scopes. The counts were already on the page — the API calls at the
@@ -103,6 +196,8 @@ derived from that one comparison, taken after the write. A save that restores a 
 reports nothing; a save on top of an earlier hand edit keeps the signal up. One consequence: editing
 `tls.cert` or `tls.key` no longer raises the signal — neither is reachable from the panel, and only
 three fields are bound at startup.
+
+## 0.18.0 (2026-08-11)
 
 **Notifications are decided by the server, not by the tray.** The diffing between two readings —
 the only part of notifying the tray still owned — moved into the server, which already held the

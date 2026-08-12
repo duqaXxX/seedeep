@@ -69,3 +69,15 @@ test('the placeholder carries no shebang', () => {
   const stub = readFileSync(join(NPM_SRC, 'stub.sh'), 'utf8');
   assert.ok(!stub.startsWith('#!'), 'stub.sh must not start with a shebang');
 });
+
+test("the README's figure survives leaving the repository", () => {
+  // npm renders this file as GFM with no repository behind it, so a relative path resolves against
+  // nothing and the figure is simply missing — and the packager substitutes exactly one token, so a
+  // second one ships verbatim into the URL. Both failures are invisible until the page is public.
+  const readme = readFileSync(join(NPM_SRC, 'README.md'), 'utf8');
+  assert.deepEqual([...new Set(readme.match(/{{\w+}}/g) ?? [])], ['{{VERSION}}']);
+  for (const match of readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
+    const url = match[1] ?? '';
+    assert.match(url, /^https:\/\/raw\.githubusercontent\.com\/\S+\/v{{VERSION}}\//, url);
+  }
+});

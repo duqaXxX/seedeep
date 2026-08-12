@@ -28,6 +28,19 @@ test('isGitCommit survives the forms real transcripts carry', () => {
   assert.ok(isGitCommit('git add -A && git commit -q -F -'), 'second in a chain');
   assert.ok(!isGitCommit('git log --oneline'));
   assert.ok(!isGitCommit('echo "commit"'));
+  assert.ok(isGitCommit('git --git-dir=/r/.git --work-tree=/r commit'), 'flags carrying no value');
+});
+
+test('a git command that never reaches `commit` is rejected without backtracking', () => {
+  // The shape CodeQL named (`js/redos`, high): a long run of flags, and no `commit` to end on. The
+  // regex that shipped explored every way of pairing them — 685ms at 40, and nothing bounds a
+  // transcript's `command` field. The margin here is four orders of magnitude, so the threshold
+  // says nothing about how fast the machine is.
+  const pathological = `git${' -a'.repeat(40)} X`;
+  const started = performance.now();
+  assert.equal(isGitCommit(pathological), false);
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 200, `took ${elapsed.toFixed(0)}ms — the match is backtracking again`);
 });
 
 test('harvestHashes takes hex tokens of git length only', () => {
