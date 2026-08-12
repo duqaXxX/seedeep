@@ -4,6 +4,18 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The notification figure is a build output now, not a montage somebody assembled.**
+`capture-demo.ts notif` runs the installed tray against a synthetic session inside its own
+`SEEDEEP_HOME`, provokes the approval, the failure and the finish, films the screen and finds each
+banner by subtracting an empty frame from a filmed one. The figure it replaces had been wrong since
+before the release — two of its three bodies still ran to a second line, and one said `Finished`,
+which no build has said for weeks. Two measurements came out of building it, both worth keeping:
+**macOS draws no banner at all while a fullscreen app is frontmost** (the notification is delivered,
+the tray's own probe returns `Ok(())`, and nothing appears), which is a fact about the product and
+not only about the capture; and a banner's body differs from what is behind it by a step of three or
+four against the lettering's hundred and eighty, so the edges have to be read at a threshold that
+would be noise for text.
+
 **The session's two work counts moved into the summary bar.** `18 turns · 422 calls · 437 tools`,
 beside the durations, at both scopes. The counts were already on the page — the API calls at the
 bottom of the Session card under the token ledger, the tool total inside Main tools under four long

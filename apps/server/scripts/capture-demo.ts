@@ -1008,6 +1008,579 @@ async function shoot(): Promise<void> {
 }
 
 /**
+ * The tray the notification figure photographs: the INSTALLED app, never a dev build.
+ *
+ * A banner is drawn by macOS from the bundle that sent it, so what the figure shows is the shipped
+ * client or it is nothing. It also has to be the installed one for a duller reason: notification
+ * permission is granted per bundle, seedeep ships unsigned, and macOS re-asks on every build — a
+ * freshly compiled tray is a tray whose banners silently go nowhere.
+ */
+const TRAY_APP = process.env['SEEDEEP_TRAY_APP'] ?? '/Applications/seedeep-tray.app';
+
+/** The notification capture's own port, so it can run beside a `shoot` and beside a real seedeep. */
+const NOTIF_PORT = Number(process.env['SEEDEEP_NOTIF_PORT'] ?? 45998);
+
+/** Pixels between two banners in the montage, matching the figure this replaces. */
+const BANNER_GAP = 18;
+
+/**
+ * A frame as 8-bit luminance, for comparing two of them without decoding a PNG.
+ *
+ * Raw gray rather than an image format on purpose: the only questions asked of these frames are
+ * "which pixels changed" and "how much", and both are one subtraction over a byte array. Pulling in
+ * a PNG decoder to answer them would be the dependency this whole script does without.
+ */
+async function grayFrame(mp4: string, atS: number): Promise<Uint8Array> {
+  const p = Bun.spawn(
+    [
+      'ffmpeg',
+      '-v',
+      'error',
+      '-ss',
+      atS.toFixed(3),
+      '-i',
+      mp4,
+      '-vframes',
+      '1',
+      '-pix_fmt',
+      'gray',
+      '-f',
+      'rawvideo',
+      '-',
+    ],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  const buf = new Uint8Array(await new Response(p.stdout).arrayBuffer());
+  await p.exited;
+  if (buf.length === 0) throw new Error(`no frame at ${atS.toFixed(1)}s in ${mp4}`);
+  return buf;
+}
+
+/** A recording's frame size, which every crop below is expressed in. */
+async function videoSize(mp4: string): Promise<{ w: number; h: number }> {
+  const p = Bun.spawn(
+    ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', mp4],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  const [w, h] = (await new Response(p.stdout).text()).trim().split(',').map(Number);
+  await p.exited;
+  if (!w || !h) throw new Error(`could not read the frame size of ${mp4}`);
+  return { w, h };
+}
+
+/** Where a banner is drawn, and how much of it there is: the top-right quadrant, below the menu bar. */
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The corner of the screen a banner is looked for in: below the menu bar, right of the middle. */
+interface Region {
+  x0: number;
+  y0: number;
+  y1: number;
+}
+
+/** A luminance delta that counts as "something is here that was not": presence, and movement. */
+const CHANGED = 16;
+
+/**
+ * The delta the banner's EDGES are read at, which is much smaller than the one its text is read at.
+ *
+ * Measured on a take: over a flat backdrop the banner's text runs to 219 while its body sits around
+ * 37 against a backdrop of 51 — a step of 14, where the lettering is a step of 180. At 16 the box
+ * collapsed onto the text and cut three figures with their second line sliced in half.
+ *
+ * The value is the one every backdrop agrees on. Over the flat desktop, thresholds 3 to 12 returned
+ * the same rectangle to the pixel; over the black window, whose title bar sits under the top of the
+ * banner at a step of only 3, thresholds 2 to 6 returned that same rectangle again. 4 is inside
+ * both, and the row and column minimums below are what keep a threshold this low from being moved
+ * by compression noise.
+ */
+const EDGE = 4;
+
+/**
+ * Where the black backdrop starts, which is where the search for a banner starts.
+ *
+ * The menu bar is the one strip the backdrop window cannot cover, and it sits in the very corner the
+ * banner is drawn in. Two takes measured the banner as `500x72 at 1404,14` and cut three figures
+ * with a slice of menu bar across the top of each.
+ *
+ * It is found by BRIGHTNESS, in a frame with no banner on it: the menu bar carries a clock and a row
+ * of icons, and below it there is nothing but the backdrop until a banner lands. Neither of the two
+ * things tried first survives contact — darkness cannot find it, because a dark-mode menu bar over a
+ * black window is black too, and movement cannot either, because a menu bar whose icons happen to
+ * hold still for the two frames compared reads as backdrop and lets 1806 lit pixels into the region.
+ * A constant is worse than both: a menu bar's height is a function of the display.
+ */
+function backdropTop(ref: Uint8Array, w: number, h: number): number {
+  const x0 = Math.floor(w / 2);
+  // The top fifth: enough to hold any menu bar, and it stops short of the rest of the screen, where
+  // something bright would mean the backdrop is not covering and is the next check's business.
+  const scan = Math.floor(h / 5);
+  let last = -1;
+  for (let y = 0; y < scan; y++) for (let x = x0; x < w; x++) if ((ref[y * w + x] ?? 0) > 100) last = y;
+  return last + 1;
+}
+
+/**
+ * The rectangle a banner occupies, found by subtracting a frame that has none.
+ *
+ * Located rather than hardcoded because a rectangle in screen coordinates is a claim about the
+ * machine that took the picture — screen size, scale factor, menu-bar height, the OS's own banner
+ * geometry — and every one of those is a way for a later run to cut a figure of the wrong thing
+ * while reporting success.
+ *
+ * A row or column counts only when many of its pixels changed, so that the odd stray pixel cannot
+ * stretch the box; over a black backdrop the banner's own background is the step that defines its
+ * edges, and there is nothing else in the region to find.
+ */
+function bannerRect(ref: Uint8Array, shot: Uint8Array, w: number, r: Region): Rect | null {
+  const ROW_MIN = 60; // a banner is ~350px wide, so a row of one is nowhere near this thin
+  const COL_MIN = 12;
+  const rows = new Int32Array(r.y1);
+  const cols = new Int32Array(w);
+  for (let y = r.y0; y < r.y1; y++) {
+    for (let x = r.x0; x < w; x++) {
+      const i = y * w + x;
+      if (Math.abs((ref[i] ?? 0) - (shot[i] ?? 0)) < EDGE) continue;
+      rows[y]!++;
+      cols[x]!++;
+    }
+  }
+  let top = -1;
+  let bottom = -1;
+  for (let y = r.y0; y < r.y1; y++) {
+    if (rows[y]! < ROW_MIN) continue;
+    if (top === -1) top = y;
+    bottom = y;
+  }
+  if (top === -1) return null;
+  let left = -1;
+  let right = -1;
+  for (let x = r.x0; x < w; x++) {
+    if (cols[x]! < COL_MIN) continue;
+    if (left === -1) left = x;
+    right = x;
+  }
+  if (left === -1) return null;
+  // Even width and height: a crop with an odd dimension is rejected by some encoders, and there is
+  // no reason for the figure to be the one that finds out.
+  const rect = { x: left, y: top, w: right - left + 1, h: bottom - top + 1 };
+  rect.w -= rect.w % 2;
+  rect.h -= rect.h % 2;
+  return rect;
+}
+
+/** How many pixels differ between two frames, over the corner a banner appears in. */
+function changeScore(a: Uint8Array, b: Uint8Array, w: number, r: Region): number {
+  let n = 0;
+  for (let y = r.y0; y < r.y1; y++)
+    for (let x = r.x0; x < w; x++) {
+      const i = y * w + x;
+      if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) >= CHANGED) n++;
+    }
+  return n;
+}
+
+/**
+ * The instant a banner is SETTLED on screen, within a window after the event that raised it.
+ *
+ * The exact moment cannot be computed: between writing a transcript line and a banner finishing its
+ * slide-in sit the server's one-second sweep, its coalescing timer, an SSE hop and macOS's own
+ * animation. So the window is sampled.
+ *
+ * The BUSIEST frame is the wrong one to take, and that is what this measures its way around: a
+ * half-slid banner is drawn offset and translucent and covers MORE changed pixels than the settled
+ * one (6706 against 5023 on one take), so "most different from the empty screen" picks the frame
+ * mid-flight — twice, in two takes, one figure each time. What identifies the settled banner is
+ * that it is not moving: among the frames where something is clearly on screen, the one that
+ * differs least from the frame before it. A banner that never arrived is quiet too, so the caller
+ * still checks the score.
+ */
+async function peakFrame(
+  mp4: string,
+  ref: Uint8Array,
+  fromS: number,
+  toS: number,
+  w: number,
+  r: Region,
+): Promise<{ at: number; score: number }> {
+  const samples: Array<{ at: number; score: number; motion: number }> = [];
+  let prev: Uint8Array | null = null;
+  for (let t = fromS; t <= toS; t += 0.25) {
+    const g = await grayFrame(mp4, t);
+    samples.push({
+      at: t,
+      score: changeScore(ref, g, w, r),
+      motion: prev === null ? Number.POSITIVE_INFINITY : changeScore(prev, g, w, r),
+    });
+    prev = g;
+  }
+  const top = Math.max(...samples.map((s) => s.score));
+  const shown = samples.filter((s) => s.score >= top * 0.6);
+  const still = shown.reduce((a, b) => (b.motion < a.motion ? b : a), shown[0]!);
+  return { at: still.at, score: top };
+}
+
+/** One banner, cut from the recording at `atS` and saved. */
+async function cropBanner(mp4: string, atS: number, rect: Rect, out: string): Promise<void> {
+  const p = Bun.spawn(
+    [
+      'ffmpeg',
+      '-v',
+      'error',
+      '-y',
+      '-ss',
+      atS.toFixed(3),
+      '-i',
+      mp4,
+      '-vframes',
+      '1',
+      '-vf',
+      `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}`,
+      out,
+    ],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  await p.exited;
+  if (p.exitCode !== 0) throw new Error(`could not cut a banner at ${atS.toFixed(1)}s`);
+}
+
+/** The three banners stacked into the one figure the README shows, gaps between them. */
+async function stackBanners(shots: string[], out: string): Promise<void> {
+  const pad = shots.map((_, i) =>
+    i === shots.length - 1 ? `[${i}]null[s${i}]` : `[${i}]pad=iw:ih+${BANNER_GAP}:0:0:black[s${i}]`,
+  );
+  const chain = `${pad.join(';')};${shots.map((_, i) => `[s${i}]`).join('')}vstack=inputs=${shots.length}`;
+  const p = Bun.spawn(
+    ['ffmpeg', '-v', 'error', '-y', ...shots.flatMap((s) => ['-i', s]), '-filter_complex', chain, out],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  await p.exited;
+  if (p.exitCode !== 0) throw new Error(`could not stack the banners into ${out}`);
+}
+
+/**
+ * Cuts `docs/assets/notifications.png` — the one figure that is not a build output of the browser.
+ *
+ * Three REAL macOS banners, raised by the installed tray against a synthetic session, filmed off the
+ * screen. Nothing here can be replayed into a headless browser: what the figure documents IS the
+ * platform's own rendering, and a mock-up of it would be a drawing of a banner rather than a banner.
+ *
+ * Everything else about it is the same contract as the other figures. The session is synthetic
+ * (`orbit`, under a tmp path) and leak-checked before a single frame is filmed. The server and the
+ * tray share one throwaway `SEEDEEP_HOME`, so the tray adopts THIS server by discovery and the
+ * developer's own tray, its connection and its token are never touched — the two files that matter
+ * live under `<home>/tray`, and a run leaves the installed app's copies alone.
+ *
+ * The three states are driven, not waited for: `~/.claude/sessions/` decides `needsYou` and
+ * `finishes` (the transcript says nothing while a session sits on an approval), so the open record
+ * is rewritten at each step and the transcript is appended to underneath it.
+ *
+ * It takes over the screen for about a minute, and the screen has to be still: the banner is located
+ * by subtracting a frame of the desktop from a frame with a banner on it.
+ */
+async function notif(): Promise<void> {
+  const bundle = join(OUT, 'notif-session');
+  const meta = JSON.parse(await readFile(join(bundle, 'meta.json'), 'utf8')) as { slug: string; cwd: string };
+  const stream = await timeline(join(bundle, meta.slug));
+  if (stream.length === 0) throw new Error(`no transcript lines in ${join(bundle, meta.slug)}`);
+  const leak = stream.map((l) => leakIn(JSON.stringify(l.obj))).filter(Boolean)[0];
+  if (leak) throw new Error(`the notification bundle still carries ${leak} — refusing to film it`);
+
+  const trayBin = join(TRAY_APP, 'Contents', 'MacOS', 'seedeep-tray');
+  if (!(await Bun.file(trayBin).exists()))
+    throw new Error(
+      `no tray at ${TRAY_APP} — install the release build first; a figure of a dev tray is a figure of nothing`,
+    );
+  const plist = Bun.spawn(
+    ['/usr/libexec/PlistBuddy', '-c', 'Print :CFBundleShortVersionString', join(TRAY_APP, 'Contents', 'Info.plist')],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  const trayVersion = (await new Response(plist.stdout).text()).trim();
+  await plist.exited;
+  if (trayVersion !== VERSION)
+    throw new Error(
+      `the installed tray is ${trayVersion} and this checkout is ${VERSION} — install the matching build`,
+    );
+
+  // The pending tool is the last `tool_use` the session wrote: its result is what the user is being
+  // asked to approve. Found rather than indexed, so re-recording the bundle does not silently move
+  // the capture to a different line.
+  const askAt = stream.reduce((found, l, i) => {
+    const c = (l.obj as { message?: { content?: Array<{ type?: string }> } }).message?.content;
+    return Array.isArray(c) && c.some((b) => b.type === 'tool_use') ? i : found;
+  }, -1);
+  if (askAt === -1) throw new Error('no tool_use in the notification bundle — nothing to wait for approval on');
+  const askTool = ((
+    stream[askAt]!.obj as { message: { content: Array<{ type?: string; name?: string }> } }
+  ).message.content.find((b) => b.type === 'tool_use')?.name ?? '') as string;
+  const endAt = stream.findIndex((l) => {
+    const o = l.obj as { type?: string; subtype?: string };
+    return o.type === 'system' && o.subtype === 'turn_duration';
+  });
+  if (endAt === -1) throw new Error('no turn_duration in the notification bundle — the turn never finishes');
+  // The API failure is CLONED from the session's own last assistant line, so every field around it
+  // (cwd, version, model, the usage block) is the shape Claude Code really writes. Only the two
+  // markers the parser keys on are added — inventing the whole line is how a fixture ends up
+  // testing a belief instead of the format.
+  const template = stream[endAt - 1]!;
+  const failure = {
+    ...template,
+    obj: {
+      ...(template.obj as Record<string, unknown>),
+      uuid: crypto.randomUUID(),
+      isApiErrorMessage: true,
+      apiErrorStatus: 529,
+      message: {
+        ...((template.obj as { message: Record<string, unknown> }).message ?? {}),
+        content: [
+          {
+            type: 'text',
+            text: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+          },
+        ],
+      },
+    },
+  };
+
+  const cfg = join(OUT, 'cfg-notif');
+  const home = join(OUT, 'seedeep-home-notif');
+  for (const d of [cfg, home]) await rm(d, { recursive: true, force: true });
+  await mkdir(join(cfg, 'projects', meta.slug), { recursive: true });
+  await mkdir(join(home, 'tray'), { recursive: true });
+  // `Turn finished` ships OFF, so the figure that shows all three has to turn it on. The update
+  // check is turned off for the opposite reason: a "seedeep 0.x is out" banner landing mid-take is
+  // a banner about the tool rather than about a session.
+  //
+  // In the SERVER's config, which is the switch that decides — the first take turned it on in the
+  // tray's own `settings.json` and filmed two banners out of three, because the tray's file is the
+  // panel's mirror of a setting the server holds (`notify-engine` reads `currentConfig`). Both are
+  // written, and they agree.
+  await writeFile(
+    join(home, 'config.json'),
+    JSON.stringify({
+      notifications: { tray: { needsYou: true, fails: true, finishes: true, updates: false } },
+    }),
+  );
+  await writeFile(
+    join(home, 'tray', 'settings.json'),
+    JSON.stringify({ notify: true, notifyFinished: true, notifyFailed: true, notifyUpdate: false }),
+  );
+
+  const sessionId = sessionIdOf(stream);
+  if (!sessionId) throw new Error('no sessionId in the notification bundle');
+  for (const l of stream.slice(0, askAt)) await writeLine(cfg, meta.slug, l);
+  await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
+
+  const bin = join(process.cwd(), 'dist', `seedeep-server_${VERSION}_macos-arm64`);
+  if (!(await Bun.file(bin).exists())) throw new Error(`missing ${bin} — run \`bun run build:server\` first`);
+  const server = Bun.spawn([bin, 'serve', '--no-open', '--port', String(NOTIF_PORT)], {
+    env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, SEEDEEP_HOME: home },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  let tray: ReturnType<typeof Bun.spawn> | null = null;
+  let rec: ReturnType<typeof Bun.spawn> | null = null;
+  let backdrop: ReturnType<typeof Bun.spawn> | null = null;
+  const mp4 = join(OUT, 'notif-screen.mp4');
+  try {
+    await serverUrl(server as { stdout: ReadableStream<Uint8Array> }, NOTIF_PORT);
+    console.log(`[notif] server up on ${NOTIF_PORT} against ${cfg}`);
+
+    // Its own SEEDEEP_HOME is the whole isolation: the tray keeps `connection.json` under
+    // `<home>/tray`, and the server announced itself under `<home>/servers`, so this one adopts
+    // this one and the installed tray's pairing is not read, rewritten or disturbed.
+    tray = Bun.spawn([trayBin], { env: { ...process.env, SEEDEEP_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
+    for (let i = 0; i < 40 && !(await Bun.file(join(home, 'tray', 'connection.json')).exists()); i++)
+      await new Promise((r) => setTimeout(r, 500));
+    console.log('[notif] tray up — the banners are about to take over the screen');
+
+    // A black screen behind the banners, and it is not cosmetic — it is what makes the figure both
+    // cuttable and publishable.
+    //
+    // CUTTABLE: the banner is located by subtracting a frame of the screen from a frame with a
+    // banner on it, and macOS draws its banner from a translucent material. Over a busy desktop the
+    // subtraction finds the TEXT and not the banner — the first take cut a 432x40 strip through the
+    // middle of it. Over one flat colour, the banner's own body is a clean step all the way to its
+    // rounded corners.
+    //
+    // PUBLISHABLE: a crop is a rectangle and a banner has rounded corners, so whatever is on the
+    // desktop shows through at all four of them. On a real machine that is a sliver of somebody's
+    // window in a public figure. Black corners are also what the montage's gaps are, so the stack
+    // has no seams.
+    //
+    // An ordinary window, and NEVER a fullscreen one. Measured 2026-08-12, twice: with a fullscreen
+    // app frontmost, macOS delivers the notification — the tray's own probe returns `Ok(())` — and
+    // draws NO banner. A whole take came back with not one pixel changed in fifty seconds. That is
+    // also a fact about the product: a user working fullscreen sees none of these.
+    //
+    // Chrome is launched DIRECTLY rather than through playwright, because `--app` and
+    // `--window-size` are what make this work and playwright manages the window itself: under it the
+    // flags were dropped and the take filmed a titled window with an infobar, sitting nowhere near
+    // the corner the banners are drawn in.
+    //
+    // What it cannot cover is the ~30px of its own title bar, which lands under the top of the
+    // banner. That costs nothing: the strip is a flat 27 against the content's 0, both static, and
+    // {@link EDGE} reads the banner's edges off either.
+    const black = join(OUT, 'black.html');
+    await writeFile(black, '<body style="margin:0;background:#000">');
+    backdrop = Bun.spawn(
+      [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        `--user-data-dir=${join(OUT, 'black-profile')}`,
+        `--app=file://${black}`,
+        '--window-position=0,0',
+        '--window-size=4000,3000',
+        '--no-first-run',
+        '--no-default-browser-check',
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    // Long enough for the window to be up and still: a reference frame of a screen that is still
+    // moving is a reference frame that subtracts to noise.
+    await new Promise((r) => setTimeout(r, 5_000));
+
+    rec = Bun.spawn(
+      [
+        'ffmpeg',
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'avfoundation',
+        '-capture_cursor',
+        '0',
+        '-framerate',
+        '4',
+        '-i',
+        '0:none',
+        '-t',
+        '150',
+        mp4,
+      ],
+      { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+    );
+    const filmedAt = Date.now();
+    const at = () => (Date.now() - filmedAt) / 1000;
+    // A stretch of untouched desktop first: it is what every banner is subtracted from.
+    await new Promise((r) => setTimeout(r, 5_000));
+
+    const marks: Array<{ id: string; at: number }> = [];
+    const provoke = async (id: string, body: () => Promise<void>) => {
+      await body();
+      marks.push({ id, at: at() });
+      // Long enough for the sweep to see it, macOS to draw it, and the banner to be gone again
+      // before the next one is provoked — two banners on screen at once stack, and a stack is not
+      // what any of the three figures is of.
+      await new Promise((r) => setTimeout(r, 14_000));
+    };
+
+    await provoke('waiting', async () => {
+      await writeLine(cfg, meta.slug, stream[askAt]!);
+      // The call has to be ON THE TREE before the session says it is waiting, or the banner names
+      // no tool. `pendingTool` is the JOIN of the roster's `waitingFor` with the open call, and
+      // writing both in the same breath let the digest be built from a record that had already
+      // flipped and a transcript that had not been read yet — the first take said "Waiting for your
+      // approval in the terminal", which is the fallback for a wait whose tool is unknown. It is
+      // also the real order: Claude Code writes the `tool_use`, and the prompt comes after it.
+      await new Promise((r) => setTimeout(r, 2_500));
+      await writeOpenRecord(cfg, sessionId, meta.cwd, 'waiting', 'permission prompt');
+    });
+    await provoke('failed', async () => {
+      // Approved, running again — and then the call fails. Back to busy first, because a session
+      // that goes straight from waiting to broken never shows the state the second banner is about.
+      for (const l of stream.slice(askAt + 1, endAt - 1)) await writeLine(cfg, meta.slug, l);
+      await writeOpenRecord(cfg, sessionId, meta.cwd, 'busy');
+      await new Promise((r) => setTimeout(r, 2_500));
+      await writeLine(cfg, meta.slug, failure);
+    });
+    await provoke('finished', async () => {
+      for (const l of stream.slice(endAt - 1)) await writeLine(cfg, meta.slug, l);
+      await writeOpenRecord(cfg, sessionId, meta.cwd, 'idle');
+    });
+
+    rec.kill('SIGINT');
+    await rec.exited;
+    rec = null;
+    console.log(`[notif] filmed ${at().toFixed(0)}s → ${mp4}`);
+
+    const { w, h } = await videoSize(mp4);
+    const ref = await grayFrame(mp4, 2.5);
+    const region: Region = {
+      x0: Math.floor(w / 2),
+      y0: backdropTop(ref, w, h),
+      y1: Math.floor(h / 2),
+    };
+    // The backdrop is BEHIND the banners or the figure is of something else. A window that opened
+    // where the banners are not is the failure this catches: one take was cut against the grey of a
+    // Chrome toolbar and looked plausible, and nothing but a check on the pixels can tell the two
+    // apart. Flat and dark, both — a bright backdrop would put a white halo in every rounded corner.
+    // Lit pixels with lit neighbours, and a share of the corner rather than its brightest pixel.
+    // Both relaxations are things the backdrop itself put there: a 6x6 recording indicator that macOS
+    // keeps in the menu bar failed a test on the peak, and the window's own one-pixel border — its
+    // top edge and its right edge — failed a test on the count, at 1461 pixels of nothing. Neither is
+    // content. What the check is for is a strip of toolbar or a desktop icon across the corner, and
+    // those are thousands of pixels thick in both directions.
+    let lit = 0;
+    for (let y = region.y0 + 1; y < region.y1 - 1; y++)
+      for (let x = region.x0 + 1; x < w - 1; x++) {
+        const on = (i: number) => (ref[i] ?? 0) > 40;
+        const i = y * w + x;
+        if (on(i) && on(i - 1) && on(i + 1) && on(i - w) && on(i + w)) lit++;
+      }
+    const area = (region.y1 - region.y0) * (w - region.x0);
+    if (lit > area * 0.002)
+      throw new Error(
+        `the corner where banners are drawn is not black (${lit} lit pixels of ${area}) — ` +
+          'the backdrop window did not cover it, so the crop would carry whatever is on the desktop',
+      );
+    const peaks: Array<{ id: string; at: number; score: number }> = [];
+    for (const m of marks) {
+      const p = await peakFrame(mp4, ref, m.at + 0.5, m.at + 6, w, region);
+      if (p.score < 2_000)
+        throw new Error(
+          `no banner after the ${m.id} transition (${p.score} px changed at its busiest). ` +
+            'Notifications are off for the tray, or the session did not reach that state.',
+        );
+      peaks.push({ id: m.id, ...p });
+    }
+    // ONE rectangle for all three: the banners are the same size and macOS draws them in the same
+    // place, and three separately measured crops would differ by a pixel or two and read as a
+    // wobbling stack.
+    const rect = bannerRect(ref, await grayFrame(mp4, peaks[0]!.at), w, region);
+    if (rect === null) throw new Error('a banner was on screen but its edges could not be found');
+    console.log(`[notif] banner ${rect.w}x${rect.h} at ${rect.x},${rect.y} in a ${w}x${h} screen`);
+
+    const cut: string[] = [];
+    for (const [i, p] of peaks.entries()) {
+      const out = join(OUT, `b${i + 1}.png`);
+      await cropBanner(mp4, p.at, rect, out);
+      console.log(`[notif] b${i + 1} — ${p.id} at ${p.at.toFixed(1)}s (${p.score} px)`);
+      cut.push(out);
+    }
+    const figure = join(process.cwd(), 'docs', 'assets', 'notifications.png');
+    await stackBanners(cut, figure);
+    console.log(`[notif] wrote ${figure} — ${askTool} approval, failure, finish`);
+  } finally {
+    if (rec) {
+      rec.kill('SIGINT');
+      await rec.exited;
+    }
+    backdrop?.kill();
+    tray?.kill();
+    server.kill();
+    await server.exited;
+  }
+}
+
+/**
  * Cuts the cropped stills `docs/features.md` uses, from the same bundle `shoot` replays — so a
  * figure is a build output, not a screenshot somebody took. Free, like `shoot`: the transcript is
  * already on disk and nothing calls the model.
@@ -1603,6 +2176,7 @@ const cmd = process.argv[2];
 if (cmd === 'record') await record();
 else if (cmd === 'record-extras') await recordExtras();
 else if (cmd === 'shoot') await shoot();
+else if (cmd === 'notif') await notif();
 else if (cmd === 'doc-shots') {
   const arg = (flag: string) => {
     const i = process.argv.indexOf(flag);
@@ -1613,7 +2187,7 @@ else if (cmd === 'doc-shots') {
 } else if (cmd === 'doc-shots-verify') await docShotsVerify((process.argv[3] ?? '').split(',').filter(Boolean));
 else {
   console.error(
-    'usage: capture-demo.ts record | record-extras | shoot | doc-shots [--only <scene|shot-id>] [--ids a,b] [--out <dir>] | doc-shots-verify <id,id>',
+    'usage: capture-demo.ts record | record-extras | shoot | notif | doc-shots [--only <scene|shot-id>] [--ids a,b] [--out <dir>] | doc-shots-verify <id,id>',
   );
   process.exit(1);
 }

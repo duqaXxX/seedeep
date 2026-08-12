@@ -90,7 +90,7 @@ window is — without a browser tab open. ([rules](docs/tray.md))
 
 ### The notifications — the reason to have a tray at all
 
-<img src="docs/assets/notifications.png" width="420" alt="Three tray notifications: waiting for approval, finished, and a failed API call">
+<img src="docs/assets/notifications.png" width="420" alt="Three tray notifications: waiting for approval on Bash, a failed API call, and a finished turn">
 
 Three things about a session are worth interrupting you for, and each has its own
 switch. Nothing else notifies: not a subagent finishing, not a tool error. A tray

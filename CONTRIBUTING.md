@@ -273,6 +273,20 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   stale number there makes nothing it claims false. If you change a widget that a figure
   shows, say so in the PR — re-cutting needs the recorded bundle, which is not in the
   repo, so a maintainer does it.
+- **The notification figure is cut too, by a different command.** `docs/assets/notifications.png`
+  is three REAL macOS banners, so no headless browser can produce it — but it is not a
+  screenshot somebody took either: `capture-demo.ts notif` drives the installed tray
+  against a synthetic session, provokes the approval, the failure and the finish in
+  turn, films the screen, and finds each banner by subtracting a frame of the screen
+  from a frame with a banner on it. Two things it learned the hard way are worth
+  knowing before touching it. The backdrop must be an ordinary window and never a
+  fullscreen one — **macOS delivers a notification while a fullscreen app is frontmost
+  and draws no banner at all**, which is a fact about the product as much as about the
+  capture. And the banner's edges are read at a much lower threshold than its text: the
+  body of a banner differs from what is behind it by a step of three or four, so a
+  threshold tuned on the lettering cuts the figure through the middle of the second
+  line. It needs the tray of the SAME version installed, notification permission
+  granted, and the screen for about a minute.
 - **A shot must declare `waitFor`** — a selector for something its own subject
   renders, and the run FAILS when it never appears. It is the only place a figure
   states what it must contain in a form the capture can check: while an unmet wait
