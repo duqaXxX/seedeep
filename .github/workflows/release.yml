@@ -119,13 +119,6 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      # Watches this job's egress, blocking nothing — the reasoning is in `ci.yml`, where the same
-      # step runs. This matrix is macOS and Windows, where StepSecurity supports audit mode ONLY, so
-      # here it could never be more than a recording however the policy were written.
-      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
-        with:
-          egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -248,11 +241,6 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      # Ubuntu, so this is the one build job where a policy COULD block rather than only record.
-      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
-        with:
-          egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -317,12 +305,6 @@ jobs:
       id-token: write
       contents: read
     steps:
-      # The job that holds the OIDC credential and writes to a public registry: of the five, the one
-      # whose egress is worth a record.
-      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
-        with:
-          egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
