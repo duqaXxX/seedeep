@@ -820,6 +820,17 @@ Every state whose only control accepts something also offers **Use a different U
 with one button is not a decision, and a panel with no exit is one a user has to quit the app to
 escape.
 
+**The field it opens is a VIEW, not a status** (`view === 'url'` in `ui/panel.ts`), for the one
+reason that matters: a status is what the next tick overwrites. The panel used to answer the click
+by setting its own status to `needsUrl`, and a second later the poller — still reporting the stored
+server, because nothing had been forgotten — put the old screen straight back. The field was on
+screen for less than a tick, so a second server could not be typed in at all. As a view it obeys the
+same rule the settings screen does: readings keep arriving and are kept, only the redraw is
+withheld, so what is behind the field is current the moment it ends. It ends on **closing the
+popover** (the mirror rule — a half-typed address is not what the next click on the icon shows), or
+on the user being ANSWERED: a URL that connects, a retry, a start. A URL that was refused keeps the
+field up with the reason under it, because that address is what has to be corrected.
+
 The waiting screen exists because the first open is the slow one: a stored server that is asleep
 takes seconds to fail, and the first tick can be a whole poll interval away. Without it the panel's
 first paint was a blank 392x560 rectangle. (It is NOT because the webview loads late — see

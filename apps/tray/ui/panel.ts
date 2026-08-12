@@ -69,8 +69,17 @@ let sentHeight = 0;
 /** The sessions being shown, in the order they were first seen — see `retain`. */
 let rows: Row[] = [];
 
-/** Which of the two surfaces is up. `settings` exists only over a connected server — see {@link show}. */
-let view: 'live' | 'settings' = 'live';
+/**
+ * Which surface is up. `settings` exists only over a connected server — see {@link show}.
+ *
+ * `url` is the field the user ASKED for, and it is a view rather than a status because that is the
+ * only thing a reading cannot take away: the panel used to answer `Use a different URL` by setting
+ * its own status to `needsUrl`, which the next tick — a second later, still reporting the stored
+ * server — overwrote. The field was on screen for less than a tick, so a second server could not be
+ * typed in at all. A view is the mechanism the settings screen already uses against the same clock,
+ * including the way back: closing the popover puts the stored server's screen back ({@link apply}).
+ */
+let view: 'live' | 'settings' | 'url' = 'live';
 
 /** What the app has stored, read when the settings view opens so it is never a stale copy. */
 
@@ -213,10 +222,15 @@ function draw(error?: string): void {
   // Read before the swap and restored after: the bands are an uncapped scrolling list re-rendered
   // every second, and a list that jumps back to the top each tick cannot be read at all.
   const scrolled = root.querySelector('.bands')?.scrollTop ?? 0;
-  if (status.kind === 'connected') {
+  // The asked-for field is drawn from the view, never from the reading: what the server is doing is
+  // still tracked underneath (`apply` keeps taking readings), it is simply not what the user is
+  // looking at. `localRemote` stays false — the note it draws is about a server this panel has just
+  // been pointed away from.
+  const showing: Status = view === 'url' ? { kind: 'needsUrl', localRemote: false } : status;
+  if (showing.kind === 'connected') {
     // The error goes THROUGH the renderer, not appended after it: the two surfaces put a message in
     // different places (above the bands, below the form) and only the renderer knows where its own is.
-    surface.put(renderLive(rows, status, bands, error, Date.now(), restartPending));
+    surface.put(renderLive(rows, showing, bands, error, Date.now(), restartPending));
     const list = root.querySelector('.bands');
     if (list) list.scrollTop = scrolled;
     return;
@@ -225,9 +239,9 @@ function draw(error?: string): void {
   // identical reading must leave the DOM exactly where it is. Redrawing it once a second is not
   // just wasted work: it replaced the URL field mid-sentence, which made a remote server
   // impossible to type in at all.
-  // Captured before the closure: `status` is module state, so inside a callback the compiler can no
-  // longer see that the `connected` case returned above — and it is right to doubt it.
-  const current = status;
+  // Captured before the closure: `showing` is derived from module state, so inside a callback the
+  // compiler can no longer see that the `connected` case returned above — and it is right to doubt it.
+  const current = showing;
   const offered = local;
   // `local` is part of the key: the same status draws a different screen once seedeep is found on
   // this machine, and a surface that only watched the status would keep showing the one without the
@@ -272,6 +286,11 @@ function apply(tick: Tick): void {
     view = 'live';
     note = undefined;
   }
+  // Nor the field the user asked for, and for the same reason the trust prompt is spared above: it
+  // is a surface being ANSWERED, and the reading that would replace it is the one saying the panel
+  // is still pointed at the server they are trying to leave. The reading itself is kept — only the
+  // redraw is withheld — so the screen behind the field is current the moment the view ends.
+  if (view === 'url') return;
   // A tick must NOT redraw the settings view. Nothing on that surface moves on the server's clock,
   // and re-rendering it once a second would wipe a half-typed URL out of the field. The one case
   // that has to get through is a status that has stopped being connected, which `show` turns back
@@ -287,6 +306,11 @@ function apply(tick: Tick): void {
  */
 async function refresh(waiting?: string, command: 'tick' | 'look_again' = 'tick'): Promise<void> {
   if (waiting) {
+    // A reading the user ASKED for ends the asked-for field: they have stopped pointing the tray
+    // elsewhere and told it to look here again, and the answer is what they are waiting to see.
+    // Withheld from the automatic refresh, which is the clock by another name — the window regaining
+    // the focus must not empty the field either.
+    if (view === 'url') view = 'live';
     surface?.put(renderLooking(waiting));
     fit();
     busy = true;
@@ -330,6 +354,11 @@ async function run(command: 'connect' | 'trust', args?: Record<string, unknown>,
     // reading that follows be discarded as "a tick during a question" — the guard in `apply`
     // turning against the very click that resolved it.
     status = next;
+    // The field did its job, whatever the answer is: a URL that connects has sessions to show, and
+    // one that lands on a certificate to trust has a question that must be asked. Only a command
+    // that THREW keeps the field up, with the reason under it — that address still has to be fixed.
+    // The settings view is untouched: a server changed from there stays on that screen.
+    if (view === 'url') view = 'live';
     if (next.kind === 'connected') {
       await refresh();
       // Explicit, because `apply` deliberately does not redraw the settings view — and this command
@@ -354,6 +383,10 @@ async function run(command: 'connect' | 'trust', args?: Record<string, unknown>,
  * placeholder's own sentence and it names the gesture that fixes it.
  */
 async function startServer(): Promise<void> {
+  // Ends the asked-for field, like every other action that answers the user: this button is drawn ON
+  // that screen when seedeep is installed here, and what follows is a server that is up — a form
+  // still sitting over it would be the click doing nothing.
+  if (view === 'url') view = 'live';
   surface?.put(renderLooking('Starting seedeep…'));
   fit();
   busy = true;
@@ -400,9 +433,11 @@ const actions: Actions = {
   retry: () => void refresh('Looking for seedeep…', 'look_again'),
   start: () => void startServer(),
   // Answered here, not in Rust: nothing is being forgotten, the panel is simply asking again. A
-  // command that deleted the stored connection would throw away a working pin to show a form.
+  // command that deleted the stored connection would throw away a working pin to show a form — and
+  // the status is left alone for the same reason, so closing the popover has something true to
+  // return to.
   elsewhere: () => {
-    status = { kind: 'needsUrl', localRemote: false };
+    view = 'url';
     show();
   },
 };

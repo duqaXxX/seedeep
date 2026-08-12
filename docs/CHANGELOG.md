@@ -4,6 +4,16 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**`Use a different URL` now stays up.** The click was answered by setting the panel's own status to
+`needsUrl`, which the next tick overwrote a second later with the stored server it was still
+reporting — the field appeared and was gone, so a second server could not be typed in at all. It is
+a view now, like the settings screen, and obeys the same rule against the clock: readings keep
+arriving, only the redraw is withheld. It ends on closing the popover, or on the user being answered
+— a URL that connects, a retry, a start; a refused URL keeps the field with the reason under it.
+With it comes the first test that drives `panel.ts` itself (`tests/panel-tick.test.ts`): the module
+talks to Rust at import time, so every rule of its had until now been tested on the renderers, which
+cannot see a tick.
+
 **The notification figure is a build output now, not a montage somebody assembled.**
 `capture-demo.ts notif` runs the installed tray against a synthetic session inside its own
 `SEEDEEP_HOME`, provokes the approval, the failure and the finish, films the screen and finds each
