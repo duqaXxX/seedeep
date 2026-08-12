@@ -6,6 +6,15 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## 0.21.0 (2026-08-12)
 
+**Three tests that were green on a pull request and red on `main` two minutes later.** A test file
+installs a stub `window` on the GLOBAL and only restores it in `after()`, so for the whole length of
+that file any other file's test that node:test happens to interleave sees it — and the stub carried
+`open` alone, where `trace.ts`'s `destroy()` calls `window.removeEventListener`. The failure was
+therefore a matter of scheduling, invisible locally and reproducible nowhere on demand: it took a CI
+stack trace to name it. The stub now carries the whole four-member contract `src/client` actually
+uses (`open`, `addEventListener`, `removeEventListener`, `location`), because the rule fixtures live
+by — synthetic in content, faithful in SHAPE — is not suspended for a `window`.
+
 **The network is a named capability now, and the linter is what names it.** seedeep's claim is that
 session content does not leave the machine, and until now nothing checked it: a pull request adding
 an outbound call would have passed every gate. The first attempt at a check was a bespoke test that
