@@ -199,6 +199,8 @@ const EXTRAS: Array<{ cwd: string; files: Record<string, string>; scenes: string
     cwd: '/tmp/ledger',
     files: {
       'README.md': '# ledger\n\nA tiny double-entry accounting CLI. Toy project.\n',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: this string IS the fixture's source
+      // code — the `${}` belongs to the template literal the fake project contains, not to this one.
       'src/summary.ts':
         "export function summary(rows: Array<{ account: string; cents: number }>) {\n  const byAccount = new Map<string, number>();\n  for (const r of rows) byAccount.set(r.account, (byAccount.get(r.account) ?? 0) + r.cents);\n  return [...byAccount].map(([account, cents]) => `${account}: ${(cents / 100).toFixed(2)}`).join('\\n');\n}\n",
     },

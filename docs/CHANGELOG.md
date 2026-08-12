@@ -4,6 +4,47 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The mark is a lens, not an eye.** The eye was drawn for the name — seedeep, *see* — and said the
+wrong thing about a tool whose whole argument is that it only ever READS: an eye with a pupil and a
+highlight is the iconography of spyware, and it sat permanently in a menu bar. What replaces it is
+a **lens with no handle**: a ring of glass over a trace, three spans stepping right, which is the
+shape the Trace tab draws. One geometry serves every surface (`icon.rs` for the tray,
+`generate-favicon.ts` for the browser, the app icons and the social card generated from that SVG).
+
+**A fingerprint was built first and thrown away, and the reason is worth keeping.** It was checked
+against the system glyph it could be confused with — wifi — and cleared. It was not checked against
+the third-party icons that share the menu bar, and an arc over a round body is the OpenVPN
+padlock's skeleton. The test a mark has to pass is not "is it distinct from macOS" but "is it
+distinct from what is actually in the bar next to it".
+
+No handle, for the two reasons that made a magnifier look unusable earlier: the handle is a
+diagonal that fights the unreachable slash, and it is the stroke that makes the glyph read as
+*search*, which seedeep already spends a tab of its own on. Without it the objections go, and what
+is left says what the tool does — glass over data.
+
+Four things were settled by rendering them at 18 pt rather than by argument. The ring and the bars
+are drawn at **one stroke weight**: the ring had been half again as heavy as the trace it sits
+over, which is a mismatch with nothing behind it. The bars **leave the glass room** — they first
+reached to within 0.4 px of it, which reads as crowding. The working state **breathes**, every span
+running out together, because moving one of them shifted about 4 px of ink and at that size the
+signal is how much ink moves. And the badge **rides the ring** at the upper right with a moat of
+its own, inside the circle rather than beside it, so it costs the mark no size — the rule that made
+the eye shrink when the badge was given a corner. The buffer is 26×26, the first square one this
+icon has had.
+
+**Broken lost its cross, and the guard rail was retuned rather than removed.** It is now the plain
+mark in red — the maintainer's call, made looking at it beside waiting at 18 pt. That leaves only
+waiting's thicker bars to tell the two apart, measured at 21% of the ink where the cross had
+differed by most of it, so
+`a_failed_icon_differs_from_a_waiting_one_by_its_shape` now demands 15% instead of 25%: under the
+fact, far above zero. A change leaving hue as the only difference between them still fails, which
+is what that test exists for — red against amber is the pair a red-green deficiency reads worst.
+
+The 16 px ICO is **rasterised from the geometry** rather than plotted on a hand-written grid, with
+an optical size of its own — the glass and two spans, because three leave under a pixel of gap
+between them and merge into a block. The grid it replaced meant the small icon was a drawing of the
+large one and could disagree with it silently.
+
 **The intermittent CI failure had a cause, and it was in the other app.** Three graph tests died in
 `trace.ts`'s `destroy()` on `window.removeEventListener`, green locally and red on CI on the same
 commit. The installer was `apps/tray/tests/panel-tick.test.ts`, which put

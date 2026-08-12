@@ -1,10 +1,17 @@
 /**
- * Generates public/favicon.svg and public/favicon.ico from a single pixel-art eye design.
+ * Generates public/favicon.svg and public/favicon.ico from one description of the mark.
  * Run once (or after any icon change): bun run scripts/generate-favicon.ts
  *
  * No external dependencies — ICO is written as a raw BMP-in-ICO binary.
- * The SVG is the primary source of truth; the ICO is a 16×16 pixel-art version
- * for legacy browsers that do not support SVG favicons.
+ *
+ * The mark is a LENS WITH NO HANDLE: a thick ring of glass with a trace inside it — three spans
+ * stepping to the right, the shape the Trace tab draws. It is described here in the same unit
+ * square the tray's Rust renderer uses (`apps/tray/src-tauri/src/icon.rs`), from constants with
+ * the same names and values, so the two surfaces cannot drift apart by eye.
+ *
+ * The 16×16 ICO is RASTERISED from that geometry rather than hand-plotted on a grid — with an
+ * optical size of its own, see `isInkSmall`. A literal pixel grid, which is what this file used to
+ * carry, means the small icon is a DRAWING of the large one and can disagree with it silently.
  */
 
 import { dirname, join } from 'node:path';
@@ -13,54 +20,98 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
 
-// ─── SVG ─────────────────────────────────────────────────────────────────────
-// Eye icon in seedeep's dark palette.  Uses a 32×32 viewBox for crisp rendering
-// at browser icon sizes (16 → 64 px).
+const BG = '#0b0d12';
+const INK = '#7dd3fc';
 
-const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="5" fill="#0b0d12"/>
-  <!-- eye outline (almond) -->
-  <path d="M2 16 Q16 3 30 16 Q16 29 2 16Z" fill="#0b0d12" stroke="#7dd3fc" stroke-width="2.2"/>
-  <!-- iris -->
-  <circle cx="16" cy="16" r="6.5" fill="#7dd3fc"/>
-  <!-- pupil -->
-  <circle cx="16" cy="16" r="3" fill="#0b0d12"/>
-  <!-- light reflection -->
-  <circle cx="19" cy="13" r="1.4" fill="#e0f2fe" opacity="0.7"/>
+// ─── the mark, in the unit square ────────────────────────────────────────────
+// Mirrors icon.rs: GLASS_R / GLASS_STROKE / SPANS / SPAN_H.
+
+const GLASS_R = 0.37;
+const GLASS_STROKE = 0.075;
+/** (left, right, centre-y) — each span starts where the one above it is about half done. */
+const SPANS: [number, number, number][] = [
+  [0.34, 0.5, 0.38],
+  [0.4, 0.58, 0.5],
+  [0.45, 0.63, 0.62],
+];
+const SPAN_H = 0.075;
+
+/** Fraction of the tile the mark occupies, leaving the rounded square a margin of its own. */
+const FIT = 0.92;
+
+// ─── SVG ─────────────────────────────────────────────────────────────────────
+// 32×32 viewBox for crisp rendering at browser icon sizes (16 → 64 px).
+
+const S = 32;
+const u = (v: number) => +(16 + (v - 0.5) * S * FIT).toFixed(2); // unit → viewBox
+const len = (v: number) => +(v * S * FIT).toFixed(2);
+
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}">
+  <rect width="${S}" height="${S}" rx="5" fill="${BG}"/>
+  <!-- the glass: one thick ring, no handle -->
+  <circle cx="16" cy="16" r="${len(GLASS_R - GLASS_STROKE / 2)}" fill="none" stroke="${INK}" stroke-width="${len(GLASS_STROKE)}"/>
+  <!-- the trace it is over: three spans stepping right -->
+  <g stroke="${INK}" stroke-width="${len(SPAN_H)}" stroke-linecap="round">
+${SPANS.map(([l, r, cy]) => `    <line x1="${u(l)}" y1="${u(cy)}" x2="${u(r)}" y2="${u(cy)}"/>`).join('\n')}
+  </g>
 </svg>`;
 
 await Bun.write(join(PUBLIC, 'favicon.svg'), SVG);
 console.log('✓ public/favicon.svg');
 
 // ─── ICO (16×16, 32-bit BMP, no compression) ─────────────────────────────────
-// Pixel grid: 0 = bg (#0b0d12), 1 = blue (#7dd3fc).
-// Row 0 = top of the image.  Symmetric eye centered at column ~7.5.
-
-const GRID: number[][] = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  0
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  1
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  2
-  [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0], //  3  eye top
-  [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], //  4
-  [0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0], //  5  iris top
-  [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0], //  6
-  [0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0], //  7  pupil gap
-  [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0], //  8
-  [0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0], //  9  iris bottom
-  [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], // 10
-  [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0], // 11  eye bottom
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 12
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 13
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 14
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 15
-];
-
-// BGRA (the format used in BMP/ICO pixel data)
-const BG_BGRA = [0x12, 0x0d, 0x0b, 0xff] as const;
-const BLUE_BGRA = [0xfc, 0xd3, 0x7d, 0xff] as const;
 
 const W = 16;
 const H = 16;
+const SS = 4;
+
+/**
+ * The mark at 16 px: the glass, and TWO spans.
+ *
+ * An optical size, not a different mark. Inside eleven pixels three spans leave under a pixel of
+ * gap between them and merge into a block; two keep the step that says "trace" rather than
+ * "list", and they are drawn a touch heavier than the full mark's so they survive the threshold
+ * below.
+ */
+const SMALL_GLASS_STROKE = 0.085;
+const SMALL_SPANS: [number, number, number][] = [
+  [0.32, 0.52, 0.4],
+  [0.42, 0.64, 0.6],
+];
+const SMALL_SPAN_H = 0.1;
+const SMALL_FIT = 0.98;
+
+/** Distance from a point to a horizontal segment. */
+function segDistance(x: number, y: number, x1: number, x2: number, cy: number): number {
+  const t = Math.min(Math.max((x - x1) / (x2 - x1), 0), 1);
+  return Math.hypot(x - (x1 + t * (x2 - x1)), y - cy);
+}
+
+function isInkSmall(x: number, y: number): boolean {
+  const r = Math.hypot(x - 0.5, y - 0.5);
+  if (Math.abs(r - (GLASS_R - SMALL_GLASS_STROKE / 2)) <= SMALL_GLASS_STROKE / 2) return true;
+  return SMALL_SPANS.some(([l, rt, cy]) => segDistance(x, y, l, rt, cy) <= SMALL_SPAN_H / 2);
+}
+
+/** Coverage of one pixel, 0..1, supersampled. */
+function coverage(px: number, py: number): number {
+  let hits = 0;
+  for (let sy = 0; sy < SS; sy++) {
+    for (let sx = 0; sx < SS; sx++) {
+      const x = (px + (sx + 0.5) / SS) / W;
+      const y = (py + (sy + 0.5) / SS) / H;
+      if (isInkSmall(0.5 + (x - 0.5) / SMALL_FIT, 0.5 + (y - 0.5) / SMALL_FIT)) hits++;
+    }
+  }
+  return hits / (SS * SS);
+}
+
+const hexToBgra = (hex: string): readonly number[] => {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, 0xff];
+};
+const BG_BGRA = hexToBgra(BG);
+const INK_BGRA = hexToBgra(INK);
 
 const AND_ROW_BYTES = Math.ceil(W / 32) * 4; // pad to 32-bit boundary → 4
 const AND_SIZE = H * AND_ROW_BYTES; // 64
@@ -109,10 +160,12 @@ u32(0); // biYPelsPerMeter
 u32(0); // biClrUsed
 u32(0); // biClrImportant
 
-// XOR mask — pixel data in bottom-to-top row order, BGRA per pixel
+// XOR mask — pixel data in bottom-to-top row order, BGRA per pixel.
+// Thresholded rather than blended: an ICO this small is read as a silhouette, and half-covered
+// pixels that keep their alpha turn the spans to mush.
 for (let row = H - 1; row >= 0; row--) {
   for (let col = 0; col < W; col++) {
-    const c = GRID[row][col] ? BLUE_BGRA : BG_BGRA;
+    const c = coverage(col, row) >= 0.42 ? INK_BGRA : BG_BGRA;
     u8(c[0]);
     u8(c[1]);
     u8(c[2]);
