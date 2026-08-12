@@ -4,6 +4,19 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**harden-runner is out, one release after it went in.** It was adopted on the premise that watching
+CI's egress costs nothing, and the premise was false: `setup-bun` died with `socket hang up` four
+times in an hour, on Ubuntu and on Windows, at the toolchain download that follows the agent's
+instrumentation — where the whole prior history has none. It left 0.21.0 a draft with six of its
+seven assets and nothing published to npm. Causation is NOT proven, and StepSecurity's own telemetry
+argues against a policy block: 36 destinations, all allowed, no detections. But the trade decided
+itself — what it bought was visibility that had never once fired, and what it cost was half a
+release. GitHub's own hardening guidance names four practices — pin actions to a full commit SHA,
+keep `GITHUB_TOKEN` read-only by default, keep untrusted input out of scripts, vet third-party
+actions — and this repository already had all four; a runtime agent on the runner is not among them,
+and the fourth is an argument against one. Removing it is also the only way to test the hypothesis:
+if the hang-ups stop, the correlation was real.
+
 ## 0.21.0 (2026-08-12)
 
 **Three tests that were green on a pull request and red on `main` two minutes later.** A test file
