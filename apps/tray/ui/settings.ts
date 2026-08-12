@@ -123,13 +123,13 @@ function serverSection(
 /**
  * The notification section: four switches, the heading that completes their sentence, and ONE note.
  *
- * **The prose under each switch is gone** (Davide's call, 2026-08-05, from a prototype at the real
+ * **The prose under each switch is gone** (the maintainer's call, 2026-08-05, from a prototype at the real
  * 392×560). It explained why each DEFAULT was chosen — a design rationale, which lives in
  * `docs/tray.md` and does not need re-reading every time the panel opens. Measured: this view was
  * 991px of content in a 514px viewport, so two of the four switches and the whole About section sat
  * below the fold; without it the view is 557px and effectively fits.
  *
- * The interruption rule is NOT on the label (Davide's call, 2026-08-06): a turn you stopped
+ * The interruption rule is NOT on the label (the maintainer's call, 2026-08-06): a turn you stopped
  * yourself never notifies, and saying so out loud only made a reader wonder what the exception was
  * for. If you pressed Esc you already know. It stays in `docs/tray.md`, where a rule belongs.
  *

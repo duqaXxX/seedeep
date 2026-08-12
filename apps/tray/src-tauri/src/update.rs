@@ -6,7 +6,7 @@
 //! the two ship from one tag but are replaced by different acts (a DMG, an npm package), so each
 //! line names its own half.
 //!
-//! **Once per version, per RUN of the tray** (Davide's call, 2026-08-06, replacing "once per
+//! **Once per version, per RUN of the tray** (the maintainer's call, 2026-08-06, replacing "once per
 //! version, ever"). A banner repeated on every check is the notification people silence first; one
 //! that is remembered forever is worse in the case that actually happens — measured on this machine:
 //! the banner for 0.11.1 was sent, macOS did not show it because a freshly installed unsigned bundle

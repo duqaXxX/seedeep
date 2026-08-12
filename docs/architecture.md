@@ -2674,7 +2674,7 @@ real failures took a shell and a token to diagnose: a server still SERVING the p
 the package had been updated (a process keeps the code it started with, and nothing said so), and
 `/seedeep` missing because `install-command` had never been run.
 
-- **A server that is down is a STATE** (Davide's call, 2026-08-05): the exit code is 0 whatever it
+- **A server that is down is a STATE** (the maintainer's call, 2026-08-05): the exit code is 0 whatever it
   finds, exactly as `stop` succeeds against a server already stopped. Asking a question is not
   demanding an answer you like.
 - **It never touches the registry** — the update line reads the cache with `offline`, so `status` is
@@ -2763,7 +2763,7 @@ advice must NOT contain a package-manager command.
 ### The update check: one request an hour, four surfaces
 
 `update-check.ts` holds the ONLY outbound request seedeep makes, and the cache that keeps it to once
-an hour (Davide's call, 2026-08-05, superseding the same day's "only when you type it"). Four surfaces
+an hour (the maintainer's call, 2026-08-05, superseding the same day's "only when you type it"). Four surfaces
 read it and none of them asks npm: `seedeep update`, the lines after `open` and `start`, the portal's
 About section, and the tray's notification.
 

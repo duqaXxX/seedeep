@@ -322,7 +322,7 @@ function fill(entry: DigestEntry): HTMLElement {
 /**
  * Model and effort, as chips that ride on the CONTEXT line rather than on a line of their own.
  *
- * Davide's call, and the measurement behind it is that they FIT: at 392 px
+ * the maintainer's call, and the measurement behind it is that they FIT: at 392 px
  * `Context 232.5k / 1.0M · Opus 5 · high · 23%` sits on one line with room to spare, and the line
  * it used to occupy is ~28 px per row on the surface with the least height to spend. They belong
  * there for a reason beyond the space, too: the window in the denominator is the model's, so the
@@ -390,7 +390,7 @@ function now(entry: DigestEntry, at: number): HTMLElement | null {
  * A command that has ENDED is not on this list, whatever its fate: the count above it says the
  * session ran some, and what each one did is the portal's, one click away on the row. That is the
  * rule {@link commandsLaunched} already applies to subagents, and the tray keeps one rule for both
- * kinds of background work rather than a second one for commands (Davide's call, 2026-08-08,
+ * kinds of background work rather than a second one for commands (the maintainer's call, 2026-08-08,
  * revising the failed rows that shipped the same day).
  *
  * Below NOW and above the context block, where the agents at work already live — the row's band for
@@ -402,7 +402,7 @@ function now(entry: DigestEntry, at: number): HTMLElement | null {
  * A command outlives the turn that launched it, which is the whole point: an *Idle* row with one of
  * these is a session that has stopped talking and is still waiting on something.
  *
- * The waiting row was built without it and Davide chose to add it, from the two rendered at 392 px:
+ * The waiting row was built without it and the maintainer chose to add it, from the two rendered at 392 px:
  * it costs 24 px on a row that only exists while you are blocked, against two surfaces contradicting
  * each other at the exact moment you are deciding something — the browser's chip has no such
  * exception. And it can change the answer: someone about to refuse a command *because the server is
@@ -490,7 +490,7 @@ function agents(entry: DigestEntry): HTMLElement | null {
 
 /**
  * How many subagents the session has launched, over its whole life — one number, on *Working* and
- * on *Idle* (Davide's call).
+ * on *Idle* (the maintainer's call).
  *
  * The count the server sends, never a length of the list beside it: {@link agents} draws what is at
  * work THIS SECOND, so a session that fanned out twelve agents and got them all back showed nothing
@@ -538,12 +538,12 @@ function waitingRow(row: Row, actions: BandActions, now: number): HTMLElement {
  * has launched and which of them are at it, how full it is — and what it is running on, on the
  * context line.
  *
- * The prompt quote is kept and the NOW line is drawn under it, which is the shape Davide chose from
+ * The prompt quote is kept and the NOW line is drawn under it, which is the shape the maintainer chose from
  * four rendered at 392 px. They answer different questions and neither replaces the other: the
  * prompt is why this session exists, NOW is what it is doing about it this minute, and a row with
  * only the first leaves the user reading a label with no idea what is happening.
  *
- * The itemised call line is GONE (Davide's call): it was a second, lower-resolution answer to the
+ * The itemised call line is GONE (the maintainer's call): it was a second, lower-resolution answer to the
  * question NOW already answers, and it was the tray's own — the portal never had it, so the two
  * surfaces disagreed about what "what it is doing" means.
  */
@@ -580,10 +580,10 @@ function workingRow(row: Row, actions: BandActions, at: number): HTMLElement {
  * surface has its own idea of what a turn last said.
  *
  * On the 13th, where the turn DID do something after its last word, the row now reads that count
- * instead of the words. Davide's call, taken with the number in hand: one rule on every surface is
+ * instead of the words. The maintainer's call, taken with the number in hand: one rule on every surface is
  * worth more than a band keeping its own.
  *
- * This revokes the earlier *duration only, not where it stopped* rule — Davide's own
+ * This revokes the earlier *duration only, not where it stopped* rule — the maintainer's own
  * decision, revised by him after using it: a project name, a duration and a bare
  * percentage answered nothing worth opening the panel for.
  */

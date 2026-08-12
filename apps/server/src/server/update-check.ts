@@ -1,6 +1,6 @@
 /**
  * The one place seedeep asks npm which version is current, and the cache that keeps it to once an
- * hour (Davide's call, 2026-08-05, superseding the same day's "only when you type it": the check is
+ * hour (the maintainer's call, 2026-08-05, superseding the same day's "only when you type it": the check is
  * periodic, and every surface that shows a version reads THIS).
  *
  * **The clock is the cache, not a timer.** Nothing schedules anything: an answer older than
@@ -8,7 +8,7 @@
  * timer would have to be created, cleared at shutdown, and would keep fetching for a portal that
  * was closed a week ago — while ten clients in one hour still cost exactly one request this way.
  *
- * **A question the user TYPED asks npm** (`force`, Davide's call 2026-08-10). The TTL is the right
+ * **A question the user TYPED asks npm** (`force`, the maintainer's call 2026-08-10). The TTL is the right
  * cadence for a surface that polls and a notice printed after `open`; it is the wrong answer to a
  * human who just typed `seedeep update` or `self-update`, because the reason to type either is
  * having heard there is a new version. Measured that day: 0.15.0 was published at 23:20Z, the cache
@@ -40,7 +40,7 @@ const DIST_TAGS = 'https://registry.npmjs.org/-/package/seedeep/dist-tags';
 const CHECK_TIMEOUT_MS = 3000;
 
 /**
- * Once an hour, the cadence Davide asked for (2026-08-05, raised from a day). The whole cost of the
+ * Once an hour, the cadence the maintainer asked for (2026-08-05, raised from a day). The whole cost of the
  * change is 24 requests of 18 bytes a day instead of one; what it buys is learning about a release
  * within the hour instead of within the day. It does NOT make the tray noisier: that banner fires
  * once per released version however often the check runs.

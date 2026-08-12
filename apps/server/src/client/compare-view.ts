@@ -3,7 +3,7 @@ import { COMPARE_TOP_N } from '../core/types.ts';
 
 // The Compare tab: which session weighed the most in a time window. The unit is a token
 // count weighted by the kind of token and by the model that spent it — NEVER a cost in dollars,
-// and never named as an "equivalent" of some model (Davide, 2026-07-28): the "how this is
+// and never named as an "equivalent" of some model (the maintainer, 2026-07-28): the "how this is
 // computed" block carries the explanation instead of a unit label.
 //
 // Built with DOM nodes + textContent only (never innerHTML), like home-view.ts, so a
@@ -115,7 +115,7 @@ export interface CompareView {
 /** Mount the Compare tab into `host`. Fetches on `refresh()`; owns its window selection. */
 export function createCompareView(host: HTMLElement, deps: CompareViewDeps): CompareView {
   let data: Comparison | null = null;
-  // `all` by default (Davide, 2026-07-28): the question the surface answers is "which session
+  // `all` by default (the maintainer, 2026-07-28): the question the surface answers is "which session
   // weighed the most", and starting on a 7-day slice hides the sessions that actually did.
   let win: WinKey = 'all';
 
@@ -179,7 +179,7 @@ export function createCompareView(host: HTMLElement, deps: CompareViewDeps): Com
     // in the only window where it decides anything (7d, where nearly every session ran the same
     // model, so weighting multiplies them all alike) shifts of ±1 are 11 of the 14 rows that would
     // carry a chip — two sessions of near-identical weight trading places, which says nothing about
-    // the weighting. At 30d and all, 12-13 rows clear 3 anyway. Approved by Davide 2026-07-28.
+    // the weighting. At 30d and all, 12-13 rows clear 3 anyway. Approved by the maintainer 2026-07-28.
     const shift = r.rawRank - r.rank;
     if (Math.abs(shift) >= 3) {
       add((shift > 0 ? '▲' : '▼') + Math.abs(shift) + ' vs unweighted', 'cmp-shift' + (shift > 0 ? '' : ' cmp-down'));

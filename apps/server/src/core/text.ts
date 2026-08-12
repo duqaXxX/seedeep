@@ -73,7 +73,7 @@ export function anon(s: string, cap: number): string {
       // the same shape. Masked, the URL a publish reports (`https://claude.ai/code/artifact/<uuid>`)
       // becomes `…/artifact/<id>` — a link that goes nowhere and cannot even be copied by hand, so
       // the address of a page seedeep just watched being published was the one thing it could not
-      // report. Davide's decision, taken with the exposure named: the id then shows in a live demo
+      // report. The maintainer's decision, taken with the exposure named: the id then shows in a live demo
       // or a screen-share of a REAL session (the page itself stays private and needs a login), and
       // never in the repo — nothing anon() touches is ever committed. Public screenshots are
       // covered by their own rule: they are taken on a synthetic session, which has none.

@@ -7,7 +7,7 @@
  * its code until it is restarted, and nothing said so), and `/seedeep` missing because
  * `install-command` had never been run. Both took a shell and a token to diagnose.
  *
- * **A server that is down is a STATE, not a failure** (Davide's call, 2026-08-05): the exit code is
+ * **A server that is down is a STATE, not a failure** (the maintainer's call, 2026-08-05): the exit code is
  * 0 whatever it finds, exactly as `stop` succeeds against a server already stopped. Asking a
  * question is not the same as demanding an answer you like.
  *

@@ -571,7 +571,7 @@ impl Conn {
     /// What the connected server's update check found — about ITSELF and about npm.
     ///
     /// `standing` is the server comparing its own version with npm's, which is exactly the question
-    /// the tray needs answered (Davide's call, 2026-08-05: the notification is about the SERVER, the
+    /// the tray needs answered (the maintainer's call, 2026-08-05: the notification is about the SERVER, the
     /// thing you actually run, not about the tray). `None` when nothing is connected or the server
     /// is too old to answer.
     pub async fn update_status(&self) -> Option<UpdateStatus> {
@@ -876,7 +876,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    /// Which announced server the tray adopts is a RULE, and it is Davide's: the default port wins,
+    /// Which announced server the tray adopts is a RULE, and it is the maintainer's: the default port wins,
     /// then the lowest. Pinned because `read_dir` has no order of its own, so the previous
     /// behaviour was reproducible on one machine and a coin toss on the next.
     #[test]

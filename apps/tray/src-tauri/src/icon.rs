@@ -85,7 +85,7 @@ const WEDGE: f64 = 0.25;
 /// rasterised once, and each one is a `set_icon`, which on macOS redraws the menu bar item.
 /// Measured on the bundled app, panel closed, one session working, as 30 s samples of process CPU
 /// time: **24 fps = 10.9% of one core (one sample), 12 fps = 7.3% (7.3 / 7.3 / 7.7 over three),
-/// nothing working = 0.3%**. 12 is Davide's call, made on those numbers.
+/// nothing working = 0.3%**. 12 is the maintainer's call, made on those numbers.
 ///
 /// Note what the pair says: HALVING the rate did not halve the cost. Something under `set_icon` is
 /// paid per repaint and something is paid per second regardless, so buying smoothness back is

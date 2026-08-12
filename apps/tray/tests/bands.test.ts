@@ -521,7 +521,7 @@ test('a row says which background commands it is still waiting on, in any band',
   assert.equal(find(mount(live([entry()])).node, 'row-bg').length, 0);
 });
 
-// The other half of the same question, answered the other way (Davide, 2026-08-08): what a command
+// The other half of the same question, answered the other way (the maintainer, 2026-08-08): what a command
 // that ENDED did is the portal's, and the tray says only how many there have been. The count is
 // what makes that honest — without it a session that ran four commands and was told about all four
 // would show nothing at all, which is the disappearance this whole finding started from.

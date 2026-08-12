@@ -364,7 +364,7 @@ test('a long final answer is cut to its head', async () => {
 });
 
 // The 13th session: a settled turn that DID something after its last word. Both surfaces now read
-// the count there, where the tray used to go on showing the answer — Davide's call, which is why
+// the count there, where the tray used to go on showing the answer — the maintainer's call, which is why
 // this test exists rather than an assertion that a settled turn always shows its output.
 test('a settled turn that worked after its last word reads the count, not the answer', async () => {
   const path = writeSession([
@@ -868,7 +868,7 @@ const bgNotification = (toolUseId: string, taskId: string, status: string, summa
     content: `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<output-file>/tmp/seedeep-test/tasks/${taskId}.output</output-file>\n<status>${status}</status>\n<summary>${summary}</summary>\n</task-notification>`,
   });
 
-// Davide's rule, 2026-08-08: the tray is a glance surface, so it is told what is RUNNING and how
+// the maintainer's rule, 2026-08-08: the tray is a glance surface, so it is told what is RUNNING and how
 // many there have been — never a command that ended. What that one did is the portal's, one click
 // away on the row. The count is what keeps the silence honest: without it, a session that ran two
 // commands and was told about both would say nothing at all about either.

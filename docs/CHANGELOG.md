@@ -237,7 +237,7 @@ end beside unrelated work. It is the one row there that is not a call: named in 
 and a click opens the full text.
 
 The same list was also the last surface still showing a warned call as an ordinary one — the ⚑ the
-Trace block carries now travels with the row. Davide chose the destination from a prototype: the
+Trace block carries now travels with the row. The maintainer chose the destination from a prototype: the
 three candidate surfaces, photographed on the real UI, with the proposed row injected into the real
 list so the choice was made by looking rather than by reading a description.
 
@@ -253,7 +253,7 @@ after its first event. Monitors are no longer asked.
 Which left the opposite hole: a monitor that IS stopped never says so. Claude Code writes no
 `<task-notification>` for a stop (0 of the 49 lines naming two stopped monitors carries a
 `<status>`), so the row went on calling itself running for the rest of the session — which is what
-Davide saw. The end it does write is the `TaskStop` receipt, *"Successfully stopped task: …"*,
+the maintainer saw. The end it does write is the `TaskStop` receipt, *"Successfully stopped task: …"*,
 naming the task rather than the call. That sentence now closes the row, with `stopped` as its
 status: Claude Code's own word, which every surface already reads as a clean end.
 
@@ -1954,7 +1954,7 @@ own. No reload.
 
 ### 2026-08-02 — Main tools leads the output row
 
-Order only, at Davide's call: the row now reads **Main tools · Commits · Cards** at a fixed
+Order only, at the maintainer's call: the row now reads **Main tools · Commits · Cards** at a fixed
 50 / 25 / 25 rather than closing with Main tools. It is the widest card and the one with the most to
 read — full shell commands and file paths — so it takes the position the eye reaches first, and the
 two quarter-width cards follow. Verified in the browser: 718 / 359 / 359 px at a 1500 px viewport.
@@ -1965,7 +1965,7 @@ Both widgets used to join the output row only once they had content. The reasoni
 of 783 local sessions produce no commit, so an empty card spends a quarter of the page saying
 nothing. What it actually cost is the answer itself: a session with no commit showed no Commits
 widget, and a missing widget cannot tell you that nothing was shipped — it is indistinguishable from
-seedeep not having looked. Davide's call: show them.
+seedeep not having looked. The maintainer's call: show them.
 
 The row is now a fixed 25 / 25 / 50, both cards carry the empty state their renderers already had
 (`No commits in scope yet.` / `No tracker card in scope yet.`), and each hides its **Expand all**
@@ -2013,7 +2013,7 @@ behind. Verified against real transcripts through the real replay + reducer: on 
 most spawns the figure is 108, and on one with two Workflow runs it is 15 direct spawns + 9 members
 = 24.
 
-Just the number, Davide's call — what each agent was and what it cost is one click away in the
+Just the number, the maintainer's call — what each agent was and what it cost is one click away in the
 portal. No line at all when the count is 0: measured over 721 real transcripts, 84% of sessions
 never spawn one.
 
@@ -2214,7 +2214,7 @@ single command). It now has its own place on all three surfaces:
 - **the tray's row**, in every band — `● bun run dev --watch   4m 12s` — the *Needs you* row
   included, which is the only line that band's deliberately spare layout has gained. Review found it
   missing there while the browser's chip had no such exception; both alternatives were rendered at
-  392 px, and Davide took the line: 24 px on a row that only exists while you are blocked, against
+  392 px, and the maintainer took the line: 24 px on a row that only exists while you are blocked, against
   two surfaces contradicting each other at the moment the user is deciding something.
 
 One derivation feeds all of them (`runningBackground`), and the digest carries its result rather
@@ -2263,14 +2263,14 @@ and asserted it be dropped — the word had been seen and filed as meaningless b
 the same mistake as a noise-list written from tool names. Only the measurement said what it was.
 
 Placement was decided by a question rather than by taste. The first proposal put "1 background
-command running" on the NOW line; Davide asked what happens when a new prompt arrives while the
+command running" on the NOW line; the maintainer asked what happens when a new prompt arrives while the
 command runs, and the answer is that the new turn takes NOW back by precedence and the background
 disappears again. That belongs to a session-attribute surface, not to NOW, and is not in this
 change.
 
 ### 2026-07-31 — A word already read does not come back when the server restarts
 
-Davide saw it within minutes of the tray shipping: the first intent on screen, then a count, then
+The maintainer saw it within minutes of the tray shipping: the first intent on screen, then a count, then
 **the same first intent again**, twice more, before it settled. That cannot happen by the rule — a
 hold is measured from when the word was seen, and without a new word it cannot start over.
 
@@ -2309,7 +2309,7 @@ flipped off to confirm they go red.
 **The prototype chose the shape and the live session corrected it — twice.** Three variants were
 rendered through the real stylesheet at the real 500px: keeping it as text, a `Published at` block,
 and linkifying the URL in place. Measured on the rendered DOM, the block costs +115px and shows the
-URL twice (the raw output below repeats it verbatim), against +4px for the in-place link. Davide
+URL twice (the raw output below repeats it verbatim), against +4px for the in-place link. The maintainer
 chose the block. Then the live check — a real publish, a real click on the feed row — found what no
 test could: **the URL never arrived intact**. `anon()` masks every uuid, and an artifact id is one,
 so the drawer was being handed `…/artifact/<id>`. The tests passed because they fed the parser the
@@ -2344,10 +2344,10 @@ expire in flight. `graph.ts` calls it and keeps only the drawing; `digest.ts` ca
 `turn.result`, `turn.recent` and `turn.runningSince` are gone from the wire — five ways to say what
 one field now says, four of which the tray was recombining by its own rules.
 
-**The itemised call line is gone from the tray** (Davide's call): with NOW on the row it was a
+**The itemised call line is gone from the tray** (the maintainer's call): with NOW on the row it was a
 second, lower-resolution answer to the same question, and it was the tray's alone. **An idle row can
 now read a count instead of the agent's last words** — the case where a settled turn did something
-after speaking, measured at 1 real session in 13. Also Davide's call, taken with that number in
+after speaking, measured at 1 real session in 13. Also the maintainer's call, taken with that number in
 hand: one rule everywhere is worth more than a band keeping its own.
 
 The one thing a shared rule could not simply move is the hold's clock. It is counted from when the
@@ -2574,7 +2574,7 @@ writes a call's line ~3.6 s after it starts and nothing qualifies 78.6% of the t
 itemise the turn's LAST calls and age the oldest open one; and `effort` is now on 97–99% of assistant
 lines, so it is worth a chip. The digest carries all of it (`GET /api/digest`), which no polled client
 could see before. **The idle rule locked earlier — *duration only, not where it stopped* — is
-revoked**, on Davide's own decision after using it.
+revoked**, on the maintainer's own decision after using it.
 
 **The popover is as tall as what it shows.** A fixed 560 pt left the connect screen (about 200 pt of
 content) sitting in 360 pt of void. The webview measures its natural height by freeing the height for
@@ -3256,7 +3256,7 @@ be on disk:
   (2 of 284 sessions, one off by 27.6%). The run aggregate now carries their weight, as it already
   carried their volume, and the node sum equals the accumulator sum again.
 
-Two display rules were also settled with Davide rather than left as my own judgement, which is what
+Two display rules were also settled with the maintainer rather than left as my own judgement, which is what
 the project's rule about "X is not worth showing" requires: the **subagent share now has no
 threshold** (a 5% cut hid it on a quarter of the rows, and it is a fact about the session, not a
 judgement), while the **`▲N` chip keeps its 3-place cut** — now justified by measurement instead of
@@ -4685,7 +4685,7 @@ collapsing to a single pixel.
 
 ### 2026-07-19 — The scrollbar is the only overflow affordance
 
-Davide's call, and it reverses the fade + `N more running` footer added earlier
+The maintainer's call, and it reverses the fade + `N more running` footer added earlier
 today: past three concurrent subagents the list simply scrolls, with nothing
 announcing it. The footer is gone (with its css, its counter constant and its
 test), and so is the bottom fade — which had a real defect anyway: it applied

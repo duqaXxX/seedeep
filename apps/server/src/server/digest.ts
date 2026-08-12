@@ -173,7 +173,7 @@ export interface DigestEntry {
    * The background commands still RUNNING — what makes a session that has stopped talking still be
    * waiting on something. Nothing that has ENDED, whatever its fate: a client polling this is a
    * glance surface, and how a command finished is a detail it sends the reader to the portal for.
-   * Davide's call, revising the three-failure rule that shipped first — a failed row the icon did
+   * the maintainer's call, revising the three-failure rule that shipped first — a failed row the icon did
    * not consider broken was a line important enough to draw and not important enough to alarm.
    */
   background: DigestCommand[];

@@ -93,7 +93,7 @@ test('the output row always holds Commits and Cards, even with nothing in them',
   const row = findByClass(container, 'outrow')[0];
   assert.equal(row.children.length, 3);
   assert.ok(row.className.includes('triple'), 'and the row is laid out for three');
-  // Main tools LEADS the row (Davide's call) — the widest card and the one read most, so it sits
+  // Main tools LEADS the row (the maintainer's call) — the widest card and the one read most, so it sits
   // where the eye lands first.
   assert.deepEqual(
     row.children.map((c: any) => findByClass(c, 'wtitle')[0]?.textContent),
@@ -1237,7 +1237,7 @@ test('a background command that reported its fate is no longer running', () => {
 });
 
 // --- the bottom catalogue: one card, two tabs -------------------------------------------------
-// The rules Davide approved, pinned here because each of them is a product decision and not a
+// The rules the maintainer approved, pinned here because each of them is a product decision and not a
 // detail: the tab bar exists only when both lists have something in them, the default never moves,
 // and the closed tab states its failures. Drop the last one and this design hides exactly what it
 // was built to reveal.
@@ -2972,7 +2972,7 @@ test('a live subagent row leads with its intent and always reserves the type lin
   g.document = prevDoc;
 });
 
-// Caught by Davide on a REAL live run, not by any test: a running workflow went through
+// Caught by the maintainer on a REAL live run, not by any test: a running workflow went through
 // subActiveRow (the subagent renderer) and painted a raw `toolu_…` id, a "0 / 200k · 0%"
 // context bar for a thing that HAS no context window, and a frozen "→ starting…".
 // The workflow branch existed only in the catalog; the live monitor never got one.
@@ -3032,7 +3032,7 @@ test('a RUNNING workflow in the live monitor shows the fleet, not a fake context
 
 // Killing a workflow leaves NO terminal signal anywhere — verified on a real kill: no
 // task-notification (a killed SUBAGENT gets one, a killed run does not), an empty task output
-// file, and a journal frozen on its `started` lines. Davide watched a dead run sit at
+// file, and a journal frozen on its `started` lines. The maintainer watched a dead run sit at
 // "running · 5 of 5" indefinitely. Silence is the only evidence, so it is used — but only for
 // a RUN, and only while the session is live.
 function wfSnap(lastActivityAt: number | null, running = 5) {

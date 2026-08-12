@@ -281,7 +281,7 @@ impl Poller {
         let Some(status) = self.conn.update_status().await else {
             return;
         };
-        // The SERVER is what this banner is about (Davide's call, 2026-08-05): it is the thing you
+        // The SERVER is what this banner is about (the maintainer's call, 2026-08-05): it is the thing you
         // actually run, and a tray that announced its own version left a stale server unmentioned —
         // which is the case that had just happened. `standing` is the server's own verdict; the tray
         // does not recompute it.
@@ -295,7 +295,7 @@ impl Poller {
             return;
         }
         let running = status.server.unwrap_or_else(|| "an older one".to_string());
-        // ANNOUNCES, and stops there (Davide's call, 2026-08-06). A banner is read in a second and
+        // ANNOUNCES, and stops there (the maintainer's call, 2026-08-06). A banner is read in a second and
         // dismissed; how to update depends on how that server was installed, and the panel is where
         // that answer can be given properly — with the command, and with room to be read twice.
         // Discarded for the same reason every other notification here discards it: `show` returns

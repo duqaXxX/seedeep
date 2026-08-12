@@ -191,7 +191,7 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
   a `set_icon`, which on macOS redraws the menu bar item. Measured on the bundled app with the panel
   closed, one session working, as 30 s samples of process CPU time: **24 fps → 10.9% of one core
   (one sample), 12 fps → 7.3% (7.3 / 7.3 / 7.7 over three), nothing working → 0.3%** — the idle
-  figure being the tray's ordinary poll. 12 fps is Davide's call, made on those numbers, and the
+  figure being the tray's ordinary poll. 12 fps is the maintainer's call, made on those numbers, and the
   motion at 12 is the same 15° step. **Halving the rate did not halve the cost**: part of what a
   repaint costs is paid per second whatever the rate, so smoothness is cheaper to buy back than the
   first measurement implied, and a further cut has less to win.
@@ -459,7 +459,7 @@ already answers, and it was the one place the two surfaces disagreed about what 
 means. What it kept is the age chip — now on the NOW line, timing whatever that state names (the
 running call for an `activity`, the narration for a live `intent`), never on a settled turn.
 
-**Model · effort ride on the CONTEXT line**, chosen by Davide from four candidates rendered through
+**Model · effort ride on the CONTEXT line**, chosen by the maintainer from four candidates rendered through
 the real stylesheet at the real 392 px: `Context 232.5k / 1.0M · Opus 5 · high · 23%` fits one line
 with room to spare. The pair belongs there for a reason beyond the space — the window in the
 denominator is the model's, so the model is what the figure is measured against.
@@ -487,8 +487,8 @@ to say. Three findings decided the contents, each measured rather than assumed:
   turn's `activity` is null in 12 — a turn's last word is always its answer, so nothing has happened
   *since*. That is why "where it stopped" is normally the agent's own words. On the 13th, where the
   turn did work after its last word, the row reads that count instead: one rule on every surface,
-  Davide's call, taken with the number in hand. This **revokes** the *duration only, not where it
-  stopped* rule locked earlier: Davide's own decision, revised by him after using it.
+  the maintainer's call, taken with the number in hand. This **revokes** the *duration only, not where it
+  stopped* rule locked earlier: the maintainer's own decision, revised by him after using it.
 - **Effort is worth showing now.** Claude Code has written it on the assistant line's root since
   2.1.212, and it is there on 97–99% of assistant lines since (measured 2026-07-30 over 28 313, on
   the versions that carry it). Older code comments still saying "98% of turns carry no effort"
@@ -518,7 +518,7 @@ says a version of the state, and a fate is a detail. The count is what makes the
 without it, a session that ran four commands and was told about all four would show nothing at all,
 which is the disappearance this whole finding started from.
 
-Davide's call, 2026-08-08, and it **revokes the rule that shipped that same morning** — the last
+The maintainer's call, 2026-08-08, and it **revokes the rule that shipped that same morning** — the last
 three failures drawn as rows, red dot and dimmed text. Two reasons it went: the tray had a second
 rule for commands where it already had one for subagents, and a failed command was a line important
 enough to draw while the ICON never left *Working* for it, which is a surface disagreeing with
@@ -529,7 +529,7 @@ It is drawn in the *Working* and *Idle* bands — the second is the case it exis
 stopped talking and is still waiting on something it started — and on the ***Needs you*** row too,
 the only line that band's deliberately spare layout has gained. **Not** on the *Broken* row, which
 is about the model call that ended the session: a shell command is not what that row is answering,
-and the failure it reports is a different one. Davide chose that from the two rendered at 392 px: it
+and the failure it reports is a different one. The maintainer chose that from the two rendered at 392 px: it
 costs 24 px on a row that only exists while you are blocked, against the browser's chip having no
 such exception, so the two surfaces would contradict each other at the exact moment the user is
 deciding something. It can also change the answer — someone about to refuse a command *because the
@@ -550,7 +550,7 @@ at all: the tray's only trace of subagent use disappeared with the last return, 
 the state a session spends most of its life in — could never mention them. `launched` is the
 session's whole history and survives the return, which is the whole reason the row exists on *Idle*.
 
-Just the figure, Davide's call: what each one was, what it cost and how long it took is the
+Just the figure, the maintainer's call: what each one was, what it cost and how long it took is the
 portal's, one click away on the row itself. The word `launched` is not decoration — on *Working*
 this line sits directly above the running agents, and a bare `12` over three rows reads as *12
 running*. A session that never spawned one gets no line at all: measured over 721 real transcripts,
@@ -1148,7 +1148,7 @@ one is about the tray itself and can be true while nothing is connected to look 
   permission was lost. The memory is therefore in MEMORY: no file, no cleanup, and the rule falls out
   of the process's own lifetime. The `update-notified.json` the previous rule kept is deleted at
   start, so nothing is left for a user to find and wonder about.
-- **The banner is about the SERVER, not the tray** (Davide's call, 2026-08-05, replacing the
+- **The banner is about the SERVER, not the tray** (the maintainer's call, 2026-08-05, replacing the
   opposite rule). The tray is a client; the thing that is run, and that a stale version actually
   affects, is the server — and the case that prompted the change had a tray already current beside a
   server two releases behind, with nothing saying so. The verdict is the SERVER's own `standing`
@@ -1182,7 +1182,7 @@ on the user raises **one** banner, the failure, for the same reason `busy → wa
 finish: one moment, one banner, and this is the more serious of the two.
 
 **The switch says *fails*, while the band says *Broken*, and that divergence is deliberate**
-(Davide's call, 2026-08-10). The band names a STATE the session is in and sits next to a red icon
+(the maintainer's call, 2026-08-10). The band names a STATE the session is in and sits next to a red icon
 that disambiguates it; the switch is read on its own in a list of four, where *a session breaks* is
 as easily read as a session taking a break — which is exactly how it was misread once the
 explanatory prose under each switch was dropped for space. Do not harmonise the two.

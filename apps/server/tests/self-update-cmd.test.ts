@@ -57,7 +57,7 @@ test('a package-manager install on macOS or Linux runs the channel’s own comma
   assert.deepEqual(npm.kind === 'install' ? npm.argv : null, ['npm', 'i', '-g', 'seedeep@latest']);
 });
 
-// Davide's scope (2026-08-09): macOS and Linux only. The reason is the platform's, not seedeep's,
+// the maintainer's scope (2026-08-09): macOS and Linux only. The reason is the platform's, not seedeep's,
 // so the refusal hands back the three commands that do work there.
 test('Windows is refused, with the sequence that works there instead', () => {
   const plan = planSelfUpdate(BUN, 'win32');
@@ -137,7 +137,7 @@ test('an executable that cannot be asked its version is not treated as updated',
   assert.match(errored[0] ?? '', /could not be asked for its version/);
 });
 
-// `restart` would START one (Davide's call, 2026-08-05), and a self-update that leaves a server
+// `restart` would START one (the maintainer's call, 2026-08-05), and a self-update that leaves a server
 // running where the user had none has done something they did not ask for.
 test('no server on that port means no restart, and no server started', async () => {
   const { base, logged, restarts } = deps({ servers: async () => [{ pid: 7, baseUrl: 'http://localhost:9000' }] });

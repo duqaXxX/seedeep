@@ -465,9 +465,9 @@ export function createGraph(
   statsRow.append(usageCard, skCombo, filesCard);
 
   // Output row, in one line: Main tools (50%) · Commits (25%) · Cards (25%) — what the session ran,
-  // what it shipped, and what it was working on. Main tools LEADS (Davide's call): it is the widest
+  // what it shipped, and what it was working on. Main tools LEADS (the maintainer's call): it is the widest
   // card and the one with the most to read, so it takes the position the eye reaches first. All
-  // three are ALWAYS there (also Davide's call): a widget that appears only once it has content
+  // three are ALWAYS there (also the maintainer's call): a widget that appears only once it has content
   // cannot say "this session shipped no commit", and its absence is indistinguishable from seedeep
   // not looking.
   const outRow = E('div', 'outrow triple');
@@ -2007,7 +2007,7 @@ export function createGraph(
       // Size the panel from the row as THIS browser rendered it, never from a constant. The
       // fallback 73px in the css is what one machine measured (72.703125px); a font or
       // rendering that puts the row a pixel higher overflows the panel by a pixel or two —
-      // enough to raise a scrollbar with nothing to scroll, which is what Davide saw with
+      // enough to raise a scrollbar with nothing to scroll, which is what the maintainer saw with
       // three subagents. Ceil, so the rows are always covered, never a fraction short.
       measureRowHeight(subLiveHost);
       // Restore where the user was. Assigning past the end is clamped by the browser, so a

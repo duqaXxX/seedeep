@@ -251,7 +251,7 @@ async fn restart_pending(conn: State<'_, Arc<Conn>>) -> Result<bool, ()> {
 /// (`standing`), which is also what the portal shows; the TRAY's is computed here, because nothing
 /// else knows this build's version.
 ///
-/// Only the panel uses `tray_behind`: the NOTIFICATION is about the server alone (Davide's call,
+/// Only the panel uses `tray_behind`: the NOTIFICATION is about the server alone (the maintainer's call,
 /// 2026-08-05), since that is the thing being run and the one a stale version actually affects.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]

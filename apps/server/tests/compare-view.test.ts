@@ -272,7 +272,7 @@ test('a row opens the session it describes — by click and by keyboard', async 
 });
 
 test('the KPI tiles are gone: the leaderboard is the surface', async () => {
-  // Removed on request (Davide, 2026-07-28). Asserted so they do not creep back in with a later
+  // Removed on request (the maintainer, 2026-07-28). Asserted so they do not creep back in with a later
   // edit — and because the shell they used (`rt-kpi`) still exists for Home.
   const { host } = await view(payload([row()]));
   assert.equal(findByClass(host, 'rt-kpi').length, 0);

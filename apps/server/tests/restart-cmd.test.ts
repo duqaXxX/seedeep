@@ -91,7 +91,7 @@ test('a replacement that never announces itself is a failure, not a silent succe
   assert.match(errored[0] ?? '', /the old server stopped, but no replacement/);
 });
 
-// Davide's call (2026-08-05): nothing to restart means start one — and NOT open a browser.
+// the maintainer's call (2026-08-05): nothing to restart means start one — and NOT open a browser.
 test('nothing running starts a server', async () => {
   let started = false;
   const { base, logged } = deps({

@@ -16,7 +16,7 @@ export interface IdChipOptions {
   /**
    * Show the WHOLE uuid instead of the 8-character prefix. The prefix identifies a session well
    * enough to tell two rows apart, but it is not what you paste into `claude --resume` — where the
-   * row has the width, the id is worth reading without clicking first (Davide, 2026-07-29).
+   * row has the width, the id is worth reading without clicking first (the maintainer, 2026-07-29).
    */
   full?: boolean;
 }

@@ -10,7 +10,7 @@
  * answered would report a restart that may never have completed. It waits for a record that is
  * neither the old pid nor absent, exactly as `seedeep open` waits for a first start.
  *
- * Nothing running is not an error: it starts one (Davide's call, 2026-08-05). The browser is NOT
+ * Nothing running is not an error: it starts one (the maintainer's call, 2026-08-05). The browser is NOT
  * opened — this subcommand is about the process; the window is what `open` is for.
  */
 

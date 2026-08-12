@@ -7,7 +7,7 @@ export type NotifyKind = 'needsYou' | 'fails' | 'finishes';
 /**
  * What one notification says: which session, and what happened. Nothing else.
  *
- * **A notification answers "do I get up", not "what do I do"** (Davide's call, 2026-08-11). The
+ * **A notification answers "do I get up", not "what do I do"** (the maintainer's call, 2026-08-11). The
  * bodies used to carry a second line — the command awaiting approval, the API error verbatim, the
  * turn's NOW line — and it was the wrong place for all three. You cannot act on any of them from a
  * banner: approving still means going back to the terminal, and everything the second line said is

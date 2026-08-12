@@ -130,12 +130,12 @@ brackets the commit are then read.
 
 ## What the user sees
 
-- **The Commits card** sits in the output row behind Main tools, which leads it (Davide's call —
+- **The Commits card** sits in the output row behind Main tools, which leads it (the maintainer's call —
   the widest card and the one with the most to read takes the position the eye reaches first).
   Commits is a quarter of the row, Cards the last quarter. It carries the count, the four newest commits (short hash + subject) and
   `+ N more →` into the drawer. At that width a typical subject fits whole.
 - **The short hash is cyan** (`--agent`).
-- **The card is ALWAYS there, empty or not** (Davide's call). It used to join the row only
+- **The card is ALWAYS there, empty or not** (the maintainer's call). It used to join the row only
   once it owned a commit, which meant the 680 of 783 local sessions that produce none showed no such
   widget at all — and a missing widget cannot distinguish "this session shipped nothing" from
   "seedeep did not look". Empty, it says `No commits in scope yet.` and its **Expand all is hidden**:
