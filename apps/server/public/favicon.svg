@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="5" fill="#0b0d12"/>
-  <!-- eye outline (almond) -->
-  <path d="M2 16 Q16 3 30 16 Q16 29 2 16Z" fill="#0b0d12" stroke="#7dd3fc" stroke-width="2.2"/>
-  <!-- iris -->
-  <circle cx="16" cy="16" r="6.5" fill="#7dd3fc"/>
-  <!-- pupil -->
-  <circle cx="16" cy="16" r="3" fill="#0b0d12"/>
-  <!-- light reflection -->
-  <circle cx="19" cy="13" r="1.4" fill="#e0f2fe" opacity="0.7"/>
+  <!-- the glass: one thick ring, no handle -->
+  <circle cx="16" cy="16" r="9.79" fill="none" stroke="#7dd3fc" stroke-width="2.21"/>
+  <!-- the trace it is over: three spans stepping right -->
+  <g stroke="#7dd3fc" stroke-width="2.21" stroke-linecap="round">
+    <line x1="11.29" y1="12.47" x2="16" y2="12.47"/>
+    <line x1="13.06" y1="16" x2="18.36" y2="16"/>
+    <line x1="14.53" y1="19.53" x2="19.83" y2="19.53"/>
+  </g>
 </svg>

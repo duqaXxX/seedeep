@@ -134,17 +134,35 @@ tag — see [Packaging and releases](#packaging-and-releases) for what the tag t
 
 ## The menu-bar icon
 
+**The mark is a lens with no handle** — a thick ring of glass with a trace inside it: three spans
+stepping to the right, the shape the Trace tab draws. It replaced an eye, which said surveillance
+about a tool that only ever reads, and then a fingerprint, which turned out to be the **OpenVPN
+padlock's skeleton** — an arc over a round body — in the very menu bar this icon lives in. That is
+the check the print failed and this one had to pass: not "is it distinct from a system glyph" but
+"is it distinct from the third-party icons sharing the bar".
+
+Three things about it are load-bearing. **No handle**: it was the source of both objections to a
+magnifier, being a diagonal that fought the unreachable slash and the stroke that makes the glyph
+read as *search*, which seedeep already spends a tab of its own on. **One stroke weight**: the ring
+and the bars are drawn at exactly the same thickness, settled by rendering four pairings at 18 pt —
+the ring had been half again as heavy as the trace it sits over, a mismatch with nothing behind it.
+And the spans **step right** rather than lining up: three bars of equal start and length would be a
+list, and a list inside a circle reads as a menu button.
+
+How far the bars run from the glass was picked the same way. They first reached to within 0.4 px of
+the ring at 18 pt, which reads as crowding rather than as a trace; they now leave about 1.7 px.
+
 **The icon is never absent.** An icon that disappears is indistinguishable from an app that
 crashed, so there is no state in which nothing is drawn — including "cannot reach the server",
 which gets an icon of its own rather than silence.
 
 | State | Icon |
 | -- | -- |
-| **Unreachable** — nothing answering at the configured address | Grey eye, struck through, no iris |
-| **Nothing live** | Grey eye, hollow iris ring |
-| **Working, nobody waiting** | Blue eye, iris **turning** — a radar wedge, a turn every two seconds. No count: a number that changes constantly is peripheral noise |
-| **≥1 waiting for you** | Amber eye, filled iris, **still**, plus a badge dot **only above one** |
-| **≥1 broken** | Red eye, **a cross where the iris goes**, same badge rule — a session whose last model call FAILED |
+| **Unreachable** — nothing answering at the configured address | Grey glass, struck through, empty — nothing to read |
+| **Nothing live** | Grey glass over the trace, still |
+| **Working, nobody waiting** | Blue glass, the whole trace **breathing** — every span runs out from its left edge and starts over, a pass every two seconds. No count: a number that changes constantly is peripheral noise |
+| **≥1 waiting for you** | Amber glass, the same trace drawn **thicker**, **still**, plus a badge dot **only above one** |
+| **≥1 broken** | The plain mark **in red**, same badge rule — a session whose last model call FAILED. What keeps it off colour alone is that waiting thickens its bars and this does not |
 
 The state comes from the same reading the panel draws (see [The poll](#the-poll)), and it is
 repainted only when it changes. **Unreachable covers "nothing configured" as well as "configured and
@@ -153,7 +171,7 @@ a guess. A digest that is not a list of sessions is Unreachable too — a schema
 client's one standing risk, and that state is the one that says so.
 
 **Working is the only state that moves, and the stillness of the others is half the message.** A
-turning wedge means *something is running, there is nothing for you to do*; amber means *it is your
+breathing trace means *something is running, there is nothing for you to do*; amber means *it is your
 turn*. So an approval STOPS the motion: with three sessions working and one stopped on you, the icon
 is amber and still, and the fact that the other two are working is in the panel, which shows every
 session in its band. Waiting outranks working — the icon says the thing you can act on.
@@ -175,18 +193,25 @@ reads as healthy — an older server must not paint every session red.
 
 Three facts fix the motion, and each was decided by rendering it at 18 pt rather than by taste:
 
-- **What moves is the IRIS, never the outline.** Four candidates that moved the eye itself (a
-  travelling iris, a breathing ring, a blink, an orbiting pupil) were built and rejected: at 18 pt
-  they read as a wobble rather than as work. Three lighter spinners went the same way (an arc, a
-  running gap, an expanding ping) — at this size **the amount of ink in motion is the signal**, and
-  the wedge moves the most of it. Keeping the outline fixed is also what lets the mark stay exactly
-  the same size while it spins, which `the_eye_is_the_same_size_in_every_state` now asserts across
-  every frame of the turn.
-- **24 frames at 12 fps: 15° a step, one turn every two seconds.** A spinner is read out of the
-  corner of the eye, so it is judged on whether the motion is smooth. The frame COUNT is what buys
-  that, not the rate: halving the frames to keep a one-second turn would step 30°, which is where a
-  spinner starts to read as a stutter. The frames are rasterised ONCE at startup (24 × 2.8 KB) and
-  cycled — a mark re-rendered on every frame forever would be work that never stops.
+- **What moves is INSIDE the glass, never the glass itself.** The rule is older than this mark: on
+  the eye it replaced, four candidates that moved the outline itself (a travelling iris, a breathing
+  ring, a blink, an orbiting pupil) were built and rejected, because at 18 pt they read as a wobble
+  rather than as work — and three lighter spinners (an arc, a running gap, an expanding ping) lost
+  because at this size **the amount of ink in motion is the signal**. The lens obeys it the same
+  way: the ring is drawn in every state and nothing animated touches it, which is what lets the mark
+  stay exactly the same size while it works. `the_mark_is_the_same_size_in_every_state` asserts that
+  across every frame of the pass.
+- **All three spans move, together.** A trace filling in is what a live one does, so the motion is
+  the subject rather than a spinner borrowed and dropped in. Moving ONE of them was built first and
+  rejected on the render: it shifted about 4 px of ink at 18 pt, which is a signal nobody can see —
+  at this size a mark in motion is judged on how much ink moves. The growth is spread across the
+  whole cycle rather than finishing early and holding, because a held frame is one the next frame
+  repeats, and `the_working_trace_moves_on_every_frame` refuses that.
+- **24 frames at 12 fps: a 24th of the sweep a step, one pass every two seconds.** A spinner is read
+  out of the corner of the eye, so it is judged on whether the motion is smooth. The frame COUNT is
+  what buys that, not the rate: halving the frames to keep a one-second pass would double the step,
+  which is where a moving mark starts to read as a stutter. The frames are rasterised ONCE at
+  startup (24 × 2.6 KB) and cycled — a mark re-rendered on every frame forever would be work that never stops.
 - **The rate is chosen by what it costs, and the cost is the platform's, not ours.** Every frame is
   a `set_icon`, which on macOS redraws the menu bar item. Measured on the bundled app with the panel
   closed, one session working, as 30 s samples of process CPU time: **24 fps → 10.9% of one core
@@ -196,7 +221,7 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
   repaint costs is paid per second whatever the rate, so smoothness is cheaper to buy back than the
   first measurement implied, and a further cut has less to win.
 - **The spin has its own loop, and it costs nothing while nothing is working.** The poll's cadence
-  is how often the server is asked; this one is how smooth a spinner looks, and tying the wedge to
+  is how often the server is asked; this one is how smooth a spinner looks, and tying the window to
   the poll would give one step a second. While no session is working the task holds on a `Notify` —
   not a 24 Hz timer left ticking through an idle night. The two loops take turns with the icon under
   one lock, because the frame that matters is the one painted LAST: without it a session that stops
@@ -205,51 +230,44 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
 
 Three rules behind that table:
 
-- **The states differ by SHAPE, not only by colour** — struck through, hollow, filled, turning,
-  crossed. Colour alone would fail a colour-blind user and would vanish entirely under a macOS
+- **The states differ by SHAPE, not only by colour** — struck through, empty, breathing, thickened,
+  plain. Colour alone would fail a colour-blind user and would vanish entirely under a macOS
   template image. **The one exception is working-vs-waiting**, blue against amber: the pair that
   survives the common colour-vision deficiencies best. Waiting-vs-broken was the second exception
   and was the weaker of the two, which is why it stopped being one — see
-  [The broken eye is crossed](#the-broken-eye-is-crossed).
+  [The broken mark is the plain one, in red](#the-broken-mark-is-the-plain-one-in-red).
 - **The badge says THAT more than one is waiting, never how many.** A numeral was built first
   and then dropped, on the render rather than on taste: at 18 pt a digit is three pixels wide,
-  a `3` comes out a smudge, and the only way to give it room is to shrink the eye until the
+  a `3` comes out a smudge, and the only way to give it room is to shrink the mark until the
   primary signal is what suffers. The exact count is one click away in the panel — which is
   where the tray sends you for anything it cannot say at a glance.
-- **The eye is the same size in every state.** The badge sits above its upper-right, clear of
-  the outline, rather than taking room from it. Two placements were built and rejected: a badge
-  given a corner of its own forced the eye to shrink when it appeared, and a badge low enough to
-  touch the outline merged with it and read as a deformity rather than as a count. A mark that
-  resizes as it changes meaning reads as a glitch, so a test asserts the eye's height is
-  identical across every state.
+- **The mark is the same size in every state.** The badge RIDES the glass at the upper right,
+  inside the circle rather than beside it, so it costs the mark no size at all — with a moat, or it
+  would weld itself to the ring and read as a lump rather than as a count. That placement is the
+  point: when the mark was an eye, a badge given a corner of its own forced the eye to shrink when
+  it appeared. A mark that resizes as it changes meaning reads as a glitch, so a test asserts the
+  height is identical across every state.
 
-### The broken eye is crossed
+### The broken mark is the plain one, in red
 
-**Broken is a cross where every other state puts an iris.** Until it had a mark of its own it was
-*Needs you*'s geometry in red — the single pair a user had to read by hue, on the state that matters
-most, and red-against-amber is the pair a red-green deficiency handles worst. The rule the rest of
-the icon obeys was simply not obeyed here.
+**Broken is the mark itself, in red — nothing is added to it.** That was not always so, and the
+history is the argument. It began as *Needs you*'s geometry in red: the single pair a user had to
+read by hue, on the state that matters most, and red-against-amber is the pair a red-green
+deficiency handles worst. A **cross** was then drawn to give it a shape of its own, chosen at 18 pt
+over three others — a broken outline and a fractured centre both read as a rendering fault rather
+than as information, and an exclamation lost on MEANING rather than legibility, since *!* says *look
+at me*, which is precisely what the amber already says.
 
-Four marks were drawn **by the real renderer** and looked at at 18 pt before this one was chosen, and
-what the other three lost on is worth knowing, because it is not what a description of them
-suggests:
+The cross went when the mark became a lens: a trace of three spans is a busier field for one to sit
+in than the eye's iris was, and the maintainer chose the plain mark in red looking at the pair at
+18 pt.
 
-- **A broken outline** (the rim cut at top and bottom) and **a fractured iris** (the filled disc
-  split by a crack) both read as a rendering fault rather than as information. At this size a gap of
-  two or three pixels is indistinguishable from an artefact, and an icon that looks broken *as an
-  icon* is the one thing the never-absent rule exists to prevent.
-- **An exclamation** was the most legible of the four and lost anyway, on MEANING rather than on
-  render: *!* says *look at me*, which is precisely what the amber already says. A mark that is
-  unmistakable and says the wrong thing is worse than one that is merely quiet.
-- **The cross** says the session is not coming back, which is what the state means: an approval
-  resumes the instant it is answered, a failed call does not resume at all.
-
-It answers to every rule the other marks do. The eye's height is unchanged — the arms are sized
-against the IRIS, not against the lens, so the outline is never touched and a pixel or two of
-daylight is left between an arm's tip and the rim. The badge is the same rule it has always been,
-shared with waiting: *more than one*, never how many. The stroke is the thinnest ink the icon
-carries, about 2.9 px in the buffer, and it is not thinner because at 18 pt a hairline greys out
-instead of reading as a line.
+**So this is now the weakest shape difference the icon carries, and that is a decision rather than
+an oversight.** What separates broken from waiting is only that waiting draws its bars thicker —
+**measured at 21% of the ink**. The test that guards it was retuned from a quarter to 15%: under
+the fact, far above zero. A change leaving hue as the ONLY signal still fails it, which is the
+property that actually matters here. The badge is the same rule it has always been, shared with
+waiting: *more than one*, never how many.
 
 **The test asserts the SHAPE and ignores the colour**
 (`a_failed_icon_differs_from_a_waiting_one_by_its_shape`). The pairwise test that already existed
@@ -260,16 +278,18 @@ differing in a handful of pixels differs on paper and nowhere a menu bar can sho
 
 ### The development mark
 
-A tray built from a checkout carries **a small dot in the icon's upper LEFT**, in every state. It
+A tray built from a checkout carries **a small dot on the glass, lower LEFT**, in every state. It
 says which build you are looking at, and nothing about the sessions.
 
-It is the corner the badge does not use, and it is deliberately **smaller** than the badge, so at
-18 pt the two are told apart by size as well as by side: the badge means *more than one session is
-waiting* and changes while you watch, this one never changes at all. The eye does not shrink to make
-room for it — the same rule the badge answers to.
+It rides the glass from the INSIDE, lower left — diagonally opposite the badge and deliberately
+**smaller** than it, so at 18 pt the two are told apart by size as well as by place: the badge means
+*more than one session is waiting* and changes while you watch, this one never changes at all. The
+lens does not shrink to make room for it — the same rule the badge answers to. Inside rather than
+outside for a second reason: unlike the badge it carries **no moat**, because it may only ADD ink
+(see below), and anything crossing the ring's outer edge would push the ink box out.
 
 That rule has a test of its own, and it had to: **`is_dev()` is `true` under `cargo test`**, so every
-rendered icon carries the dot, and the dot sits in the very columns the eye's height is measured in.
+rendered icon carries the dot, and the dot sits in the very columns the mark's height is measured in.
 The size rule above is therefore asserted on the RELEASED icon, and the mark answers to a stricter
 one — every pixel outside its disc identical between the two builds, which no extent could catch.
 
@@ -286,30 +306,31 @@ The icon is **drawn, not shipped as image files** (`src/icon.rs`). Exported asse
 file per state per size, re-cut by hand whenever the mark changes, and no test can say anything
 about a PNG; one geometry gives a single source of truth and lets the states be asserted — that
 every state paints something, that no two render identically, that the badge does not count,
-that the eye never changes size, and that the buffer carries no wasted margin.
+that the mark never changes size, and that the buffer carries no wasted margin.
 
-**The buffer is 27×26, cropped to the ink on both axes** — set by the platform, not by taste.
+**The buffer is 26×26, cropped to the ink on both axes** — set by the platform, not by taste.
 macOS scales the tray image to **18 points tall** whatever the buffer contains, so:
 
 - **Height is the mark's entire size budget**, and every empty row spends it. A square buffer left
   the mark filling 55% of the height — drawn at ~10 pt in an 18 pt slot, visibly lighter than
   every neighbouring icon, which is what looking at a real menu bar showed.
 - **Width is not chosen at all**: height is fitted and width follows the proportions, so an
-  elongated mark simply takes more of the bar than its neighbours. The lens was 1.77 wide for 1
-  tall and the whole icon 36×26; it is now **1.38 : 1**, which with the badge and the slash
-  included makes the buffer 27×26 — a quarter narrower, and still an eye. Rounder proportions
-  were rendered and rejected: past about 1.2 the mark reads as a target, and the eye is what the
-  name means.
+  elongated mark simply takes more of the bar than its neighbours. The eye this mark replaced was
+  1.77 wide for 1 tall (36×26), then 1.38 (27×26); a lens is a circle, so this is the first version
+  that is **square** — 26×26, badge and slash included, because both are placed inside the ring
+  rather than beside it.
 
-Two consequences worth knowing before touching `EYE_A`/`EYE_B`. The crop constants
+Two consequences worth knowing before touching `GLASS_R`. The crop constants
 (`COL_LEFT`/`COLS`/`BAND_TOP`/`BAND`) are DERIVED from those proportions and have to be
 recomputed with them, or the mark grows transparent margins that make it both smaller and wider.
-And the slash's endpoints are expressed as fractions of the lens rather than as fixed points, for
-the same reason — a pair written for one eye pokes out of another, and the overshoot is what sets
-the buffer's height. `the_buffer_is_cropped_to_the_ink` is the test that objects.
+And the slash is expressed as a fraction of the glass rather than as fixed points, for a
+sharper reason than symmetry: it carries the MOAT with it, including a disc of it around each tip,
+and a longer slash pushes that disc into the only columns left to measure the mark's height in —
+`the_mark_is_the_same_size_in_every_state` goes red with "no column is free of the slash".
+`the_buffer_is_cropped_to_the_ink` is the test that objects to the margins.
 
 The icons under `src-tauri/icons/` are a different thing — the BUNDLE's icon, shown by Finder,
-the DMG and the installer. They are generated from the same eye mark the browser uses:
+the DMG and the installer. They are generated from the same lens mark the browser uses:
 
 ```sh
 bunx tauri icon apps/server/public/favicon.svg -o apps/tray/src-tauri/icons

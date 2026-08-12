@@ -8,9 +8,17 @@
 //! Two facts fix the numbers below. macOS scales the tray image to **18 points tall** whatever
 //! the buffer contains (tray-icon `platform_impl/macos`), so the buffer's HEIGHT is the mark's
 //! entire size budget and every empty row shrinks it. And the states are told apart by SHAPE
-//! wherever they can be — a slash, a hollow iris, a filled one, a cross — rather than by colour
+//! wherever they can be — a slash, three arcs, a filled core, a cross — rather than by colour
 //! alone. The one pair that shares a shape is working-vs-waiting, and it is blue against amber:
 //! the pair that survives the common colour-vision deficiencies best.
+//!
+//! The mark is a LENS WITH NO HANDLE: a thick ring of glass with a trace inside it — three spans
+//! stepping to the right, the shape the Trace tab draws. It replaced an eye, which said
+//! surveillance about a tool that only ever reads, and then a fingerprint, which turned out to be
+//! the OpenVPN padlock's skeleton — an arc over a round body — in the very menu bar this icon
+//! lives in. The handle went with it: it was the source of both objections to a magnifier, being
+//! a diagonal that fought the unreachable slash and the stroke that makes the glyph read as
+//! "search", which seedeep already spends a tab of its own on.
 
 use tauri::image::Image;
 
@@ -19,66 +27,112 @@ use tauri::image::Image;
 pub const TRAY_ID: &str = "seedeep";
 
 /// The buffer, cropped to the ink on BOTH axes. Because macOS fits the height to 18 pt, a square
-/// buffer around a mark wider than tall left the eye filling 55% of the height — drawn at ~10 pt
-/// in an 18 pt slot, visibly lighter than every neighbouring icon.
+/// buffer around a mark wider than tall left the old eye filling 55% of the height — drawn at
+/// ~10 pt in an 18 pt slot, visibly lighter than every neighbouring icon.
 ///
-/// Width is the other half of the same fact: height is fitted, so width is whatever the mark's
-/// proportions make it, and an elongated eye simply takes more of the menu bar than its
-/// neighbours. The lens is now 1.38 wide for 1 tall rather than 1.77, which with the badge and
-/// the slash included brings the whole buffer from 36×26 to 27×26 — a quarter narrower, and still
-/// an eye. Rounder was tried and rejected: past about 1.2 the mark reads as a target, and the eye
-/// is what the name means.
-const W: u32 = 27;
+/// The lens is a circle, so the buffer is SQUARE — the first version of this icon that is, and the
+/// smallest it has been: 26×26 against the eye's 36×26 and the print's 25×26. Both numbers are
+/// DERIVED from the geometry below — see `COL_LEFT`.
+const W: u32 = 26;
 const H: u32 = 26;
 
 /// The mark is designed in the unit square; these map the buffer onto the slice of that square
 /// which carries ink, so only the framing moved. The window has to hold every state at once — the
-/// eye, the badge above its upper right, and the slash, which reaches furthest of the three.
-/// DERIVED from the geometry below rather than guessed: change `EYE_A`/`EYE_B` and these four
-/// numbers are what has to be recomputed, or the mark grows transparent margins that shrink it.
-const COL_LEFT: f64 = 0.097;
-const COLS: f64 = 0.834;
-const BAND_TOP: f64 = 0.012;
-const BAND: f64 = 0.803;
+/// arcs, the badge inside their opening, and the slash.
+///
+/// DERIVED rather than guessed: all four are the glass ring's outer edge, and nothing else in the
+/// mark reaches it — the badge is sized and placed to sit INSIDE that circle rather than beside
+/// it. Change `GLASS_R` and these four numbers are what has to be recomputed, or the mark grows
+/// transparent margins that shrink it.
+const COL_LEFT: f64 = 0.13;
+const COLS: f64 = 0.74;
+const BAND_TOP: f64 = 0.13;
+const BAND: f64 = 0.74;
 
 /// Supersampling factor per axis. 4 gives 16 samples a pixel — enough for a curve this small.
 const SS: u32 = 4;
 
-/// The eye's lens is the intersection of two circles. Given the half-width `a` and half-height
-/// `b` we want, their offset and radius are forced: `a² = 2bd + b²`, `R = d + b`.
-const EYE_A: f64 = 0.40;
-const EYE_B: f64 = 0.29;
-const EYE_D: f64 = (EYE_A * EYE_A - EYE_B * EYE_B) / (2.0 * EYE_B);
-const EYE_R: f64 = EYE_D + EYE_B;
-/// Outline thickness, as an inward offset of both arcs — which is why it is subtracted from the
-/// radius rather than scaling the whole lens (scaling would thin the outline at the corners).
-const STROKE: f64 = 0.075;
-
-const IRIS_R: f64 = 0.185;
-const IRIS_INNER: f64 = 0.115;
-const PUPIL_R: f64 = 0.075;
-
-/// The broken eye's cross: how far an arm reaches from the centre, and its half-thickness.
+/// The glass: one thick ring, drawn in every state and never animated. It is this mark's outline,
+/// which is what `the_mark_is_the_same_size_in_every_state` measures.
 ///
-/// Sized against the IRIS rather than the lens, because the mark has to sit exactly where every
-/// other state puts its iris or the eye stops being the same eye: an arm's end is 0.177 from the
-/// centre, inside `IRIS_R`. The stroke comes out ~2.9 px in the buffer — the thinnest ink this
-/// mark carries, and the reason it is not thinner is that at 18 pt a hairline greys out instead
-/// of reading as a line.
-const CROSS_ARM: f64 = 0.125;
-const CROSS_STROKE: f64 = 0.045;
+/// Drawn at exactly the weight of a span, which is the maintainer's call made on four renders at
+/// 18 pt. The ring started half again as heavy as the trace it sits over — a mismatch with no
+/// reason behind it — and the two ways to settle it are to meet in the middle or to bring the ring
+/// down to the bars. This is the second: a lighter mark, at the cost of some of the ink that
+/// keeps a lens from reading as a plain thin circle.
+const GLASS_R: f64 = 0.37;
+const GLASS_STROKE: f64 = 0.075;
+/// Inside the glass: where the trace is drawn.
+const INNER_R: f64 = GLASS_R - GLASS_STROKE;
 
-/// The slice missing from the working iris, as a fraction of a full turn. A radar wedge: the iris
-/// is filled, and what moves is the 90° hole cut out of it.
+/// The three spans, as (left, right, centre-y) in the unit square, stepping right the way the
+/// Trace tab lays a waterfall out.
 ///
-/// The motion replaces the IRIS and never the outline, which is what lets the mark stay an eye and
-/// stay exactly the same size while it spins — the rule `the_eye_is_the_same_size_in_every_state`
-/// enforces, now across every frame. Three lighter candidates were rendered at 18 pt and rejected
-/// against this one (a travelling arc, a running gap, an expanding ping): at this size the amount of
-/// ink in motion IS the signal, and the wedge moves the most of it.
-const WEDGE: f64 = 0.25;
+/// The stagger is the whole point — three bars of equal length and start would be a list, and a
+/// list in a circle reads as a menu button. Each one starts where the one above it is roughly
+/// half done, which is what a nested span looks like on a real trace.
+///
+/// How far they run from the glass is a LOOK, and it was picked by rendering three clearances: the
+/// bars first reached to within 0.4 px of the ring at 18 pt, which reads as crowding rather than as
+/// a trace. These leave about 1.7 px.
+const SPANS: [(f64, f64, f64); 3] = [
+    (0.34, 0.50, 0.38),
+    (0.40, 0.58, 0.50),
+    (0.45, 0.63, 0.62),
+];
+/// How thick a span is drawn, and how thick it gets when a session is waiting.
+///
+/// Waiting has to differ from idle by SHAPE and not by colour alone, and inside a ring there is
+/// nowhere to add a mark that is not already spoken for — so what changes is the trace's mass:
+/// the same three spans, thicker. At 18 pt that is the difference between a third of the circle
+/// inked and most of it.
+const SPAN_H: f64 = 0.075;
+const SPAN_H_FULL: f64 = 0.095;
 
-/// Frames in one turn of the wedge, and how fast they are shown — 24 steps of 15°, one turn every
+/// Transparent gap around the slash. Without it the slash merges into the arcs it crosses at
+/// 18 pt and the icon turns into a blob.
+const MOAT: f64 = 0.04;
+
+/// How far the slash reaches, as a fraction of the outer arc's radius.
+///
+/// It crosses the trace and stops inside the glass rather than cutting the ring, and the margin is
+/// not stylistic: the slash carries the MOAT with it, including a disc of it around each tip, and a
+/// longer slash puts that disc into the leftmost columns — the only ones
+/// `the_mark_is_the_same_size_in_every_state` has left to measure the mark's height in. Lengthen
+/// this and that test goes red with "no column is free of the slash".
+const SLASH_REACH: f64 = 0.50;
+
+/// Whether THIS BUILD is a checkout being developed — defined once, in `local.rs`, because the
+/// connection screen needs the same fact to word its "nothing to start" message.
+use crate::local::DEV_BUILD;
+
+/// The development mark: a small disc riding the glass from the INSIDE, lower left.
+///
+/// Deliberately SMALLER than {@link BADGE_R} and diagonally opposite it, so the two are told apart
+/// at 18 pt by size as well as by place — the badge means "more than one session is waiting" and
+/// changes while you watch, this one never changes at all. Inside rather than outside because it
+/// carries no moat (see `is_ink`) and because anything crossing `GLASS_R` would push the ink box
+/// out and shrink the lens. Every state carries it, because what it marks is the BUILD.
+const DEV_C: (f64, f64) = (0.295, 0.705);
+const DEV_R: f64 = 0.07;
+
+/// The badge, in the same unit-square coordinates as the arcs. It sits in the mouth of the print,
+/// centred under it: the tips of the outer arc reach y ≈ 0.865, and a disc of this radius at this
+/// height ends at exactly that line, so the badge costs the mark no height at all. That is the
+/// point — an earlier badge given a corner of its own forced the eye it then sat beside to shrink,
+/// and a mark that resizes as it changes meaning reads as a glitch rather than as information.
+const BADGE_C: (f64, f64) = (0.723, 0.277);
+const BADGE_R: f64 = 0.12;
+
+/// The slice missing from the arcs, as a fraction of a full turn: a window that sweeps along them
+/// while a session works.
+///
+/// It is a HOLE that travels rather than a lit segment, for the same reason the eye's iris was a
+/// hole: what a menu bar reads at 18 pt is a change in mass, and taking ink away from a mark that
+/// is otherwise whole is the largest change this shape can make without growing.
+const SWEEP: f64 = 0.13;
+
+/// Frames in one sweep, and how fast they are shown — 24 steps across the arcs, one pass every
 /// two seconds.
 ///
 /// **The rate is what it costs**, and the cost is the platform's rather than ours: the frames are
@@ -91,39 +145,12 @@ const WEDGE: f64 = 0.25;
 /// paid per repaint and something is paid per second regardless, so buying smoothness back is
 /// cheaper than the first measurement suggested — and any further cut has less and less to win.
 ///
-/// The frame COUNT stays 24 at the lower rate, so the wedge still moves 15° a step and takes two
-/// seconds a turn. Halving the frames instead would keep the turn at a second and step 30°, which
-/// is where a spinner starts to read as a stutter — and a spinner is judged out of the corner of
-/// the eye, on whether the motion is smooth.
+/// The frame COUNT stays 24 at the lower rate, so the window moves a 24th of the drawn sweep a
+/// step and takes two seconds to cross it. Halving the frames instead would double the step, which
+/// is where a moving mark starts to read as a stutter — and it is judged out of the corner of the
+/// eye, on whether the motion is smooth.
 pub const SPIN_FRAMES: u32 = 24;
 pub const SPIN_FPS: u32 = 12;
-
-/// Transparent gap around the slash. Without it the slash merges into the eye's outline at
-/// 18 pt and the icon turns into a blob.
-const MOAT: f64 = 0.05;
-
-/// Whether THIS BUILD is a checkout being developed — defined once, in `local.rs`, because the
-/// connection screen needs the same fact to word its "nothing to start" message.
-use crate::local::DEV_BUILD;
-
-/// The development mark: a small disc in the corner the badge does not use.
-///
-/// Mirrored from {@link BADGE_C} and deliberately SMALLER than it, so the two are told apart at
-/// 18 pt by size as well as by side — the badge means "more than one session is waiting" and
-/// changes while you watch, this one never changes at all. The corner is free space: the eye
-/// reaches y≈0.36 at that x, so a disc ending at 0.25 keeps its daylight, and the eye does not
-/// shrink to make room. Every state carries it, because what it marks is the BUILD.
-const DEV_C: (f64, f64) = (0.210, 0.151);
-const DEV_R: f64 = 0.095;
-
-/// The badge, in the same unit-square coordinates as the eye. It sits above the eye's
-/// upper-right, inside the band and clear of the outline — the eye reaches y≈0.36 at that x, so
-/// a disc ending at 0.32 keeps about a pixel of daylight. Two rejected placements are why those
-/// numbers are what they are: a badge given a corner of its own forced the eye to shrink, and a
-/// badge low enough to touch the outline merged with it and read as a deformity rather than a
-/// count. **The eye's size does not change when the badge appears** — that is the point.
-const BADGE_C: (f64, f64) = (0.790, 0.151);
-const BADGE_R: f64 = 0.139;
 
 /// What the icon says. `Waiting` carries the count, but only to decide whether the badge is
 /// drawn — see `badge`.
@@ -165,7 +192,7 @@ impl TrayState {
     ///
     /// It says THAT there is more than one, not how many. A numeral was built and rendered
     /// first: at 18 pt a digit is three pixels wide and a `3` comes out a smudge, and the only
-    /// way to give it room is to shrink the eye until the primary signal is the thing that
+    /// way to give it room is to shrink the mark until the primary signal is the thing that
     /// suffers. The exact count is one click away in the panel, which is where this app sends
     /// you for anything it cannot say at a glance.
     fn badge(self) -> bool {
@@ -181,12 +208,6 @@ fn in_disc(x: f64, y: f64, c: (f64, f64), r: f64) -> bool {
     dx * dx + dy * dy <= r * r
 }
 
-/// Inside the lens formed by the two circles, inset by `shrink`.
-fn in_lens(x: f64, y: f64, shrink: f64) -> bool {
-    let r = EYE_R - shrink;
-    r > 0.0 && in_disc(x, y, (0.5, 0.5 + EYE_D), r) && in_disc(x, y, (0.5, 0.5 - EYE_D), r)
-}
-
 /// Distance from the point to a SEGMENT rather than to the line through it, so a stroke stops at
 /// its endpoints instead of running off the buffer.
 fn seg_distance(x: f64, y: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
@@ -197,97 +218,118 @@ fn seg_distance(x: f64, y: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
 
 /// Distance from the point to the icon's diagonal slash.
 fn slash_distance(x: f64, y: f64) -> f64 {
-    // Proportional to the lens rather than fixed points on the square: the endpoints are what
-    // decide how far the slash overshoots, and a pair written for one set of eye proportions
-    // silently pokes out of a different one — extending the ink box, which is the mark's whole
-    // size budget. Slightly past the lens on both ends is intended; far past it is not.
+    // Proportional to the arcs rather than fixed points on the square: the endpoints are what
+    // decide how far the slash overshoots, and a pair written for one set of proportions silently
+    // pokes out of a different one — extending the ink box, which is the mark's whole size budget.
+    // Slightly inside the outer arc on both ends is intended: the slash crosses the print, it does
+    // not frame it.
     seg_distance(
         x,
         y,
-        (0.5 - EYE_A * 0.55, 0.5 + EYE_B * 0.96),
-        (0.5 + EYE_A * 0.55, 0.5 - EYE_B * 0.96),
+        (0.5 - GLASS_R * SLASH_REACH, 0.5 + GLASS_R * SLASH_REACH),
+        (0.5 + GLASS_R * SLASH_REACH, 0.5 - GLASS_R * SLASH_REACH),
     )
 }
 
-/// Where a point sits round the iris, as a fraction of a turn — 0 at 3 o'clock, growing clockwise
-/// (y grows downward in the buffer).
-fn turn_at(x: f64, y: f64) -> f64 {
-    ((y - 0.5).atan2(x - 0.5) / std::f64::consts::TAU).rem_euclid(1.0)
+/// Is this point in the glass ring?
+fn in_glass(x: f64, y: f64) -> bool {
+    let r = ((x - 0.5).powi(2) + (y - 0.5).powi(2)).sqrt();
+    (r - (GLASS_R - GLASS_STROKE / 2.0)).abs() <= GLASS_STROKE / 2.0
 }
 
-/// How far `at` is ahead of `from`, clockwise, in turns.
-fn ahead(at: f64, from: f64) -> f64 {
-    (at - from).rem_euclid(1.0)
+/// Is this point on span `i`, drawn `h` thick and `grow` of the way out from its left end?
+///
+/// Round caps, because a span is a rounded bar everywhere else in seedeep and a flat cut at 18 pt
+/// reads as a broken line.
+fn on_span(x: f64, y: f64, i: usize, h: f64, grow: f64) -> bool {
+    let (left, right, cy) = SPANS[i];
+    let right = left + (right - left) * grow;
+    seg_distance(x, y, (left, cy), (right, cy)) <= h / 2.0
+}
+
+/// The trace, at a given thickness, with every span run out `grow` of its length.
+///
+/// ALL THREE move together while a session works, and that is the whole point of the motion: one
+/// span growing shifted about 4 px of ink at 18 pt, which is a signal nobody can see. What a
+/// moving mark is judged on at this size is how much ink moves.
+fn on_trace(x: f64, y: f64, h: f64, grow: f64) -> bool {
+    (0..3).any(|i| on_span(x, y, i, h, grow))
 }
 
 /// Is this point painted? Every layer is either the state's one colour or nothing, so coverage
 /// is a boolean and the antialiasing below is a plain average — no per-layer compositing.
 ///
-/// `phase` places the working wedge: 0.0 ≤ phase < 1.0, one full turn. Every other state ignores
+/// `phase` places the sweeping window: 0.0 ≤ phase < 1.0, one full pass. Every other state ignores
 /// it — nothing else in this mark moves.
 fn is_ink(state: TrayState, phase: f64, x: f64, y: f64, dev: bool) -> bool {
-    if state.badge() && in_disc(x, y, BADGE_C, BADGE_R) {
-        return true;
+    // The badge RIDES the glass rather than sitting beside it — one given a corner of its own would
+    // push the ink box out and shrink the lens, which is the regression
+    // `the_mark_is_the_same_size_in_every_state` exists to catch. It carries a moat, or it would
+    // weld itself to the ring and read as a lump rather than as a count.
+    if state.badge() {
+        if in_disc(x, y, BADGE_C, BADGE_R) {
+            return true;
+        }
+        if in_disc(x, y, BADGE_C, BADGE_R + MOAT) {
+            return false;
+        }
     }
 
+    // No moat on this one, unlike the badge: it may only ADD ink. A moat would eat into the glass,
+    // and `the_development_mark_only_adds_its_own_dot` refuses that — rightly, since a mark that
+    // thinned the outline would ship without any other test noticing. So it is placed where it
+    // needs none: riding the ring from the inside, where it reads as a swelling of the glass.
     if dev && in_disc(x, y, DEV_C, DEV_R) {
         return true;
     }
 
     if state == TrayState::Unreachable {
         let d = slash_distance(x, y);
-        if d <= STROKE / 2.0 {
+        if d <= GLASS_STROKE / 2.0 {
             return true;
         }
-        if d <= STROKE / 2.0 + MOAT {
+        if d <= GLASS_STROKE / 2.0 + MOAT {
             return false;
         }
     }
 
-    // Outline: inside the lens but outside the lens inset by the stroke width.
-    if in_lens(x, y, 0.0) && !in_lens(x, y, STROKE) {
+    // The glass is this mark's outline: drawn in every state, and nothing animated ever touches
+    // it, which is what lets the lens keep exactly the same size while it works.
+    if in_glass(x, y) {
         return true;
     }
 
     match state {
-        // A blind eye: no iris at all, so "unreachable" is not merely a dimmer "idle".
+        // Empty glass: nothing to read, so nothing is drawn inside it. "Unreachable" is not
+        // merely a dimmer "idle".
         TrayState::Unreachable => false,
-        // Open but inactive — a ring, not a disc.
-        TrayState::Idle => in_disc(x, y, (0.5, 0.5), IRIS_R) && !in_disc(x, y, (0.5, 0.5), IRIS_INNER),
-        // A radar: the iris filled from the pupil out, less the wedge that is turning. The pupil
-        // stays a hole so the mark is still an eye at every phase — and a hole rather than a dark
-        // dot, because the menu bar behind it may be light or dark.
-        TrayState::Working => {
-            let r = ((x - 0.5).powi(2) + (y - 0.5).powi(2)).sqrt();
-            r <= IRIS_R && r > PUPIL_R && ahead(turn_at(x, y), phase) > WEDGE
-        }
-        // Stopped on the user: a filled iris, and STILL. The stillness is half the message — the
-        // motion means "working, leave it alone", so a waiting icon that also span would say both.
-        TrayState::Waiting { .. } => {
-            in_disc(x, y, (0.5, 0.5), IRIS_R) && !in_disc(x, y, (0.5, 0.5), PUPIL_R)
-        }
-        // Dead: a cross where every other state puts an iris. Until it had a mark of its own this
-        // was waiting's geometry in red — the one pair told apart by colour alone, and the pair a
-        // red-green deficiency reads worst, on the state that matters most. Three others were
-        // rendered at 18 pt beside this one and rejected: a broken outline and a fractured iris
-        // both read as a rendering fault rather than as information, and an exclamation lost on
-        // MEANING rather than legibility — "!" says look at me, which is exactly what the amber
-        // already says, while a cross says the session is not coming back.
-        TrayState::Failed { .. } => {
-            let arm = |a: (f64, f64), b: (f64, f64)| seg_distance(x, y, a, b) <= CROSS_STROKE;
-            arm(
-                (0.5 - CROSS_ARM, 0.5 - CROSS_ARM),
-                (0.5 + CROSS_ARM, 0.5 + CROSS_ARM),
-            ) || arm(
-                (0.5 - CROSS_ARM, 0.5 + CROSS_ARM),
-                (0.5 + CROSS_ARM, 0.5 - CROSS_ARM),
-            )
-        }
+        // Reachable and inactive — the whole trace, still.
+        TrayState::Idle => on_trace(x, y, SPAN_H, 1.0),
+        // The trace BREATHES: every span runs out from its own left edge and starts over. A trace
+        // filling in is what a live one does, and it is the largest change this shape can make
+        // without touching the glass. The growth is spread across the whole cycle rather than
+        // finishing early and holding — a held frame is one the next frame repeats, and
+        // `the_working_trace_moves_on_every_frame` refuses that.
+        TrayState::Working => on_trace(x, y, SPAN_H, 0.15 + 0.85 * phase),
+        // Stopped on the user: the same trace, THICKER, and still. The stillness is half the
+        // message — the motion means "working, leave it alone", so a waiting icon that also moved
+        // would say both.
+        TrayState::Waiting { .. } => on_trace(x, y, SPAN_H_FULL, 1.0),
+        // Dead: the plain mark, in red. The maintainer's call, made looking at it beside waiting —
+        // a cross had carried this state before, and the whole trace is a busier field for one to
+        // sit in than the eye's iris was.
+        //
+        // What keeps it off colour ALONE, which is the rule this state has always been the hard
+        // case for: waiting THICKENS its bars and this does not. That is a smaller difference than
+        // a cross was, and a red-green deficiency reads red-against-amber worst of any pair, so it
+        // is the weakest shape difference this icon carries — asserted, at the mass it actually
+        // has, by `a_failed_icon_differs_from_a_waiting_one_by_its_shape`.
+        TrayState::Failed { .. } => on_trace(x, y, SPAN_H, 1.0),
     }
 }
 
-/// Render one state as a non-premultiplied RGBA buffer, `W`×`H`, at one phase of the working
-/// wedge — see {@link is_ink}. Every state but `Working` renders identically at every phase.
+/// Render one state as a non-premultiplied RGBA buffer, `W`×`H`, at one phase of the sweeping
+/// window — see {@link is_ink}. Every state but `Working` renders identically at every phase.
 pub fn render_at(state: TrayState, phase: f64) -> Vec<u8> {
     render_with(state, phase, DEV_BUILD)
 }
@@ -332,10 +374,10 @@ pub fn image(state: TrayState) -> Image<'static> {
     Image::new_owned(render(state), W, H)
 }
 
-/// One full turn of the working wedge, in order.
+/// One full pass of the working sweep, in order.
 ///
 /// Rendered ONCE and handed to the poll to cycle: the alternative is rasterising the mark `SPIN_FPS`
-/// times a second forever, and the whole turn is 24 × 2.8 KB — a rounding error in memory against
+/// times a second forever, and the whole pass is 24 × 3.0 KB — a rounding error in memory against
 /// work that would otherwise never stop.
 pub fn spin() -> Vec<Image<'static>> {
     (0..SPIN_FRAMES)
@@ -360,7 +402,7 @@ mod tests {
         TrayState::Failed { count: 3 },
     ];
 
-    /// Every frame of the working spin, as raw buffers — what the menu bar actually cycles through.
+    /// Every frame of the working sweep, as raw buffers — what the menu bar actually cycles through.
     fn spin_frames() -> Vec<Vec<u8>> {
         (0..SPIN_FRAMES)
             .map(|i| render_at(TrayState::Working, f64::from(i) / f64::from(SPIN_FRAMES)))
@@ -371,12 +413,12 @@ mod tests {
     ///
     /// `render` cannot answer that question here. `DEV_BUILD` is `tauri::is_dev()`, and the CLI
     /// passes `--features tauri/custom-protocol` only on `tauri build` — so under `cargo test` the
-    /// dot is on, and a rule measuring the eye's left edge was measuring the dot instead.
+    /// dot is on, and a rule measuring the mark's edge was measuring the dot instead.
     fn shipped(state: TrayState) -> Vec<u8> {
         render_with(state, 0.0, false)
     }
 
-    /// The released icon across the whole spin — see {@link shipped}.
+    /// The released icon across the whole sweep — see {@link shipped}.
     fn shipped_spin() -> Vec<Vec<u8>> {
         (0..SPIN_FRAMES)
             .map(|i| render_with(TrayState::Working, f64::from(i) / f64::from(SPIN_FRAMES), false))
@@ -406,6 +448,12 @@ mod tests {
                 std::fs::write(dir.join(format!("{name}-{suffix}.rgba")), buf).unwrap();
             }
         }
+        // Mid-sweep too: the frame at phase 0 has the window at one tip, where it takes away the
+        // least ink, so a dump of it alone cannot show what the motion looks like.
+        for (i, phase) in [(6, 0.25), (12, 0.5)] {
+            let buf = render_with(TrayState::Working, phase, false);
+            std::fs::write(dir.join(format!("working{i}-prod.rgba")), buf).unwrap();
+        }
         println!("W={W} H={H} written to {}", dir.display());
     }
 
@@ -425,11 +473,11 @@ mod tests {
         }
     }
 
-    /// The spin is a spin: no two frames of the turn are the same image, so the wedge really does
-    /// move on every repaint. A wedge that stepped only every other frame would still look animated
-    /// in a still render and cost the same repaints a second for half the motion.
+    /// The breath is a breath: no two frames of the pass are the same image, so the trace really
+    /// does move on every repaint. A window that stepped only every other frame would still look
+    /// animated in a still render and cost the same repaints a second for half the motion.
     #[test]
-    fn the_working_wedge_moves_on_every_frame() {
+    fn the_working_trace_moves_on_every_frame() {
         let frames = spin_frames();
 
         for (i, a) in frames.iter().enumerate() {
@@ -441,7 +489,7 @@ mod tests {
 
     /// The mark the poll paints for a still state is a frame of the same geometry — `render` is
     /// `render_at(_, 0.0)`, and `spin()` starts there. Asserted so the two entry points cannot
-    /// drift into rendering two different eyes.
+    /// drift into rendering two different prints.
     #[test]
     fn the_still_working_icon_is_the_first_frame_of_the_spin() {
         assert_eq!(render(TrayState::Working), spin_frames()[0]);
@@ -475,17 +523,26 @@ mod tests {
     /// worst. `icon_states_are_distinguishable` cannot carry this: it compares whole buffers, so
     /// the two colours alone are enough to pass it, which is exactly how the shared geometry went
     /// unnoticed for as long as it did. This one ignores the colour entirely and looks at the ink.
+    ///
+    /// **The bar was lowered on purpose, and this is the record of it.** While broken carried a
+    /// cross the two differed by most of the ink, and the rule demanded a QUARTER of it. Broken is
+    /// now the plain mark in red (the maintainer's call, made looking at the pair at 18 pt), so all
+    /// that separates them is waiting's thicker bars: **measured at 21% of the ink**. The threshold
+    /// is 15% — under the fact and far above zero, which is the value that matters. A change making
+    /// broken identical to waiting in shape, leaving hue as the only signal, still fails here.
     #[test]
     fn a_failed_icon_differs_from_a_waiting_one_by_its_shape() {
         let lit = |b: &[u8]| b.chunks(4).map(|p| p[3]).collect::<Vec<_>>();
         let failed = lit(&render(TrayState::Failed { count: 1 }));
         let waiting = lit(&render(TrayState::Waiting { count: 1 }));
         // Not merely `!=`: a mark differing in a handful of pixels differs on paper and nowhere a
-        // menu bar can show it. The cross replaces the whole iris, so the gap is a large fraction
-        // of the ink either of them carries.
+        // menu bar can show it.
         let apart = failed.iter().zip(&waiting).filter(|(a, b)| a.abs_diff(**b) > 8).count();
         let ink = failed.iter().filter(|a| **a > 8).count();
-        assert!(apart * 4 > ink, "only {apart} pixels differ, against {ink} of ink — too close to see");
+        assert!(
+            apart * 100 > ink * 15,
+            "only {apart} pixels differ, against {ink} of ink — too close to see"
+        );
     }
 
     /// The badge says THAT there is more than one, never how many. Asserted as equality so the
@@ -500,21 +557,20 @@ mod tests {
     }
 
     /// The mark must not change size when the state changes. Framing the icon in a square buffer
-    /// produced exactly that: the badge needed room, so the eye shrank to make it, and a mark
+    /// produced exactly that: the badge needed room, so the mark shrank to make it, and a mark
     /// that resizes as it changes meaning reads as a glitch rather than as information.
     ///
-    /// Measured in the columns where ONLY the lens can put ink — left of both the badge and the
-    /// slash's cap. Derived from the geometry rather than written as a number: the previous
-    /// version hard-coded a column that stopped excluding the slash the moment the eye's
-    /// proportions changed, and failed for the right reason with the wrong explanation.
+    /// Measured in the columns where ONLY the glass can put ink — left of both the badge and the
+    /// slash's cap. Derived from the geometry rather than written as a number: an earlier version
+    /// hard-coded a column that stopped excluding the slash the moment the proportions changed,
+    /// and failed for the right reason with the wrong explanation.
     ///
-    /// Rendered through {@link shipped}, never `render`: those same columns are where the
-    /// development dot sits, so under `cargo test` — where `DEV_BUILD` is `true` — this measured
-    /// the dot's top edge in every state and could no longer see the regression it was written for,
-    /// a badge shortening the eye FROM ABOVE. The dot has its own rule below.
+    /// Rendered through {@link shipped}, never `render`: the development dot sits in the opening,
+    /// and a rule that could see it would be measuring the dot in every state instead of the
+    /// regression it was written for — a badge shortening the mark. The dot has its own rule below.
     #[test]
-    fn the_eye_is_the_same_size_in_every_state() {
-        let slash_left = 0.5 - EYE_A * 0.55 - STROKE / 2.0;
+    fn the_mark_is_the_same_size_in_every_state() {
+        let slash_left = 0.5 - GLASS_R * SLASH_REACH - GLASS_STROKE / 2.0 - MOAT;
         let clean = ((slash_left.min(BADGE_C.0 - BADGE_R) - COL_LEFT) / COLS * W as f64) as u32;
         assert!(clean >= 3, "no column is free of the slash and the badge: {clean}");
 
@@ -527,11 +583,11 @@ mod tests {
         };
         let base = extent(TrayState::Working);
         for state in ALL {
-            assert_eq!(extent(state), base, "{state:?} draws the eye at a different height");
+            assert_eq!(extent(state), base, "{state:?} draws the mark at a different height");
         }
-        // And across the spin, which is the reason the motion was put INSIDE the iris: an animation
-        // that touched the outline would resize the mark 24 times a second, which is not a signal
-        // but a glitch.
+        // And across the sweep, which is the reason the outer arc is never animated: a motion that
+        // touched the outline would resize the mark 24 times a second, which is not a signal but a
+        // glitch.
         let of_frame = |buf: &[u8]| {
             let rows: Vec<u32> = (0..H)
                 .filter(|y| (0..clean).any(|x| buf[((y * W + x) * 4 + 3) as usize] > 8))
@@ -539,16 +595,15 @@ mod tests {
             (*rows.first().expect("no ink at all"), *rows.last().unwrap())
         };
         for (i, frame) in shipped_spin().iter().enumerate() {
-            assert_eq!(of_frame(frame), base, "working frame {i} draws the eye at a different height");
+            assert_eq!(of_frame(frame), base, "working frame {i} draws the mark at a different height");
         }
     }
 
     /// The development mark ADDS a dot and touches nothing else — the rule the geometry test above
-    /// can no longer carry, since with the dot in there is no column on the left free of ink to
-    /// measure the lens in.
+    /// cannot carry, since the dot sits in the opening where the badge and the arcs' tips also are.
     ///
     /// Stronger than an extent, and deliberately so: every pixel outside the dot's own disc has to
-    /// be identical between the two builds. A mark that nudged the eye, thinned the outline or ate
+    /// be identical between the two builds. A mark that nudged the arcs, thinned a stroke or ate
     /// into the slash would fail here and nowhere else, and it would ship — the released icon is
     /// otherwise not under test at all.
     #[test]
@@ -582,7 +637,7 @@ mod tests {
     }
 
     /// The crop is tight: the mark touches all four edges of the buffer. Every transparent row or
-    /// column is size the eye does not get, because macOS scales the buffer to 18 pt by HEIGHT
+    /// column is size the mark does not get, because macOS scales the buffer to 18 pt by HEIGHT
     /// and the width follows — margins make the icon both smaller and wider, which is the pair of
     /// complaints this geometry exists to answer. Asserted over the union of the states, since
     /// one buffer serves all of them.
