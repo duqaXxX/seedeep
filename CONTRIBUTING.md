@@ -135,8 +135,9 @@ it looks for test files, so `bun test` on its own misses the checks that live in
 `.github/scripts/`. The script names both roots.
 
 `bun run test` does **not** run the type-checker, so run `bun run typecheck`
-separately before opening a PR. It does not run the tray's tests either — a
-change under `apps/tray/` needs `bun run test:tray` as well.
+separately before opening a PR. It runs the tray's TypeScript tests with
+everything else, but nothing of its **Rust** side — a change under
+`apps/tray/src-tauri/` needs `bun run test:tray` as well.
 
 ### Where the code lives
 
@@ -203,8 +204,8 @@ not be accepted.
 - **Fix-on-touch:** when you change a source file that has tests, update those
   tests in the same commit.
 - **Run before you push:** `bun run test` and `bun run typecheck` must pass — plus
-  `bun run test:tray` if you touched `apps/tray/`, since `bun run test` does not
-  reach the Rust side. CI runs the first two on every push and pull request, so a
+  `bun run test:tray` if you touched `apps/tray/src-tauri/`, since `bun run test`
+  does not reach the Rust side. CI runs the first two on every push and pull request, so a
   failure here is a failure there; the Rust tests are yours to run locally.
 - Fixtures (`apps/server/tests/fixtures/*.jsonl`) must be **synthetic and anonymized** — no
   real paths, project names, or session content. The repo is public; never
@@ -304,7 +305,7 @@ Windows build. Something broken is its own issue, not a footnote to this one.
 1. Fork and branch from the default branch.
 2. Make the change; keep it focused (avoid unrelated cleanup in the same commit).
 3. Ensure `bun run test` and `bun run typecheck` pass (and `bun run test:tray` for a
-   change under `apps/tray/`).
+   change under `apps/tray/src-tauri/`).
 4. Open a pull request describing **what** changed and **why**.
 
 Two CI jobs then run on the pull request:
