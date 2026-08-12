@@ -439,16 +439,6 @@ test('graph: Live activity has a Trace button that opens the trace modal', () =>
   assert.ok(btns.length > 0, 'tracebtn exists in the Live activity card');
   btns[0].onclick();
   assert.ok(findByClass(container, 'trace-modal').length > 0, 'trace modal opened after clicking Trace');
-  // DIAG (temporary): names whoever installed a `window` that has no removeEventListener.
-  const _w = (globalThis as any).window;
-  if (_w && typeof _w.removeEventListener !== 'function') {
-    console.error(
-      'DIAG window:',
-      typeof _w,
-      JSON.stringify(Object.keys(_w)),
-      Object.getPrototypeOf(_w)?.constructor?.name,
-    );
-  }
   view.destroy();
   g.document = prev;
 });
