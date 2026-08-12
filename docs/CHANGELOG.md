@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.21.0 (2026-08-12)
+
 **The network is a named capability now, and the linter is what names it.** seedeep's claim is that
 session content does not leave the machine, and until now nothing checked it: a pull request adding
 an outbound call would have passed every gate. The first attempt at a check was a bespoke test that
