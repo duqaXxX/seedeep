@@ -32,7 +32,20 @@ function mount(cards: SessionCard[] | null): { host: any; opened: string[]; expa
   const doc: any = fakeDoc();
   (globalThis as any).document = doc;
   const opened: string[] = [];
-  (globalThis as any).window = { open: (u: string) => opened.push(u) };
+  // A fixture may be synthetic in content and must be faithful in SHAPE, and a `window` is no
+  // exception: this one is installed on the GLOBAL and only restored in `after()`, so for the whole
+  // length of this file any other file's test that runs in between sees it. With `open` alone,
+  // `trace.ts`'s `destroy()` — which calls `window.removeEventListener` — died with
+  // "is not a function", nondeterministically, depending on where node:test happened to interleave
+  // the two files. Green here, green on a pull request, red on main two minutes later.
+  // These four members are the entire `window` contract `src/client` uses (measured); a fifth one
+  // appearing there without appearing here is the same bug again.
+  (globalThis as any).window = {
+    open: (u: string) => opened.push(u),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    location: { href: '' },
+  };
   const host = doc.createElement('div');
   const state = { expanded: 0 };
   renderCardsCard(host, cards === null ? null : { cards }, () => {
