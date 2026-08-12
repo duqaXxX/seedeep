@@ -6,7 +6,7 @@
 import { mock } from 'bun:test';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fakeDoc, findByClass, textOf } from '../../server/tests/fake-dom.ts';
+import { fakeDoc, fakeWindow, findByClass, textOf } from '../../server/tests/fake-dom.ts';
 import type { Local, Status } from '../ui/connection.ts';
 
 const doc = fakeDoc();
@@ -18,7 +18,10 @@ const root = doc.getElementById('panel') as ReturnType<typeof fakeDoc>['getEleme
 // a constant — the height is not what this file is about, and a missing method would throw inside
 // every render.
 root.getBoundingClientRect = () => ({ height: 200 });
-(globalThis as { window?: unknown }).window = { addEventListener() {} };
+// `panel.ts` only reaches for `addEventListener` — but this goes on the GLOBAL at module scope and
+// is never taken down, so every other file in the run sees it. `fakeWindow()` is what stops a stub
+// sized for one file from crashing another: three graph tests died on `removeEventListener` here.
+(globalThis as { window?: unknown }).window = fakeWindow();
 
 /** Every reading the panel is handed, in order — the tick channel Rust owns. */
 let deliver: ((event: { payload: unknown }) => void) | undefined;

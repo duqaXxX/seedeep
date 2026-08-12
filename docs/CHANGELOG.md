@@ -4,6 +4,19 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The intermittent CI failure had a cause, and it was in the other app.** Three graph tests died in
+`trace.ts`'s `destroy()` on `window.removeEventListener`, green locally and red on CI on the same
+commit. The installer was `apps/tray/tests/panel-tick.test.ts`, which put
+`{ addEventListener }` on the GLOBAL at module scope — everything `panel.ts` needs, nothing anybody
+else does — and never took it down. `bun test` shares one process and `node:test` interleaves files,
+so whether that module was evaluated before or after another file's teardown decided the run. It was
+never found by reading, over four rounds of it: the searches covered `apps/server`, and the two apps
+share one suite. What found it was a **setter trap** — `defineProperty` on `globalThis.window`
+printing the shape and the stack of whoever assigns it — which names the installer on every run
+rather than only when the failure fires, and named this one on the first try. There is now one
+definition of a fake window, `fakeWindow()` in `tests/fake-dom.ts`, carrying the whole contract and
+used by both stubs, so a stub sized for one file can no longer crash another.
+
 **harden-runner is out, one release after it went in.** It was adopted on the premise that watching
 CI's egress costs nothing, and the premise was false: `setup-bun` died with `socket hang up` four
 times in an hour, on Ubuntu and on Windows, at the toolchain download that follows the agent's
