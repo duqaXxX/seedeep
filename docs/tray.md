@@ -144,10 +144,14 @@ the check the print failed and this one had to pass: not "is it distinct from a 
 Three things about it are load-bearing. **No handle**: it was the source of both objections to a
 magnifier, being a diagonal that fought the unreachable slash and the stroke that makes the glyph
 read as *search*, which seedeep already spends a tab of its own on. **One stroke weight**: the ring
-and the bars are drawn at exactly the same thickness, settled by rendering four pairings at 18 pt —
-the ring had been half again as heavy as the trace it sits over, a mismatch with nothing behind it.
-And the spans **step right** rather than lining up: three bars of equal start and length would be a
-list, and a list inside a circle reads as a menu button.
+and the bars are drawn at exactly the same thickness — the ring had been half again as heavy as the
+trace it sits over, a mismatch with nothing behind it. And the spans **step right** rather than
+lining up: three bars of equal start and length would be a list, and a list inside a circle reads as
+a menu button.
+
+**That weight is heavier here than in the browser** (0.095 against 0.075, and the rows sit wider
+apart to match). The two are not meant to agree: an icon 18 points tall in a menu bar is an optical
+size, the same way the 16 px ICO is, and thin strokes are the first thing to dissolve at it.
 
 How far the bars run from the glass was picked the same way. They first reached to within 0.4 px of
 the ring at 18 pt, which reads as crowding rather than as a trace; they now leave about 1.7 px.
@@ -308,16 +312,22 @@ about a PNG; one geometry gives a single source of truth and lets the states be 
 every state paints something, that no two render identically, that the badge does not count,
 that the mark never changes size, and that the buffer carries no wasted margin.
 
-**The buffer is 26×26, cropped to the ink on both axes** — set by the platform, not by taste.
+**The buffer is 36×36, cropped to the ink on both axes** — set by the platform, not by taste.
 macOS scales the tray image to **18 points tall** whatever the buffer contains, so:
 
+- **36 is 18 points at 2×, and that is what makes the icon sharp.** `tray-icon` pins the image with
+  `nsimage.setSize(18)`, which is a size in POINTS; on a retina screen AppKit has 36 physical pixels
+  to fill. A buffer smaller than that gets enlarged and interpolated — at 26 the mark was blown up
+  1.38× and read soft in the bar, which is how the problem was found. At 36 one buffer pixel lands
+  on one screen pixel, and a 1× screen halves it exactly. Anything larger is thrown away twice over:
+  scaled down for retina and further for 1×.
 - **Height is the mark's entire size budget**, and every empty row spends it. A square buffer left
   the mark filling 55% of the height — drawn at ~10 pt in an 18 pt slot, visibly lighter than
   every neighbouring icon, which is what looking at a real menu bar showed.
 - **Width is not chosen at all**: height is fitted and width follows the proportions, so an
   elongated mark simply takes more of the bar than its neighbours. The eye this mark replaced was
   1.77 wide for 1 tall (36×26), then 1.38 (27×26); a lens is a circle, so this is the first version
-  that is **square** — 26×26, badge and slash included, because both are placed inside the ring
+  that is **square** — 36×36, badge and slash included, because both are placed inside the ring
   rather than beside it.
 
 Two consequences worth knowing before touching `GLASS_R`. The crop constants
