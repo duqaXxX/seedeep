@@ -25,11 +25,15 @@ export interface EndGuardDeps {
  *
  * Why the wait exists: `isOpen` comes from a PID file Claude Code REWRITES on every status
  * change, and `listOpenSessions` skips a file it catches mid-rewrite — so a running session
- * can be absent from exactly one poll. Ending a tab is one-way (it drops the live
- * subscription and freezes the graph into its ended presentation), so a single reading is
- * not enough evidence to spend it on: that blink froze healthy sessions until the page was
- * reloaded. The same JSDoc reasoning already protects `known` in sessions.ts; this is the
- * other consumer that had not caught up.
+ * can be absent from exactly one poll. Ending a tab freezes the graph into its ended
+ * presentation, so a single reading is not enough evidence to spend it on: that blink froze
+ * healthy sessions until the page was reloaded. The same JSDoc reasoning already protects
+ * `known` in sessions.ts; this is the other consumer that had not caught up.
+ *
+ * The freeze is undone by `revive` (app.ts) when the session comes back, so a blink now costs a
+ * few seconds of wrong presentation rather than the tab — but that is a repair, not a licence to
+ * end on one reading: it happens seconds late, drops the live chrome in between, and sends the tab
+ * back to the server for a tail it never lost.
  */
 export function createEndGuard(deps: EndGuardDeps) {
   const schedule =

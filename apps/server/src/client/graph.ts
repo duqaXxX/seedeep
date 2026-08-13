@@ -317,6 +317,7 @@ export function createGraph(
 ): {
   goLive(): void;
   setEnded(): void;
+  setLive(): void;
   setWaiting(kind: PendingKind | null, since: number | null): void;
   setBusy(working: boolean): void;
   destroy(): void;
@@ -326,9 +327,10 @@ export function createGraph(
   const root = E('div', 'graph-root');
 
   // Ended = the session's process is gone (its PID file dropped), so nothing here can
-  // ever grow again: the subagent monitor collapses, the LIVE badge yields to "ended",
-  // and the feed is height-capped (all via renders/CSS keyed on this flag). One-way:
-  // a session that reopens comes back as a NEW tab (see app.ts), never by un-ending.
+  // grow while it lasts: the subagent monitor collapses, the LIVE badge yields to "ended",
+  // and the feed is height-capped (all via renders/CSS keyed on this flag). REVERSIBLE, via
+  // `setLive`: `claude --resume` continues the same session id, so a reopened session comes back
+  // to THIS graph — it can never be handed a new tab (see app.ts).
   let ended = opts.ended ?? false;
   // Whether Claude Code's own process says it is working RIGHT NOW (`isModelBusy` — `busy` only,
   // never `shell`, which names a turn that is already over; fed from the
@@ -4785,7 +4787,7 @@ export function createGraph(
       scheduleRender();
     },
     // The session's process is gone (app.ts watches the roster): freeze into the ended
-    // presentation. One-way by design — a reopened session arrives as a new tab.
+    // presentation. Reversed by `setLive` when the same session comes back (`--resume`).
     setBusy(working: boolean) {
       if (working === busy) return;
       busy = working;
@@ -4805,6 +4807,21 @@ export function createGraph(
         commitsTimer = null;
       }
       refreshOutput();
+    },
+    /**
+     * The session is running again — `claude --resume` continues the SAME session id, so this is
+     * the exact reverse of `setEnded` rather than a new graph. Everything keyed on the flag is
+     * read at render time, so one repaint restores all of it; the commits poll is the one thing
+     * `setEnded` stopped outright, and it comes back only if this graph is already painting
+     * (`goLive` arms it otherwise).
+     */
+    setLive() {
+      if (!ended) return;
+      ended = false;
+      root.classList.remove('ended');
+      scheduleRender();
+      if (live && !commitsTimer) commitsTimer = setInterval(refreshOutput, COMMITS_REFRESH_MS);
+      refreshOutput(); // a resumed session may have committed while the tab was frozen
     },
     destroy() {
       // FIRST, before anything is unwired: what cannot be cancelled has to be told to do nothing.

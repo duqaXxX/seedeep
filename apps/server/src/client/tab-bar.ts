@@ -6,7 +6,8 @@
 //   dot AMBER  → it stopped and is waiting for YOU (an approval, or an answer)
 //   dot RED    → its last model call FAILED and nothing has succeeded since
 //   tab dimmed → ended; everything in it is frozen history, which is a property of the
-//                whole tab, not a badge to hang off it
+//                whole tab, not a badge to hang off it. It lifts again if the session is
+//                resumed (`clearEnded`) — the same session id comes back to the same tab.
 //
 // Waiting and failed reuse the busy dot rather than adding a second marker: they are the
 // same question ("what is this session doing?"), and two dots would make the strip a
@@ -90,6 +91,17 @@ export function createTabBar(
       t.el.classList.add('ended');
       t.el.title = titleFor(t.label, true);
       t.busy.classList.remove('on'); // a closed session is never busy
+    },
+    /**
+     * The session is running again (`claude --resume`, same id — see app.ts). Undoes `setEnded`
+     * and nothing else: the dot's own states are the roster's to restore on the very poll that
+     * reported the session back, so re-lighting anything here would be guessing.
+     */
+    clearEnded(sessionId: string) {
+      const t = tabs.get(sessionId);
+      if (!t) return;
+      t.el.classList.remove('ended');
+      t.el.title = titleFor(t.label, false, t.waiting, t.failed);
     },
     setBusy(sessionId: string, busy: boolean) {
       const t = tabs.get(sessionId);

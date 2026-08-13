@@ -4,6 +4,30 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A session you came back to with `--resume` was tracked again only after a browser refresh, and
+the tab was the reason.** When Claude Code exits, its PID file goes and the tab freezes into the
+ended presentation — correct, and confirmed by a second reading (`end-guard.ts`). What was wrong is
+that the freeze also RETIRED the tab's reader, and nothing could ever build it another: `--resume`
+continues the SAME session id (0 of 519 local transcripts carry a foreign one), so the resumed
+session can never be handed a new tab — nothing auto-opens it, and picking it from the dropdown
+only switches to it. Two comments claimed otherwise ("it reappears in the dropdown for the user to
+pick", "comes back as a NEW tab") and both described a path that could not run. The tab stayed dim
+and frozen for the life of the page while the session worked on.
+
+The freeze is now reversible. `graph.setLive` / `view.setLive` / `tabBar.clearEnded` undo it in the
+order `end` applied it, and the poll that sees the session live again calls `revive`, which then
+asks the replay endpoint for the TAIL the tab missed — the watcher tails LIVE sessions only, so
+whatever was written in between never came down the stream. Two invariants make that possible: the
+tab's reader now outlives the SESSION (`stop()` means the tab is gone, and the tab is still here —
+a read still in flight also gets to finish its history, which the old `stop()` cut short), and a
+tab subscribes to the live stream even when it opens onto a session that is already dead, because a
+subscription cannot be added afterwards without a second reader double-counting the file.
+
+Verified both ways, twice: the shell test drives roster → freeze → resume and asserts the resumed
+session's events reach the strip, and it goes red with either half of the fix removed; and a live
+check drives a real server and a real Chrome against a synthetic session store, where the turn
+written after the resume appears with no reload — and times out without the fix.
+
 ## 0.22.2 (2026-08-13)
 
 **The tray mark is drawn on a pixel grid now, and it is the reason it stopped looking blurred.** The

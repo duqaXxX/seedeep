@@ -3648,6 +3648,13 @@ function createTabBar(container, { onSwitch, onClose }) {
       t.el.title = titleFor(t.label, true);
       t.busy.classList.remove("on");
     },
+    clearEnded(sessionId) {
+      const t = tabs.get(sessionId);
+      if (!t)
+        return;
+      t.el.classList.remove("ended");
+      t.el.title = titleFor(t.label, false, t.waiting, t.failed);
+    },
     setBusy(sessionId, busy) {
       const t = tabs.get(sessionId);
       if (t)
@@ -9739,6 +9746,16 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       }
       refreshOutput();
     },
+    setLive() {
+      if (!ended2)
+        return;
+      ended2 = false;
+      root.classList.remove("ended");
+      scheduleRender();
+      if (live && !commitsTimer)
+        commitsTimer = setInterval(refreshOutput, COMMITS_REFRESH_MS);
+      refreshOutput();
+    },
     destroy() {
       destroyed = true;
       off();
@@ -9789,6 +9806,10 @@ function createView(container, treeState, opts = {}) {
     setEnded() {
       ended2 = true;
       graph.setEnded();
+    },
+    setLive() {
+      ended2 = false;
+      graph.setLive();
     },
     setWaiting(kind, since) {
       if (ended2)
@@ -9901,12 +9922,17 @@ var endGuard = createEndGuard({
     t.ended = true;
     tabBar.setEnded(sessionId);
     t.view.setEnded();
-    if (t.stopReplay) {
-      t.stopReplay.stop();
-      t.stopReplay = null;
-    }
   }
 });
+function revive(sessionId) {
+  const t = openTabs.get(sessionId);
+  if (!t || !t.ended)
+    return;
+  t.ended = false;
+  tabBar.clearEnded(sessionId);
+  t.view.setLive();
+  t.stopReplay.resync();
+}
 var tabStore = createTabStore((() => {
   try {
     return globalThis.localStorage ?? null;
@@ -9971,8 +9997,7 @@ function closeTab(sessionId) {
   if (!t)
     return;
   endGuard.cancel(sessionId);
-  if (t.stopReplay)
-    t.stopReplay.stop();
+  t.stopReplay.stop();
   t.view.destroy();
   t.panel.remove();
   tabBar.remove(sessionId);
@@ -10024,7 +10049,11 @@ function openTab(record, { activate = true } = {}) {
   view.setBusy(open ? isModelBusy(record) : false);
   treeState.onChange(() => tabBar.setFailed(sessionId, treeState.currentError() !== null));
   const onLive = () => view.onReplayEnd();
-  const stopReplay = startReplay(sessionId, (e) => treeState.apply(e), open ? { stream, EventSourceImpl: AuthEventSource, onLive } : { EventSourceImpl: AuthEventSource, onLive });
+  const stopReplay = startReplay(sessionId, (e) => treeState.apply(e), {
+    stream,
+    EventSourceImpl: AuthEventSource,
+    onLive
+  });
   openTabs.set(sessionId, { view, panel, stopReplay, ended: !open, label: tabLabel(record) });
   known.add(sessionId);
   syncPins();
@@ -10081,7 +10110,7 @@ stream.onStatus((s) => {
   showConnection("resync");
   for (const t of openTabs.values())
     if (!t.ended)
-      t.stopReplay?.resync();
+      t.stopReplay.resync();
 });
 roster.onChange((rows) => {
   dropdown.update(rows);
@@ -10094,6 +10123,8 @@ roster.onChange((rows) => {
       endGuard.gone(row.sessionId);
     if (open)
       endGuard.cancel(row.sessionId);
+    if (t.ended && open)
+      revive(row.sessionId);
     if (!t.ended) {
       tabBar.setBusy(row.sessionId, isWorking(row));
       t.view.setBusy(isModelBusy(row));
