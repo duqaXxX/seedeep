@@ -72,7 +72,9 @@ if (typeof (document.body as unknown as Record<string, unknown>)['append'] === '
 interface OpenTab {
   view: ReturnType<typeof createView>;
   panel: HTMLElement;
-  stopReplay: ReturnType<typeof startReplay> | null;
+  // Never null: a tab always has its reader, and it outlives the SESSION ending (see `end`).
+  // Only `closeTab` retires it, because only closing the tab retires the tab.
+  stopReplay: ReturnType<typeof startReplay>;
   ended: boolean;
   label: string;
 }
@@ -117,8 +119,9 @@ const roster = createRoster({
   fetchLive: (signal) => authFetch('/api/live', { signal }).then((r) => r.json()),
   pollMs: ROSTER_POLL_MS,
 });
-// Committing "this session is over": one-way, so it happens only once a reading taken a full
-// poll later still agrees. `stillGone` reads roster.current(), which is refreshed on EVERY
+// Committing "this session is over": it costs the tab its live presentation, so it happens only
+// once a reading taken a full poll later still agrees. `revive` can undo it — but late, and after
+// the chrome has already gone quiet, so the confirmation still has to be worth spending. `stillGone` reads roster.current(), which is refreshed on EVERY
 // poll (onChange fires only on identity change, so counting notifications would never confirm
 // a session that really closed — its key stops moving after the first transition). What the
 // guard counts instead is `readings()`: a poll whose fetch FAILED serves the previous rows
@@ -136,12 +139,36 @@ const endGuard = createEndGuard({
     t.ended = true;
     tabBar.setEnded(sessionId);
     t.view.setEnded(); // the graph freezes into its ended presentation
-    if (t.stopReplay) {
-      t.stopReplay.stop();
-      t.stopReplay = null;
-    }
+    // The replay is deliberately NOT stopped: `stop()` means the TAB is gone, and this tab is
+    // still here. A session can come back (`claude --resume`, same id — see `revive`), and its
+    // reader is what lets it: stopping it left the tab with no subscription and no way to build
+    // one, so it stayed frozen for the life of the page while Claude Code worked on. A read
+    // still in flight also gets to finish its history, which the old stop() cut short.
+    //
+    // The one thing that got slower, stated because it is a real trade and not an oversight: a
+    // replay connection cut in SILENCE (no error frame) used to be finished by this `stop()`, so
+    // the loader fell within the confirmation window; now it waits out the read's own 30s silence
+    // verdict. Forcing the handoff here would buy that back at the price of truncating the
+    // history of every session that dies mid-replay — the common case against the rare one.
   },
 });
+
+/**
+ * The session behind an ended tab is running again — `claude --resume` continues the SAME
+ * session id, so this tab is the only one that session will ever get: nothing auto-opens it
+ * (`sessionsToAutoOpen` excludes both `known` and the ids already on screen) and picking it from
+ * the dropdown only switches to it. Undoes `end` in the same order, then pulls the tail the tab
+ * missed while it was frozen — the watcher tails LIVE sessions only, so whatever was written in
+ * between (a background command's notification, a resumed subagent) never came down the stream.
+ */
+function revive(sessionId: string) {
+  const t = openTabs.get(sessionId);
+  if (!t || !t.ended) return;
+  t.ended = false;
+  tabBar.clearEnded(sessionId);
+  t.view.setLive();
+  t.stopReplay.resync();
+}
 
 // Merely READING localStorage throws when storage is disabled, so the access is guarded
 // here, not just its calls; the store then degrades to "nothing saved" (see tab-store.ts).
@@ -259,7 +286,7 @@ function closeTab(sessionId: string) {
   const t = openTabs.get(sessionId);
   if (!t) return;
   endGuard.cancel(sessionId); // no tab left to end when its window would close
-  if (t.stopReplay) t.stopReplay.stop(); // unsubscribes live + closes replay ES
+  t.stopReplay.stop(); // unsubscribes live + closes replay ES
   t.view.destroy();
   t.panel.remove();
   tabBar.remove(sessionId);
@@ -355,13 +382,18 @@ function openTab(record: SessionRecord, { activate = true }: { activate?: boolea
   // background one, which gets no frames at all. The replay pass sets it for free: a session that
   // was already failing when its tab opened arrives red, like the pending-prompt seed above.
   treeState.onChange(() => tabBar.setFailed(sessionId, treeState.currentError() !== null));
-  // Open: replay-from-start then live. Closed: pure replay (no live stream).
+  // Replay-from-start, then live — for an ENDED session too, and that is not a waste: the
+  // multiplexed stream is one connection the page holds anyway, this adds a handler to a map, and
+  // nothing is ever delivered for a session nobody is tailing. What it buys is the case that has
+  // no other answer: a session opened from the picker long after it died, then resumed. Without a
+  // subscription taken at open, `revive` would have nothing to reattach — and a tab cannot grow
+  // one later, since the reducer already holds the file and a second reader would double it.
   const onLive = () => view.onReplayEnd(); // history is in: drop the loader, paint, arm toasts
-  const stopReplay = startReplay(
-    sessionId,
-    (e) => treeState.apply(e),
-    open ? { stream, EventSourceImpl: AuthEventSource, onLive } : { EventSourceImpl: AuthEventSource, onLive },
-  );
+  const stopReplay = startReplay(sessionId, (e) => treeState.apply(e), {
+    stream,
+    EventSourceImpl: AuthEventSource,
+    onLive,
+  });
   openTabs.set(sessionId, { view, panel, stopReplay, ended: !open, label: tabLabel(record) });
   // Handing out a tab IS the offer, whoever asked for it — auto, picker or restore. Recorded
   // here so the rule can never re-offer something the user has already seen and closed.
@@ -441,7 +473,7 @@ stream.onStatus((s) => {
   // Each live tab pulls the lines it missed while the feed was down — the tail only, folded
   // into the reducer it already has. Ended tabs hold history the stream cannot change, so
   // they have nothing to catch up on.
-  for (const t of openTabs.values()) if (!t.ended) t.stopReplay?.resync();
+  for (const t of openTabs.values()) if (!t.ended) t.stopReplay.resync();
 });
 
 roster.onChange((rows) => {
@@ -450,16 +482,19 @@ roster.onChange((rows) => {
     const t = openTabs.get(row.sessionId);
     if (!t) continue;
     const open = isLive(row);
-    // An open tab whose session CLOSED (its PID file is gone): drop the live
-    // subscription and freeze on the last state. Not a 60s silence timer — an
-    // open-but-idle session stays live. A session that reopens is NOT re-opened
-    // automatically; it reappears in the dropdown for the user to pick.
+    // An open tab whose session CLOSED (its PID file is gone): freeze on the last state. Not a
+    // 60s silence timer — an open-but-idle session stays live.
     //
     // Never on the FIRST reading, though: the PID file is rewritten on every status change
-    // and a read that catches it mid-rewrite loses the session for one poll. Ending is
-    // one-way, so it waits for a second, independent reading to agree (see end-guard.ts).
+    // and a read that catches it mid-rewrite loses the session for one poll. Freezing costs
+    // the tab its live presentation, so it waits for a second, independent reading to agree
+    // (see end-guard.ts).
     if (!t.ended && !open) endGuard.gone(row.sessionId);
     if (open) endGuard.cancel(row.sessionId); // it is back — whatever we were about to believe, don't
+    // And the reverse: the session is running again, which for `--resume` means this very tab
+    // (same session id). Before the block below, so the poll that reports it back also restores
+    // the busy/waiting/label state it carries.
+    if (t.ended && open) revive(row.sessionId);
     if (!t.ended) {
       // Two different questions, deliberately two readings: the tab dot means "this session is
       // busy" (`shell` included — a background command IS the session working), the panel means

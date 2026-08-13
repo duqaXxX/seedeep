@@ -29,6 +29,17 @@ class FakeES {
 }
 const sources: FakeES[] = [];
 
+// Wait for a condition the app reaches through its OWN timers, instead of sleeping for a
+// guessed duration: the sequence under test (roster poll → end-guard window → poll) is three
+// timers deep, and a fixed sleep would either be flaky or the slowest test in the suite.
+async function until(what: string, cond: () => boolean, budgetMs = 2000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error(`app-shell: timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 const openId = 'aaaaaaaa-1111-2222-3333-000000000001';
 const closedId = 'bbbbbbbb-1111-2222-3333-000000000002';
 const roster = [
@@ -40,7 +51,20 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
   const g = globalThis as any;
   // Restore the real globals afterwards — the suite shares one process, and a leaked
   // fake fetch breaks every later test that talks to a real local server.
-  const prev = { document: g.document, EventSource: g.EventSource, fetch: g.fetch };
+  const prev = {
+    document: g.document,
+    EventSource: g.EventSource,
+    fetch: g.fetch,
+    setTimeout: g.setTimeout,
+  };
+  // The two multi-second waits this test has to live through are the roster poll (3s) and the
+  // end-of-session confirmation window (poll + 1s) — neither is injectable, since app.ts IS the
+  // composition root and owns both. So the clock is shortened for that band only: everything
+  // outside it (the stream's 45s staleness verdict, the replay's 30s one, the 60s commits
+  // refresh) keeps its real value, because a stream that declares itself dead every few
+  // milliseconds is a different test than this one, running by accident.
+  g.setTimeout = ((fn: any, ms?: number, ...rest: any[]) =>
+    prev.setTimeout(fn, typeof ms === 'number' && ms >= 2500 && ms <= 5000 ? 5 : ms, ...rest)) as any;
   const doc: any = fakeDoc();
   g.document = doc;
   g.EventSource = FakeES;
@@ -110,7 +134,10 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     });
     replayES!.fire('replay-end'); // history handed off to live — must not throw
 
-    // Dropdown: picking the CLOSED session opens a second, ended tab with no live stream.
+    // Dropdown: picking the CLOSED session opens a second tab, ended. It replays its file like any
+    // other and — unlike before — subscribes to the live stream too, which is what lets it come
+    // back if that session is ever resumed (see `revive`); nothing is delivered for a session no
+    // watcher is tailing, so the subscription is inert until then.
     const dropdownEl = doc.getElementById('dropdown');
     dropdownEl.children[0].onclick(); // trigger → open → render rows
     const row = findByClass(dropdownEl, 'pk-row').find((r: any) => textOf(r).includes('old work'));
@@ -122,7 +149,7 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     assert.ok(tabs[1].classList.contains('ended'), 'ended is the tab going quiet, not a word in the label');
     assert.ok(
       sources.some((s) => s.url.includes(closedId)),
-      'pure replay opened for the ended session',
+      'the ended session is read from its file',
     );
 
     // The stream breaks and comes back. Nothing re-sends what was emitted while it
@@ -143,8 +170,47 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     const resync = sources.filter((s) => s.url.includes(openId)).at(-1)!;
     assert.match(resync.url, /[?&]from=/, 'it asks for the TAIL, not the whole session again');
     assert.equal(replaysOf(closedId), endedReplays, 'an ended tab has no hole to close');
+    resync.fire('replay-end'); // that read lands — a later resync is DEFERRED while one is in flight
     assert.equal(connEl.textContent, 'Reconnected — re-reading');
     assert.equal(findByClass(tabsEl, 'tab').length, 2, 'rebuilding keeps the strip as it was');
+
+    // You quit Claude Code and come back with `--resume`. That is the SAME session id — the
+    // transcript is appended to, same file, same inode (measured) — so the tab it froze is the
+    // only tab that session will ever get: nothing auto-opens it (`known` + `openIds` both hold
+    // it) and picking it from the dropdown only switches to it. Before this, the tab stayed
+    // frozen for the life of the page while Claude Code worked on, and only a browser refresh
+    // brought it back.
+    const liveTab = () => findByClass(tabsEl, 'tab')[0];
+    const live = roster[0]!;
+    live.isOpen = false; // its PID file is gone: Claude Code exited
+    live.status = null;
+    await until('the tab to be marked ended', () => liveTab().classList.contains('ended'));
+    const replaysBeforeResume = replaysOf(openId);
+
+    live.isOpen = true; // `claude --resume <id>`: same session, new process
+    live.status = 'busy';
+    await until('the tab to come back to life', () => !liveTab().classList.contains('ended'));
+    assert.equal(liveTab().title, 'projA · live work', 'the hover text stops saying ended too');
+    assert.equal(replaysOf(openId), replaysBeforeResume + 1, 'it goes back for what was written meanwhile');
+    const revived = sources.filter((s) => s.url.includes(openId)).at(-1)!;
+    assert.match(revived.url, /[?&]from=/, 'the TAIL, from the last line the tab holds whole');
+    revived.fire('replay-end'); // the read lands: buffered live events are flushed and the feed is through
+
+    // The invariant the frozen tab broke: an event arriving now REACHES this tab. A failed API
+    // call is the one the strip must repaint for, and it is driven by the reducer, so the assert
+    // proves the whole chain — live subscription → reducer → strip — and not just a class.
+    liveES.emit('usage', {
+      type: 'usage',
+      sessionId: openId,
+      root: 'cli',
+      timestamp: '2026-01-01T00:05:00.000Z',
+      seq: 50,
+      agentId: null,
+      delta: { input: 1, output: 0, cacheRead: 0, cacheCreation: 0 },
+      fill: 200,
+      apiError: { status: 529, message: 'overloaded' },
+    });
+    await until('the resumed session to reach the strip', () => liveTab().children[0].classList.contains('err'));
 
     // Close both via ×: panels and tabs drop with them.
     for (const t of [...tabs]) t.children[2].onclick({ stopPropagation: () => {} });
@@ -153,14 +219,18 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
   } finally {
     g.document = prev.document;
     g.EventSource = prev.EventSource;
-    // app.js exposes no way to stop its 3s roster poll, and the leaked timer chain
-    // reads the GLOBAL fetch on every tick: restoring the real fetch outright would
-    // hand later tests phantom '/api/sessions' calls. Scoped shim instead — empty
-    // roster for the leaked poll, the real fetch for everything else.
+    // Before the fetch shim, and for the same reason it exists: the leaked poll re-arms itself
+    // through the GLOBAL setTimeout on every tick, so leaving the shortened clock in place would
+    // hand the rest of the suite a roster polling every 5 ms.
+    g.setTimeout = prev.setTimeout;
+    // app.js exposes no way to stop its 3s roster poll, and the leaked timer chain reads the
+    // GLOBAL fetch on every tick: restoring the real fetch outright would hand later tests
+    // phantom '/api/sessions' calls. Scoped shim instead — and it REFUSES rather than answers,
+    // because an answer is what repaints: `refresh()` bails on the catch it already has (keeping
+    // its last good roster, notifying nobody), while an empty roster read as a change, refreshed
+    // Home, and threw from inside a surface whose fake DOM this block had just taken away.
     g.fetch = (input: any, ...rest: any[]) => {
-      if (input === '/api/sessions') return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-      if (input === '/api/live')
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ total: 0, sessions: [], pidVisible: true }) });
+      if (String(input).startsWith('/api/')) return Promise.reject(new Error('app-shell: the page is gone'));
       return prev.fetch(input, ...rest);
     };
   }

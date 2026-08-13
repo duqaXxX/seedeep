@@ -402,7 +402,10 @@ drawer**; drill-down clicks (e.g. a tool inside a subagent's drawer) show a
 
 The view reconstructs identically live and in replay; an **ended** session drops
 the live chrome — the monitor collapses to a one-line summary, and the LIVE badge
-yields to a quiet "ended".
+yields to a quiet "ended". That state is not final: `claude --resume` continues the
+SAME session, so when its process comes back the tab you already have **goes live
+again by itself** — the dim lifts, the badge returns, and the tab reads the lines
+written while it was frozen. Nothing has to be reopened, and no refresh is needed.
 
 ## The turn as a lens
 

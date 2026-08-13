@@ -18,7 +18,7 @@ export type ViewOpts = Pick<
 /**
  * A tab's view: the loading skeleton until the session's history is in, then the Graph.
  * Owns the replay→live handoff for its panel (`onReplayEnd`) and forwards the tab's
- * lifecycle signals (`setEnded`, `setWaiting`, `setBusy`) to the Graph.
+ * lifecycle signals (`setEnded`, `setLive`, `setWaiting`, `setBusy`) to the Graph.
  *
  * Built with DOM nodes + textContent (never innerHTML) so session-derived values
  * (model name, etc.) can never inject markup.
@@ -67,6 +67,13 @@ export function createView(container: HTMLElement, treeState: SessionTree, opts:
     setEnded() {
       ended = true;
       graph.setEnded();
+    },
+    // The session is running again — `claude --resume` on the same id (roster watch in app.ts).
+    // Lifting the flag is what re-opens the two setters below: their guard exists because a DEAD
+    // session can never clear a flag it set, and a resumed one can.
+    setLive() {
+      ended = false;
+      graph.setLive();
     },
     // The session is blocked on the user (roster watch in app.ts). Ignored once the session
     // has ended: its PID file is gone, so nothing would ever clear the flag again.

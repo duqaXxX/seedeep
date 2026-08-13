@@ -81,6 +81,27 @@ test('the tab shows a loader until the replay ends, then the view', () => {
   g.document = prevDoc;
 });
 
+test('setLive lets a resumed session speak again — the ended guards are lifted', async () => {
+  // The mirror of the test below: those guards exist because a DEAD session can never clear a
+  // flag it sets. A resumed one can, so the guards must lift with the ended state — otherwise
+  // the tab stays mute about the very turn that has just started.
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const { treeState } = stubs();
+
+  const view = createView(container, treeState, { ended: true });
+  view.onReplayEnd();
+  view.setLive();
+  view.setWaiting('permission', null);
+  await new Promise((r) => setTimeout(r, 1));
+  assert.equal(findByClass(container, 'nowpanel')[0].classList.contains('waiting'), true);
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
 test('a session that ended can never be left showing a pending prompt', async () => {
   // The PID file is gone, so nothing will ever clear the flag: an amber panel on a dead
   // tab would keep claiming a prompt that no longer exists.

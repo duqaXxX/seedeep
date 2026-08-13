@@ -2657,6 +2657,32 @@ test('setEnded flips a live graph into the ended presentation', async () => {
   g.document = prevDoc;
 });
 
+test('setLive flips an ended graph back — a resumed session is not a new session', async () => {
+  // `claude --resume` continues the SAME session id, so the ended presentation must be
+  // reversible: the tab it froze is the only tab that session will ever get.
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+  const container = g.document.createElement();
+  const snap = baseSnapshot();
+  const view = createGraph(
+    container,
+    { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} },
+    { ended: true },
+  );
+  assert.ok(container.children[0].classList.contains('ended'), 'built ended: the root carries the flag');
+
+  view.setLive();
+  await new Promise((r) => setTimeout(r, 1)); // the repaint is coalesced (scheduleRender)
+  assert.equal(container.children[0].classList.contains('ended'), false, 'the root flag is gone');
+  const monitor = findByClass(container, 'sublivecard')[0];
+  assert.ok(!monitor.className.split(' ').includes('fulllist'), 'the subagent monitor is a live monitor again');
+  assert.ok(!findByClass(container, 'live')[0].classList.contains('hidden'), 'the LIVE badge is back');
+
+  view.destroy();
+  g.document = prevDoc;
+});
+
 test('Session card: footer carries whole-session turn KPIs and the Explore toggle', () => {
   const g = globalThis as any;
   const prevDoc = g.document;

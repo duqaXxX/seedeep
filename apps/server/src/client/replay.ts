@@ -181,10 +181,10 @@ export function startReplay(
   // still looks healthy.
   //
   // LIMIT: handing off early leaves the tab's history SHORT, with nothing on screen saying so.
-  // For a live session the next resync fills it from the mark this read did reach; for an ENDED
-  // one there is no resync path at all, so the gap lasts until the tab is reopened. It is still
-  // the cheaper wrong — buffering forever has no exit — and at 30s against a measured worst gap
-  // of 6ms it should never trigger on a read that is merely slow.
+  // The next resync fills it from the mark this read did reach — for an ENDED session that is the
+  // one `revive` performs if it is resumed (app.ts), and failing that the gap lasts until the tab
+  // is reopened. It is still the cheaper wrong — buffering forever has no exit — and at 30s
+  // against a measured worst gap of 6ms it should never trigger on a read that is merely slow.
   function watchSilence(): void {
     if (stopped || !inFlight) return;
     if (now() - lastFrameAt < staleMs) return;

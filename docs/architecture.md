@@ -317,9 +317,9 @@ already grown once.
 
 **One reading of `isOpen` is not proof it closed.** Claude Code REWRITES the PID file on every
 status change, and `listOpenSessions` skips a file it catches mid-rewrite — so a running
-session can be missing from exactly one poll. Anything IRREVERSIBLE must therefore wait for a
-second reading: `known` in `sessions.ts` is never pruned on a blink, and ending a tab (one-way:
-it drops the live subscription and freezes the graph into its ended presentation) goes through
+session can be missing from exactly one poll. Anything COSTLY must therefore wait for a
+second reading: `known` in `sessions.ts` is never pruned on a blink, and ending a tab (it
+freezes the graph into its ended presentation) goes through
 `end-guard.ts`, which re-reads the roster a full poll later and commits only if it still
 agrees. Counting notifications cannot do this job — `onChange` fires on identity CHANGE, so a
 session that really closed notifies once and then never again; the confirmation reads
@@ -332,6 +332,18 @@ be ended on a single reading. The guard therefore requires that counter to have 
 when it has not it re-arms instead of giving up: dropping the question would leave a session
 that really ended live for the life of the page, since `gone` is driven by an identity change
 that has already happened.
+
+Ending a tab is **reversible**, and has to be: `claude --resume` continues the SAME session id,
+so a resumed session can never be handed a new tab — nothing auto-opens it
+(`sessionsToAutoOpen` excludes both `known` and the ids on screen) and picking it from the
+dropdown only switches to it. So the poll that reports it live again calls `revive` (`app.ts`),
+which undoes the freeze and asks the replay endpoint for the tail the tab missed. What makes
+that possible is that the tab's READER outlives the session: `end` no longer stops it —
+`stop()` means the tab is gone — and a tab subscribes to the live stream even when it opens
+onto a session that is already dead, since a subscription cannot be added later without a
+second reader double-counting the file. Reversibility does not soften the confirmation above:
+the repair arrives seconds late, drops the live chrome in between, and spends a request on a
+tail the tab never lost.
 
 **A session blocked on the user.** Claude Code writes `status: "waiting"` into the PID
 file the moment it raises a dialog, with a `waitingFor` label saying which one, and

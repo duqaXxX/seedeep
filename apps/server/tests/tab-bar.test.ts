@@ -86,6 +86,27 @@ test('setEnded never touches the label — no marker may creep back into the tex
   assert.equal(tab.title, 'extended-api — ended', 'the state still reaches a reader who cannot see the dim');
 });
 
+test('clearEnded brings a resumed session back, dot and title included', () => {
+  // `claude --resume` reopens the SAME session id, so the strip has to be able to un-dim a tab:
+  // the alternative was a tab frozen for the life of the page while the session worked on.
+  const { container, bar } = mountBar();
+  bar.add('s1', { label: 'a', ended: false, busy: true });
+  bar.setEnded('s1');
+  bar.clearEnded('s1');
+  const tab = findByClass(container, 'tab')[0];
+  assert.equal(tab.classList.contains('ended'), false, 'the dim is what says ended — it has to go');
+  assert.equal(tab.title, 'a', 'and so does the word a reader who cannot see the dim relies on');
+  // The setters the ended class had locked out answer again — the busy dot and the amber one
+  // are driven by the roster poll, which is exactly what has just said the session is back.
+  bar.setBusy('s1', true);
+  assert.equal(tab.children[0].classList.contains('on'), true);
+  bar.setWaiting('s1', 'permission');
+  assert.equal(tab.children[0].classList.contains('wait'), true);
+  assert.equal(tab.title, 'a — waiting for your approval');
+  bar.clearEnded('s1'); // idempotent: a second live poll must not undo what the first restored
+  assert.equal(tab.title, 'a — waiting for your approval');
+});
+
 // The strip holds SESSIONS only — the fixed surfaces moved to the header menu — so it is
 // handed ids it has no tab for (Home, Compare, Search) on every switch to one of them.
 test('setActive with a foreign id lights nothing, and leaves the strip untouched', () => {
