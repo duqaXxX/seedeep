@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.23.1 (2026-08-14)
+
 **Closing the panel from the menu-bar icon was dropping the REAL banners too**, and nothing had ever
 noticed. It hid the window and stopped there, which for an `Accessory` app — no other window to fall
 back to — leaves it the ACTIVE app with nothing on screen, the one state macOS draws no banner for.
