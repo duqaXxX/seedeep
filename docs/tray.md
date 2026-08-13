@@ -149,9 +149,11 @@ trace it sits over, a mismatch with nothing behind it. And the spans **step righ
 lining up: three bars of equal start and length would be a list, and a list inside a circle reads as
 a menu button.
 
-**That weight is heavier here than in the browser** (0.095 against 0.075, and the rows sit wider
-apart to match). The two are not meant to agree: an icon 18 points tall in a menu bar is an optical
-size, the same way the 16 px ICO is, and thin strokes are the first thing to dissolve at it.
+**The tray's proportions are its own, and are not meant to match the browser's.** An icon 18 points
+tall in a menu bar is an optical size, the same way the 16 px ICO is: here the glass and the bars
+are 2 px, the rows sit 4 px apart, and the ends of the bars are SQUARE rather than round, because at
+2 px a round cap is one faded corner and a faded corner is the softness this geometry exists to
+remove.
 
 How far the bars run from the glass was picked the same way. They first reached to within 0.4 px of
 the ring at 18 pt, which reads as crowding rather than as a trace; they now leave about 1.7 px.
@@ -164,8 +166,8 @@ which gets an icon of its own rather than silence.
 | -- | -- |
 | **Unreachable** — nothing answering at the configured address | Grey glass, struck through, empty — nothing to read |
 | **Nothing live** | Grey glass over the trace, still |
-| **Working, nobody waiting** | Blue glass, the whole trace **breathing** — every span runs out from its left edge and starts over, a pass every two seconds. No count: a number that changes constantly is peripheral noise |
-| **≥1 waiting for you** | Amber glass, the same trace drawn **thicker**, **still**, plus a badge dot **only above one** |
+| **Working, nobody waiting** | Blue glass with a **gap running round it**, a turn every two seconds. No count: a number that changes constantly is peripheral noise |
+| **≥1 waiting for you** | Amber glass, the same trace drawn **heavier** — 3 px bars instead of 2, run out as far as the circle allows — and **still**, plus a badge dot **only above one** |
 | **≥1 broken** | The plain mark **in red**, same badge rule — a session whose last model call FAILED. What keeps it off colour alone is that waiting thickens its bars and this does not |
 
 The state comes from the same reading the panel draws (see [The poll](#the-poll)), and it is
@@ -175,7 +177,7 @@ a guess. A digest that is not a list of sessions is Unreachable too — a schema
 client's one standing risk, and that state is the one that says so.
 
 **Working is the only state that moves, and the stillness of the others is half the message.** A
-breathing trace means *something is running, there is nothing for you to do*; amber means *it is your
+turning gap means *something is running, there is nothing for you to do*; amber means *it is your
 turn*. So an approval STOPS the motion: with three sessions working and one stopped on you, the icon
 is amber and still, and the fact that the other two are working is in the panel, which shows every
 session in its band. Waiting outranks working — the icon says the thing you can act on.
@@ -197,20 +199,19 @@ reads as healthy — an older server must not paint every session red.
 
 Three facts fix the motion, and each was decided by rendering it at 18 pt rather than by taste:
 
-- **What moves is INSIDE the glass, never the glass itself.** The rule is older than this mark: on
-  the eye it replaced, four candidates that moved the outline itself (a travelling iris, a breathing
-  ring, a blink, an orbiting pupil) were built and rejected, because at 18 pt they read as a wobble
-  rather than as work — and three lighter spinners (an arc, a running gap, an expanding ping) lost
-  because at this size **the amount of ink in motion is the signal**. The lens obeys it the same
-  way: the ring is drawn in every state and nothing animated touches it, which is what lets the mark
-  stay exactly the same size while it works. `the_mark_is_the_same_size_in_every_state` asserts that
-  across every frame of the pass.
-- **All three spans move, together.** A trace filling in is what a live one does, so the motion is
-  the subject rather than a spinner borrowed and dropped in. Moving ONE of them was built first and
-  rejected on the render: it shifted about 4 px of ink at 18 pt, which is a signal nobody can see —
-  at this size a mark in motion is judged on how much ink moves. The growth is spread across the
-  whole cycle rather than finishing early and holding, because a held frame is one the next frame
-  repeats, and `the_working_trace_moves_on_every_frame` refuses that.
+- **What moves is the GLASS, and that is a reversal.** Every earlier version of this icon animated
+  its middle and left the outline alone, because on the eye it replaced four candidates that moved
+  the outline (a travelling iris, a breathing ring, a blink, an orbiting pupil) read as a wobble
+  rather than as work. On the lens that rule ran out of room: the bars are the smallest thing in the
+  mark, and moving them shifted about **4 px of ink at 18 pt** — a signal nobody can see. A gap
+  running round the ring moves the largest shape the icon has, which is what a mark judged out of
+  the corner of the eye needs. The maintainer's call, made on the render.
+- **The size rule survived the reversal, by being measured differently.** With the gap travelling
+  the ring, the frames where it passes the left of the glass really do leave those columns empty, so
+  a per-frame equality would fail on a motion that is correct. `the_mark_is_the_same_size_in_every_state`
+  now measures the UNION of the turn against the still mark: what must not change is the box the
+  icon occupies, which still catches an animation that grows the mark while every frame looks
+  plausible alone. `the_working_gap_moves_on_every_frame` keeps the turn from stalling.
 - **24 frames at 12 fps: a 24th of the sweep a step, one pass every two seconds.** A spinner is read
   out of the corner of the eye, so it is judged on whether the motion is smooth. The frame COUNT is
   what buys that, not the rate: halving the frames to keep a one-second pass would double the step,
@@ -234,8 +235,8 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
 
 Three rules behind that table:
 
-- **The states differ by SHAPE, not only by colour** — struck through, empty, breathing, thickened,
-  plain. Colour alone would fail a colour-blind user and would vanish entirely under a macOS
+- **The states differ by SHAPE, not only by colour** — struck through, empty glass, a turning gap,
+  heavier bars, plain. Colour alone would fail a colour-blind user and would vanish entirely under a macOS
   template image. **The one exception is working-vs-waiting**, blue against amber: the pair that
   survives the common colour-vision deficiencies best. Waiting-vs-broken was the second exception
   and was the weaker of the two, which is why it stopped being one — see
@@ -312,15 +313,18 @@ about a PNG; one geometry gives a single source of truth and lets the states be 
 every state paints something, that no two render identically, that the badge does not count,
 that the mark never changes size, and that the buffer carries no wasted margin.
 
-**The buffer is 36×36, cropped to the ink on both axes** — set by the platform, not by taste.
-macOS scales the tray image to **18 points tall** whatever the buffer contains, so:
+**The mark is drawn on an 18×18 PIXEL GRID and the buffer ships at 36×36** — set by the platform,
+not by taste. macOS pins the tray image to **18 points tall** whatever the buffer contains, so:
 
-- **36 is 18 points at 2×, and that is what makes the icon sharp.** `tray-icon` pins the image with
-  `nsimage.setSize(18)`, which is a size in POINTS; on a retina screen AppKit has 36 physical pixels
-  to fill. A buffer smaller than that gets enlarged and interpolated — at 26 the mark was blown up
-  1.38× and read soft in the bar, which is how the problem was found. At 36 one buffer pixel lands
-  on one screen pixel, and a 1× screen halves it exactly. Anything larger is thrown away twice over:
-  scaled down for retina and further for 1×.
+- **On a 1× screen 18 points are 18 PIXELS — the whole icon.** That is the number the geometry is
+  written in, and writing it in fractions of a unit square is what made the icon look blurred: every
+  edge landed part-way across a pixel, macOS filled the difference with grey, and three bars whose
+  gaps came out under a pixel merged into a smudge. On the grid the gaps are a pixel of daylight
+  each. The glass leaves about 13 px inside itself, which is the entire budget the trace has.
+- **36 is that grid at 2×, and it is the only buffer that suits both screens.** A retina screen gets
+  one buffer pixel per screen pixel; a 1× screen halves it exactly, so whole-pixel edges stay whole.
+  A buffer of 26 was tried first and was worse on both: enlarged 1.38× on retina, and divided by an
+  awkward factor on 1×.
 - **Height is the mark's entire size budget**, and every empty row spends it. A square buffer left
   the mark filling 55% of the height — drawn at ~10 pt in an 18 pt slot, visibly lighter than
   every neighbouring icon, which is what looking at a real menu bar showed.
@@ -330,7 +334,7 @@ macOS scales the tray image to **18 points tall** whatever the buffer contains, 
   that is **square** — 36×36, badge and slash included, because both are placed inside the ring
   rather than beside it.
 
-Two consequences worth knowing before touching `GLASS_R`. The crop constants
+Two consequences worth knowing before touching the geometry. The crop constants
 (`COL_LEFT`/`COLS`/`BAND_TOP`/`BAND`) are DERIVED from those proportions and have to be
 recomputed with them, or the mark grows transparent margins that make it both smaller and wider.
 And the slash is expressed as a fraction of the glass rather than as fixed points, for a

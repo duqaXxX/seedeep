@@ -4,6 +4,27 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray mark is drawn on a pixel grid now, and it is the reason it stopped looking blurred.** The
+screen it was judged on is 1×, so 18 points are **18 pixels for the whole icon** — the glass leaves
+about 13 inside itself, and three bars with their gaps want more than that. Written in fractions of
+a unit square, every edge fell part-way across a pixel and macOS filled the difference with grey:
+the gaps came out under a pixel and the bars merged into a smudge. `icon.rs` is now expressed in
+whole pixels of an 18×18 grid — glass 2 px, bars 2 px, rows 4 px apart, square ends instead of
+round — and the buffer still ships at 36 so retina gets 1:1 and 1× halves it exactly.
+
+**The motion moved to the glass**, on the maintainer's call: a gap that runs round the ring, a turn
+every two seconds. Every earlier version of this icon animated its middle and left the outline
+alone, but the bars are the smallest thing the lens has and moving them shifted about 4 px of ink —
+invisible at this size. That reversal cost one test its shape:
+`the_mark_is_the_same_size_in_every_state` now measures the UNION of the turn rather than each
+frame, since the frames where the gap passes the left of the ring legitimately leave those columns
+empty.
+
+Waiting draws its bars **heavier as well as longer** — 3 px instead of 2. Longer alone left only 7%
+of the ink between it and broken, which is the pair a red-green deficiency reads worst; the two are
+now about a fifth apart. The browser icons are untouched: the logo keeps its own proportions, and
+this is an optical size, the same way the 16 px ICO already is.
+
 ## 0.22.1 (2026-08-13)
 
 **The tray icon was soft, and the cause was its buffer rather than its drawing.** `tray-icon` pins
