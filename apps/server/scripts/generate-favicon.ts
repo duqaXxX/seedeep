@@ -5,9 +5,16 @@
  * No external dependencies — ICO is written as a raw BMP-in-ICO binary.
  *
  * The mark is a LENS WITH NO HANDLE: a thick ring of glass with a trace inside it — three spans
- * stepping to the right, the shape the Trace tab draws. It is described here in the same unit
- * square the tray's Rust renderer uses (`apps/tray/src-tauri/src/icon.rs`), from constants with
- * the same names and values, so the two surfaces cannot drift apart by eye.
+ * stepping to the right, the shape the Trace tab draws.
+ *
+ * **This file owns the LOGO's proportions, and the tray no longer shares them.** The two were once
+ * written from constants with the same names and values; `apps/tray/src-tauri/src/icon.rs` is now
+ * expressed in whole pixels of an 18×18 grid instead, because a menu-bar icon is 18 POINTS tall and
+ * on a 1× screen that is eighteen pixels for the whole mark — at that size a stroke measured as a
+ * fraction of a unit square lands part-way across a pixel and greys out. Same drawing, three sizes
+ * with proportions of their own: the logo here, the tray on its grid, and the 16 px ICO below.
+ * Changing one is not a reason to change the others; changing what the mark IS means changing all
+ * three.
  *
  * The 16×16 ICO is RASTERISED from that geometry rather than hand-plotted on a grid — with an
  * optical size of its own, see `isInkSmall`. A literal pixel grid, which is what this file used to
@@ -24,7 +31,6 @@ const BG = '#0b0d12';
 const INK = '#7dd3fc';
 
 // ─── the mark, in the unit square ────────────────────────────────────────────
-// Mirrors icon.rs: GLASS_R / GLASS_STROKE / SPANS / SPAN_H.
 
 const GLASS_R = 0.37;
 const GLASS_STROKE = 0.075;
