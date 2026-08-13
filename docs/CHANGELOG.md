@@ -4,6 +4,18 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray icon was soft, and the cause was its buffer rather than its drawing.** `tray-icon` pins
+the image with `nsimage.setSize(18)` — a size in POINTS — so on a retina screen AppKit has 36
+physical pixels to fill and the 26-pixel buffer was being enlarged 1.38× and interpolated. Every
+stroke arrived blurred, which no amount of redrawing could have fixed. The buffer is now 36×36: one
+buffer pixel per screen pixel on retina, an exact halving on a 1× screen. It costs 24 × 5.2 KB of
+rasterised frames instead of 24 × 2.7 KB.
+
+With the pixels landing true, the strokes were also taken up from 0.075 to 0.095, and the trace's
+rows spread wider to keep waiting's thickened bars from welding together. **The browser mark keeps
+0.075 and is not meant to match**: 18 points in a menu bar is an optical size, exactly as the 16 px
+ICO already is.
+
 ## 0.22.0 (2026-08-13)
 
 **The mark is a lens, not an eye.** The eye was drawn for the name — seedeep, *see* — and said the

@@ -30,11 +30,17 @@ pub const TRAY_ID: &str = "seedeep";
 /// buffer around a mark wider than tall left the old eye filling 55% of the height — drawn at
 /// ~10 pt in an 18 pt slot, visibly lighter than every neighbouring icon.
 ///
-/// The lens is a circle, so the buffer is SQUARE — the first version of this icon that is, and the
-/// smallest it has been: 26×26 against the eye's 36×26 and the print's 25×26. Both numbers are
-/// DERIVED from the geometry below — see `COL_LEFT`.
-const W: u32 = 26;
-const H: u32 = 26;
+/// The lens is a circle, so the buffer is SQUARE — the first version of this icon that is.
+///
+/// **36, not 26, and this is the number that decides whether the icon looks sharp.** `tray-icon`
+/// pins the image to 18 POINTS tall (`nsimage.setSize`, macos/mod.rs), which on a retina screen is
+/// 36 physical pixels. A buffer smaller than that is ENLARGED by AppKit and every stroke arrives
+/// interpolated: at 26 the mark was blown up 1.38x and read soft in the bar, which is exactly what
+/// it was reported as. At 36 one buffer pixel lands on one screen pixel, and on a 1x screen the
+/// halving back to 18 is exact. The cost is the rasterised spin — 24 x 5.2 KB instead of
+/// 24 x 2.7 KB, which is nothing against work that would otherwise never stop.
+const W: u32 = 36;
+const H: u32 = 36;
 
 /// The mark is designed in the unit square; these map the buffer onto the slice of that square
 /// which carries ink, so only the framing moved. The window has to hold every state at once — the
@@ -55,13 +61,15 @@ const SS: u32 = 4;
 /// The glass: one thick ring, drawn in every state and never animated. It is this mark's outline,
 /// which is what `the_mark_is_the_same_size_in_every_state` measures.
 ///
-/// Drawn at exactly the weight of a span, which is the maintainer's call made on four renders at
-/// 18 pt. The ring started half again as heavy as the trace it sits over — a mismatch with no
-/// reason behind it — and the two ways to settle it are to meet in the middle or to bring the ring
-/// down to the bars. This is the second: a lighter mark, at the cost of some of the ink that
-/// keeps a lens from reading as a plain thin circle.
+/// Drawn at exactly the weight of a span — the ring had been half again as heavy as the trace it
+/// sits over, a mismatch with no reason behind it.
+///
+/// **Heavier than the browser mark's, deliberately.** `generate-favicon.ts` draws the same geometry
+/// at 0.075, and the two are not meant to match here: an icon 18 pt tall in a menu bar is an
+/// optical size, the same way the 16 px ICO is, and thin strokes are the first thing to dissolve at
+/// it. Both weights were rendered at 36 px before this one was chosen.
 const GLASS_R: f64 = 0.37;
-const GLASS_STROKE: f64 = 0.075;
+const GLASS_STROKE: f64 = 0.095;
 /// Inside the glass: where the trace is drawn.
 const INNER_R: f64 = GLASS_R - GLASS_STROKE;
 
@@ -73,12 +81,15 @@ const INNER_R: f64 = GLASS_R - GLASS_STROKE;
 /// half done, which is what a nested span looks like on a real trace.
 ///
 /// How far they run from the glass is a LOOK, and it was picked by rendering three clearances: the
-/// bars first reached to within 0.4 px of the ring at 18 pt, which reads as crowding rather than as
-/// a trace. These leave about 1.7 px.
+/// bars first reached to within 0.4 px of the ring, which reads as crowding rather than as a trace.
+///
+/// The rows sit wider apart than the browser mark's for the same reason the strokes are heavier: at
+/// this weight, waiting's thickened bars would otherwise have a quarter of a pixel between them and
+/// would weld into a block.
 const SPANS: [(f64, f64, f64); 3] = [
-    (0.34, 0.50, 0.38),
+    (0.34, 0.50, 0.36),
     (0.40, 0.58, 0.50),
-    (0.45, 0.63, 0.62),
+    (0.45, 0.63, 0.64),
 ];
 /// How thick a span is drawn, and how thick it gets when a session is waiting.
 ///
@@ -86,8 +97,8 @@ const SPANS: [(f64, f64, f64); 3] = [
 /// nowhere to add a mark that is not already spoken for — so what changes is the trace's mass:
 /// the same three spans, thicker. At 18 pt that is the difference between a third of the circle
 /// inked and most of it.
-const SPAN_H: f64 = 0.075;
-const SPAN_H_FULL: f64 = 0.095;
+const SPAN_H: f64 = 0.095;
+const SPAN_H_FULL: f64 = 0.12;
 
 /// Transparent gap around the slash. Without it the slash merges into the arcs it crosses at
 /// 18 pt and the icon turns into a blob.
