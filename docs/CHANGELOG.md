@@ -4,6 +4,30 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Closing the panel from the menu-bar icon was dropping the REAL banners too**, and nothing had ever
+noticed. It hid the window and stopped there, which for an `Accessory` app — no other window to fall
+back to — leaves it the ACTIVE app with nothing on screen, the one state macOS draws no banner for.
+So after opening and dismissing the panel from the icon, a session stopping on a question announced
+itself to nobody until the user happened to click on something else. Dismissing by clicking
+elsewhere never had the problem: that click is itself the activation ending. Both gestures now leave
+the same state. Found while fixing the test notification below — same rule, other gesture, and the
+one nobody was looking for.
+
+**The test notification needed the app to stop being ACTIVE, not just to put its window away.** The
+fix in 0.23.0 hid the popover and posted; the popover went away and the banner still landed in
+Notification Center without ever being drawn, while real banners on the same machine and the same
+build kept appearing. The missing half: an `Accessory` app owns no other window to fall back to, so
+hiding its only one leaves it the frontmost app with nothing on screen — and frontmost is the state
+macOS refuses to draw a banner for. `test_notification` now hides the APP after hiding the panel.
+
+**`NSApplication.deactivate` was tried first and does nothing here**, which is worth recording
+because it reads like the exact intent. Sampled on a clock, `isActive` was still `true` at +0.3 s,
++1 s and +3 s after the call: with no other window of ours to fall back to, nothing takes the
+activation and the request has nowhere to hand it. `NSApp.hide:` hands it to the next app in line and
+`isActive` is `false` by +0.3 s — the same measurement `NOTIFY_SETTLE`'s 400 ms now comes from. The
+cost is the HIDDEN state, so the menu-bar click unhides the app before showing the panel; a window of
+a hidden app reports itself invisible, so the toggle still takes the branch that opens it.
+
 ## 0.23.0 (2026-08-13)
 
 **The tray's test notification sent a banner macOS was never going to draw.** Every real banner
