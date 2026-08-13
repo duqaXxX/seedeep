@@ -4,6 +4,17 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**One number wore two names on the same page.** The session banner said `33 calls`, the Session
+card's footer said `33 API calls` about the same field, a turn's scope said `5 API`, and the Cards
+drawer said `4 calls` about something else entirely — how many TOOL calls named that card. Nothing
+on screen said which was which, and nothing said what the number leaves out. Every surface that
+counts `apiCalls` now says **`API calls`** (banner, Compare row and its hover), the Cards drawer says
+**`tool calls`**, and the banner's group carries a `title` glossing each count in the order it
+appears — `rounds of work · model calls on the main thread, subagents excluded · tool uses`. The
+gloss is built alongside the parts, so a count that is absent cannot leave the hover describing it.
+The Compare row deliberately gets no tooltip of its own: that row's hover exists to show the text an
+ellipsis cut off, and a span-level title would take it away exactly where the row is widest.
+
 ## 0.23.1 (2026-08-14)
 
 **Closing the panel from the menu-bar icon was dropping the REAL banners too**, and nothing had ever

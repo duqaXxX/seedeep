@@ -1833,7 +1833,7 @@ The window's totals are still in the response and still used — for the model l
 line and the remainder's share. A row's bar is **two facts in one object** — its LENGTH is the
 session's weight, its SEGMENTS are the model mix — so "how heavy" and "why" need no second column.
 A row is **three STACKED lines**: the prompt, then every chip (project · main model · when it last
-ran · calls · complete tokens · subagent share · a `▲N vs unweighted` chip when the weighting moved
+ran · API calls · complete tokens · subagent share · a `▲N vs unweighted` chip when the weighting moved
 it by 3 places or more), then the **bar, full width**, with the weight at its right end. Each line is
 clipped with an ellipsis, never wrapped — a row that wraps is taller than its neighbours, and an
 uneven leaderboard reads as if the tall rows meant something — with the full text on hover.

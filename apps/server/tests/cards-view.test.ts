@@ -101,5 +101,6 @@ test('the drawer lists every card, and shows how many times each was touched', (
   const list = cardsList(cards);
   assert.equal(findByClass(list, 'crddrow').length, 2);
   const counts = findByClass(list, 'crdn').map((n: any) => textOf(n));
-  assert.deepEqual(counts, ['3 calls'], 'the count is spelled out, and a single touch needs none');
+  // `tool calls`, not `calls`: this is the one count on the page that is not an API call.
+  assert.deepEqual(counts, ['3 tool calls'], 'the count is spelled out, and a single touch needs none');
 });
