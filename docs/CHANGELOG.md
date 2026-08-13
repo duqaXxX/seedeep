@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.22.2 (2026-08-13)
+
 **The tray mark is drawn on a pixel grid now, and it is the reason it stopped looking blurred.** The
 screen it was judged on is 1×, so 18 points are **18 pixels for the whole icon** — the glass leaves
 about 13 inside itself, and three bars with their gaps want more than that. Written in fractions of
