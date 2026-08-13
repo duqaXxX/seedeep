@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.23.0 (2026-08-13)
+
 **The tray's test notification sent a banner macOS was never going to draw.** Every real banner
 arrived — a session stopping on a question, a call that failed — and the one the button posts never
 did, which is the shape that made it look like a broken command. It was not: macOS refuses to
