@@ -177,10 +177,19 @@ test('a test notification can be sent, and the caveat is on the surface', () => 
   assert.match(all(node), /the only proof/);
 });
 
-// One slot, two tones: a receipt and a failure must not look alike, or "Sent." and "could not be
+// The click makes this very screen disappear — macOS draws no banner for the app in front, so the
+// test cannot work with the panel up. Unannounced, that reads as a popover that crashed; and it is
+// the surface's job to say it, because after the click there is no surface left to say anything.
+test('the surface warns that the panel closes as it sends', () => {
+  const { node } = mount(REMOTE);
+
+  assert.match(all(node), /panel closes as it sends/);
+});
+
+// One slot, two tones: a message and a failure must not look alike, or a receipt and "could not be
 // saved" would read the same at a glance.
 test('a receipt and a failure are told apart', () => {
-  const sent = mount(REMOTE, { text: 'Sent.' });
+  const sent = mount(REMOTE, { text: 'Done.' });
   const failed = mount(REMOTE, { text: 'Could not be saved', bad: true });
 
   assert.ok(find(sent.node, 'set-said').length, 'a receipt is an ordinary line');
@@ -192,7 +201,7 @@ test('a receipt and a failure are told apart', () => {
 // Above everything, not under the control that produced it: this surface is taller than the popover
 // and every render starts it at the top, so a message at the end is one nobody sees.
 test('a message is the first thing on the surface', () => {
-  const { node } = mount(REMOTE, { text: 'Sent.' });
+  const { node } = mount(REMOTE, { text: 'Done.' });
   const main = find(node, 'set-main')[0] as { children: Array<{ className: string } | undefined> };
 
   assert.equal(main.children[0]?.className, 'set-said');
