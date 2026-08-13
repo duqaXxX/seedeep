@@ -383,6 +383,15 @@ it hangs off the edge of the screen.
 It also closes when it loses focus. A window with no title bar has no close button, so clicking
 anywhere else *is* the dismissal — the way a menu behaves.
 
+**Both dismissals end the app's ACTIVATION, and the one from the icon has to do it by hand.**
+Clicking elsewhere ends it by definition — the click activated something else. Clicking the icon
+does not: an `Accessory` app owns no other window to fall back to, so hiding the popover leaves it
+the active app with nothing on screen, and macOS draws no banner for the active app
+([Notifications](#notifications)). Dismissing from the icon therefore hides the APP, not only the
+window. Until it did (2026-08-13), the tray sat in that state for as long as the user did not click
+on something else — and every REAL banner raised meanwhile, a session stopping on a question
+included, was dropped in silence. The next click on the icon unhides it before showing the panel.
+
 Right-click opens a one-item menu: **Quit seedeep**. That is not decoration. The app has no Dock tile
 and no app-switcher entry (macOS `ActivationPolicy::Accessory`, which is also what stops it
 stealing focus at launch), so without that menu it could not be quit except from Activity
@@ -1422,9 +1431,28 @@ tray is frontmost, because the popover takes focus when it opens. So the button 
 macOS was never going to draw, while every real one kept arriving: those are posted while the user
 is somewhere else. The delegate callback Apple documents as the override is not implemented by
 `mac-notification-sys`, so there is nothing of ours to answer YES with — the tray has to stop being
-frontmost instead. `test_notification` therefore hides the panel, waits out `NOTIFY_SETTLE` (the
-handover is the window server's and lands on a later turn of the run loop, so posting in the same
-breath posts while the rule still applies), and only then sends.
+frontmost instead. `test_notification` therefore hides the panel, **hides the app**, waits out
+`NOTIFY_SETTLE`, and only then sends.
+
+**Hiding the WINDOW does not do it, and neither does asking to deactivate.** Both were shipped and
+both failed, which is why the mechanism is written down here with what was measured rather than with
+what it reads like. An `Accessory` app owns no other window to fall back to, so hiding its only one
+leaves it the ACTIVE app with nothing on screen — the state that matters is activation, not
+visibility. `NSApplication.deactivate` says exactly that intent and does nothing: sampled on a clock
+(2026-08-13), `isActive` was still `true` at +0.3 s, +1 s and +3 s. Nothing was there to take the
+activation, so the request had nowhere to hand it. `NSApp.hide:` — Tauri's `AppHandle::hide` — hands
+it to the next app in line, and `isActive` is `false` by +0.3 s. That measurement is also where
+`NOTIFY_SETTLE`'s 400 ms comes from.
+
+**Its cost is the HIDDEN state, and `toggle_panel` is what pays it**: every window of a hidden app
+stays down until something unhides it, so the click after a test would otherwise open nothing. It
+calls `AppHandle::show` before showing the window, which is harmless in every other case. The branch
+above it stays correct on its own: a window of a hidden app reports `is_visible() == false` (measured
+in the same run), so the click takes the path that opens the panel rather than the one that dismisses
+it. Whether `show` also ACTIVATES is left unstated here and in the code, because it cannot be
+settled from the documentation — `AppHandle::show` is `NSApplication.unhide:`, whose Apple page says
+"makes the receiver active" in the abstract and "invokes `unhideWithoutActivation`" in the
+discussion. Nothing depends on it: `set_focus` decides the activation on the next line.
 
 **There is no receipt, and there must not be**: the surface that would carry it is the one being put
 away. The banner IS the answer — the same rule the stop follows, where the screen that comes next is

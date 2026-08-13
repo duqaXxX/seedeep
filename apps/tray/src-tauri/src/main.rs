@@ -88,10 +88,14 @@ const PANEL_MIN_H: f64 = 90.0;
 /// that callback is the only way to override it. `mac-notification-sys` does not implement it, so
 /// there is nothing of ours to answer YES with: the tray has to stop being frontmost instead.
 ///
-/// Hiding the popover is what does that, and the activation it hands back is the window server's to
-/// perform — it lands on a later turn of the run loop than the click that asked for it. Posting in
-/// the same breath posts while the rule still applies, which is the whole bug. Generous on purpose:
-/// nobody is waiting on a banner they asked to see with the panel out of the way.
+/// Hiding the APP is what does that, and the handover is AppKit's — it lands on a later turn of the
+/// run loop than the click that asked for it. Posting in the same breath posts while the rule still
+/// applies, which is the whole bug.
+///
+/// Measured, not chosen (2026-08-13, `NSApplication.isActive` sampled on a clock after the hide):
+/// still `true` at the instant of the call, `false` by +0.3 s and every sample after. 400 ms is that
+/// number with room, and nobody is waiting on a banner they asked to see with the panel out of the
+/// way.
 const NOTIFY_SETTLE: Duration = Duration::from_millis(400);
 
 /// The height the popover should take to show `content`, given where its top edge is and how much
@@ -149,6 +153,17 @@ fn toggle_panel(app: &AppHandle, rect: Rect) {
     let Some(win) = app.get_webview_window(PANEL) else { return };
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
+        // The app goes with the window, for the reason `test_notification` measures: hiding the only
+        // window of an `Accessory` app leaves it ACTIVE with nothing on screen, and macOS draws no
+        // banner for the active app. Dismissing from the icon would otherwise put the tray in a state
+        // where the REAL banners are dropped too — a session stopping on a question, announced to
+        // nobody, until the user happened to click on something else.
+        //
+        // It also makes the two dismissals agree. Losing focus (`on_window_event`) already ends the
+        // activation, because ending it is what the user just did by clicking elsewhere; this one had
+        // no such effect, so the same gesture left two different states behind.
+        #[cfg(target_os = "macos")]
+        let _ = app.hide();
         set_panel_open(app, false);
         return;
     }
@@ -179,6 +194,18 @@ fn toggle_panel(app: &AppHandle, rect: Rect) {
         };
         let _ = win.set_position(PhysicalPosition::new(x, anchor.y + icon.height));
     }
+    // Before the window, and harmless in every other case: the test notification hides the whole APP
+    // to stop being frontmost (`test_notification`), and every window of a hidden app stays down
+    // until it is unhidden. Without this the click after a test would open nothing.
+    //
+    // Deliberately says nothing about whether it also ACTIVATES: this is `NSApplication.unhide:`
+    // (`AppHandle::show` → tao 0.35.3), and Apple's own page contradicts itself on that — the
+    // abstract says it "makes the receiver active", the discussion says it invokes
+    // `unhideWithoutActivation`. Nothing here depends on the answer, because `set_focus` decides the
+    // activation two lines down, as it always did. A comment stating the unmeasured half would be
+    // read as a fact about the platform by whoever next wonders if this call is safe elsewhere.
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
     let _ = win.show();
     let _ = win.set_focus();
 }
@@ -398,6 +425,13 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
 /// arrive while the user is somewhere else, so the check has to reproduce that condition rather than
 /// report a delivery the window server dropped on the floor.
 ///
+/// **Hiding the window is not enough, and that was measured** (2026-08-13, on the first fix): the
+/// popover went away and the banner still landed in Notification Center without ever being drawn,
+/// while every real banner on the same machine and the same build appeared. An `Accessory` app owns
+/// no other window to fall back to, so it stays the ACTIVE app with nothing on screen. The state this
+/// is about is activation, not visibility — and hiding the APP is what ends it, for the reason
+/// measured below.
+///
 /// Nothing is returned, and nothing could be: the post happens after this call has already answered,
 /// and `show()` cannot tell delivered from dropped anyway. The banner is the receipt — the same rule
 /// the stop already follows, where the screen that comes next IS the answer.
@@ -409,6 +443,22 @@ fn test_notification(app: AppHandle) {
         // and the poll would keep the open cadence for a panel nobody is looking at.
         set_panel_open(&app, false);
     }
+    // `hide`, which is `NSApp.hide:`, and the one call MEASURED to work (2026-08-13):
+    // `deactivate` — which reads as the exact intent — leaves `isActive` TRUE, sampled at +0.3 s,
+    // +1 s and +3 s. An `Accessory` app owns no other window to fall back to, so nothing takes the
+    // activation from it and the request has nowhere to hand it. `hide` flips it by +0.3 s.
+    //
+    // Its cost is the HIDDEN state, which `toggle_panel` undoes on the next click. The window
+    // reports `is_visible() == false` while the app is hidden (measured in the same run), so the
+    // toggle still takes the branch that opens it rather than the one that dismisses it.
+    #[cfg(target_os = "macos")]
+    let _ = app.hide();
+    // LIMIT: reopening the panel inside the settle re-activates the app, and the post that lands a
+    // moment later is dropped by the same rule this works around — a test that reports nothing, which
+    // is the false negative the button exists to avoid. Nothing cancels it, on purpose: the window is
+    // 400 ms after a click that just closed the panel, so it takes a second click almost on top of
+    // the first, and every alternative (cancelling the post, or deferring it until the panel closes
+    // again) answers a rarer case with a state machine.
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(NOTIFY_SETTLE).await;
         // Discarded like every other send here, and for the reason `poll.rs` gives: `show` returns
