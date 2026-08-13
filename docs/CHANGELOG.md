@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.22.1 (2026-08-13)
+
 **The tray icon was soft, and the cause was its buffer rather than its drawing.** `tray-icon` pins
 the image with `nsimage.setSize(18)` — a size in POINTS — so on a retina screen AppKit has 36
 physical pixels to fill and the 26-pixel buffer was being enlarged 1.38× and interpolated. Every
