@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.22.0 (2026-08-13)
+
 **The mark is a lens, not an eye.** The eye was drawn for the name — seedeep, *see* — and said the
 wrong thing about a tool whose whole argument is that it only ever READS: an eye with a pupil and a
 highlight is the iconography of spyware, and it sat permanently in a menu bar. What replaces it is
