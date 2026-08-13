@@ -140,6 +140,12 @@ function serverSection(
  * arrive — the plugin's permission state is a hardcoded `Granted` on desktop and sending one returns
  * success even when nothing is shown (`docs/tray.md`) — so the only check that exists is to send one
  * and look.
+ *
+ * It also warns that the panel goes away, which it must: macOS draws no banner for the app in front,
+ * so the test has to close this surface to work at all (`test_notification`). A popover vanishing on
+ * a click reads as a glitch unless the button said it would. And the caveat is worth more here than
+ * in the receipt it replaces — read while deciding to click, not after the screen that would have
+ * carried it has already closed.
  */
 function notificationSection(actions: SettingsActions): HTMLElement {
   const node = section('Notifications');
@@ -159,7 +165,7 @@ function notificationSection(actions: SettingsActions): HTMLElement {
     el(
       'p',
       'set-note',
-      'A banner is the only proof — the system can hide them silently. The menu-bar icon is never silenced.',
+      'The panel closes as it sends — in front of you, the tray sees no banner of its own. A banner is the only proof: none means the system is hiding them. The menu-bar icon is never silenced.',
     ),
   );
   return node;

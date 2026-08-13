@@ -466,20 +466,6 @@ async function openSettings(): Promise<void> {
   }
 }
 
-/**
- * Send one notification. The receipt says SENT, never delivered: the platform reports success even
- * when it shows nothing (`docs/tray.md`), so the only proof is the banner the user is looking for.
- */
-async function sendTest(): Promise<void> {
-  try {
-    await invoke('test_notification');
-    note = { text: 'Sent. If no banner appeared, the system is hiding them.' };
-  } catch (e) {
-    note = { text: String(e), bad: true };
-  }
-  show();
-}
-
 const settings: SettingsActions = {
   back: () => {
     view = 'live';
@@ -489,7 +475,13 @@ const settings: SettingsActions = {
   // The same command the connection screen sends, so a server changed from here goes through the
   // same trust and mismatch screens rather than a second, laxer path.
   connect: (url) => void run('connect', { url }, 'Connecting…'),
-  test: () => void sendTest(),
+  // No receipt is drawn, because Rust puts this very panel away before it posts: macOS shows no
+  // banner from the frontmost app, and while the settings are being read that is the tray. The
+  // banner is the answer, and the caveat about a system that hides them is on the surface BEFORE the
+  // click — which is where it is useful, since the screen that would have carried it afterwards is
+  // gone by then. Only the call itself can still fail, and a button that does nothing when clicked
+  // is the panel looking broken, so that one is shown.
+  test: () => void invoke('test_notification').catch((e: unknown) => show(String(e))),
   stop: () => void stopServer(),
 };
 

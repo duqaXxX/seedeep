@@ -4,6 +4,35 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray's test notification sent a banner macOS was never going to draw.** Every real banner
+arrived — a session stopping on a question, a call that failed — and the one the button posts never
+did, which is the shape that made it look like a broken command. It was not: macOS refuses to
+PRESENT a notification posted by the app that is frontmost (Apple's `NSUserNotification.h`, on
+`shouldPresentNotification:`), and clicking that button is the one moment the tray is frontmost —
+the popover takes focus when it opens. The real banners are posted while the user is somewhere
+else, so they were never subject to the rule. The override Apple documents is a delegate callback
+`mac-notification-sys` does not implement, so there was nothing of ours to answer YES with; the
+receipt said "Sent." because `show()` returns `Ok(())` even when nothing is delivered, which is the
+degradation the button was built to expose in the first place.
+
+The test now reproduces the condition a real banner arrives in: `test_notification` puts the
+popover away, waits for the window server to hand activation back, and posts. There is no receipt
+any more — the banner IS the receipt, the same rule the stop already follows — and the caveat about
+a system that hides them moved onto the button's own note, where it is read while deciding to
+click rather than on a screen that has since closed. The note also says the panel will close, since
+a popover that vanishes unannounced reads as a crash.
+
+**`docs/tray.md` was describing a tray that had stopped existing.** The audit came out of the fix
+above and covers everything it touched: the file map listed a `src/settings.rs` that is gone and
+omitted `local.rs` and `update.rs`; the command list named four `read_settings` / `set_notify*`
+commands the app does not register; the config directory was said to hold two files when the tray
+writes one; the notification rules were credited to `Watch` in `poll.rs` two paragraphs after the
+same page said they had moved to the server; and the settings surface was documented with four
+switches it has not carried since they moved to the portal — including a rule about how their
+toggles redraw. `docs/features.md` had two of its own: the tray's switches described as edited from
+the tray, and a finish banner still carrying "the agent's last words", which it has not since the
+body became one line.
+
 **A session you came back to with `--resume` was tracked again only after a browser refresh, and
 the tab was the reason.** When Claude Code exits, its PID file goes and the tab freezes into the
 ended presentation — correct, and confirmed by a second reading (`end-guard.ts`). What was wrong is

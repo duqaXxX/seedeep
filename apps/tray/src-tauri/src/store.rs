@@ -1,15 +1,14 @@
-//! The tray's two files on disk, written so that nothing can read half of one.
+//! The tray's file on disk, written so that nothing can read half of it.
 //!
-//! `connection.json` and `settings.json` are both per-user state in the app's config directory, and
-//! the properties they need are the same — which is why the write lives here once instead of twice.
-//! Two of those properties are not obvious: the mode is set **at creation** rather than after the
-//! bytes are there (one of the files holds a token, which must never exist in a world-readable file
-//! even for an instant), and the file is renamed into place, so a crash mid-write leaves the previous
-//! version rather than a truncated one.
+//! `connection.json` is per-user state in the app's config directory. It shared this module with a
+//! `settings.json` until the notification switches moved to the server's config, and the write stays
+//! a function of its own because the two properties it needs are not obvious: the mode is set **at
+//! creation** rather than after the bytes are there (the file holds a token, which must never exist
+//! in a world-readable file even for an instant), and the file is renamed into place, so a crash
+//! mid-write leaves the previous version rather than a truncated one.
 //!
 //! A file nobody can parse reads as ABSENT. Refusing to start over a file the user cannot edit by
-//! hand would not be a recovery; asking for the URL again, or falling back to the default settings,
-//! is one.
+//! hand would not be a recovery; asking for the URL again is one.
 
 use std::fs;
 use std::io::{self, Write};

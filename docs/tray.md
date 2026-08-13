@@ -44,8 +44,9 @@ apps/tray/
     ├── src/poll.rs        the clock: 1s open / 5s closed, the icon's state, the notification
     ├── src/pin.rs         the rustls verifier that pins one leaf certificate
     ├── src/connection.rs  what is remembered, and how a pasted URL becomes it
-    ├── src/settings.rs    the three notification switches, and where they are remembered
-    ├── src/store.rs       the private, atomic write both files share
+    ├── src/local.rs       the server on THIS machine: finding it, starting it, stopping it
+    ├── src/update.rs      the release banner, and which versions this run has announced
+    ├── src/store.rs       the private, atomic write
     ├── tests/fixtures/    a synthetic certificate, for hashing without a network
     ├── icons/             the BUNDLE's icons (Finder, DMG, installer) — not the tray's
     └── capabilities/      what the webview is allowed to call
@@ -751,9 +752,12 @@ Everything the tray knows arrives through one Rust module and one endpoint. **Th
 fetches**, and that is not a style choice: Tauri's JS HTTP API can only *disable* certificate
 verification (`acceptInvalidCerts`), never pin — and disabling it would void the reason the server
 has TLS at all. So `src/client.rs` owns the client, `src/pin.rs` owns the verifier, and the panel
-reaches all of it through commands: `tick` for a reading, `connect` and `trust` for the two answers
-only a user can give, `open_session` to hand a session to the browser, and `read_settings` /
-`set_notify` / `set_notify_failed` / `set_notify_finished` / `test_notification` for the settings surface.
+reaches all of it through commands: `tick` for a reading, `look_again` to re-run discovery, `connect`
+and `trust` for the two answers only a user can give, `open_session` and `open_portal` to hand a
+session or the portal to the browser, `server_version` / `restart_pending` / `update_view` /
+`start_server` / `stop_server` for what the settings surface shows and does, and `test_notification`
+for the one check that has to leave the app. No command reads or writes a notification switch: those
+are the server's, and the panel that sets them is the portal's ([Notifications](#notifications)).
 
 ### The three cases, and the one that is not obvious
 
@@ -888,12 +892,13 @@ the domain `seedeep.app`. The same string is the macOS bundle ID, so **changing 
 application** to both operating systems: the old install stays alongside the new one and its stored
 connection is abandoned, not migrated. It is an identity, not a setting.
 
-Two files in it — or in `<SEEDEEP_HOME>/tray` when a dev run sets that
-([Running it](#running-it)) — both mode **0600**, both written and read by Rust only:
-`connection.json` (below) — `settings.json` no longer holds the notification switches, which moved
-to the server's own config (see
-[Settings](#settings)). The write is one function, `src/store.rs`: a preference and a token need the
-same atomicity, and a file nobody can parse reads as absent in both cases.
+**One file in it** — or in `<SEEDEEP_HOME>/tray` when a dev run sets that
+([Running it](#running-it)) — mode **0600**, written and read by Rust only: `connection.json`
+(below). It used to be two: `settings.json` held the notification switches until they moved to the
+server's own config ([Notifications](#notifications)), and nothing replaced it, because the only
+other thing the tray remembers — which releases it has announced — is deliberately kept in memory
+for the life of the process. The write is still one function, `src/store.rs`: a token needs
+atomicity, and a file nobody can parse reads as absent.
 
 The connection is:
 
@@ -1148,18 +1153,29 @@ SEEDEEP_TRAY_PROBE_START=1 cargo test -- --ignored --nocapture a_real_server_sta
 
 ## Notifications
 
-**Four triggers, four switches.** A session entering `waiting`, a session whose API call FAILED,
-a session finishing a turn (off unless it is asked for) — and a newer seedeep having been published.
-Nothing else notifies: not a subagent finishing, not a tool error. A tray that notifies about
-everything is a tray you mute. Notifications are sent from Rust, where the digest is
-read; the webview never needs the permission, which is why the notification permission is absent
-from `capabilities/default.json`.
+**Four triggers, four switches — and three of the four are the SERVER's.** A session entering
+`waiting`, a session whose API call FAILED, a session finishing a turn (off unless it is asked for)
+— and a newer seedeep having been published. Nothing else notifies: not a subagent finishing, not a
+tool error. A tray that notifies about everything is a tray you mute.
+
+The first three are decided, worded and switched in the server (`notify-watch.ts`), which announces
+them on its event stream; the tray subscribes and posts what arrives, composing no title and no
+verdict (`stream_notifications` in `client.rs`, posted from `poll.rs`). The fourth is the tray's own,
+because it is about the machine this tray is running on (`update.rs`). Posting is Rust's either way:
+the webview never needs the permission, which is why the notification permission is absent from
+`capabilities/default.json`.
+
+**The switches are edited in the portal's Settings**, under *Tray notifies you when* — not on this
+app's own surface, which carries none (see [Settings](#settings)). They live in
+`notifications.tray` in `~/.seedeep/config.json`, beside a second set governing the webhook channel:
+the same moment can be worth a banner on the machine you are sitting at and not worth a push
+somewhere else, and one shared set cannot say that.
 
 | Trigger | Setting | Default | What the banner says |
 | -- | -- | -- | -- |
 | A session stops on the human (`waiting`, and only the two labels below) | *A session needs you* | **on** | `project — subject` / `Waiting for your approval — Bash` |
 | A session's model call fails (`error` becomes non-null) | *A session fails* | **on** | `project — subject` / `The last API call failed` — or `A subagent's API call failed` |
-| A session that was `busy` becomes `idle`, having called the model at least once | *A session finishes* | **off** | `project — subject` / `Turn finished` |
+| A session that was `busy` becomes `idle`, having called the model at least once | *A session finishes a turn* | **off** | `project — subject` / `Turn finished` |
 | The connected SERVER is behind npm (`standing`, from `/api/update`) | *A new server version is out* | **on** | `seedeep <latest> is available` / `The server is running <its version>.` |
 
 **Why one switch per trigger, and not one reason for one switch.** The events are not the same bargain: a
@@ -1234,10 +1250,10 @@ and telling them what they just did is how a notification earns a mute. The dige
 banners saying opposite things on one moment; and a session that simply LEAVES the digest was closed
 by the user, who does not need to be told.
 
-**It fires on the TRANSITION, never on the state.** `Watch` in `poll.rs` remembers which sessions
-were stopped on the human, and which were at work, last time it could see; it announces only what
-was not there before. Three rules follow, and each of them is a way of not lying about when
-something happened:
+**It fires on the TRANSITION, never on the state.** The watch (`notify-watch.ts`, in the server)
+remembers which sessions were stopped on the human, which were at work and which had broken, last
+time it could see; it announces only what was not there before. Three rules follow, and each of them
+is a way of not lying about when something happened:
 
 - **A turn that never called the model did not finish.** Esc pressed BEFORE the first reply leaves
   nothing in the transcript — no marker, no `interruptedMessageId`, no assistant line — so the turn
@@ -1248,13 +1264,14 @@ something happened:
   sessions: 24 turns of 2526 (1.0%) are the silent shape. The other zero-call turns are local slash
   commands (264, 10.5%), which never make a session look busy, so no finish was ever in flight for
   them.
-- **A session already waiting — or already idle — when the tray connects is not an event.** The
-  first digest after a start, or after a reconnect, SEEDS both sets and announces nothing. Without
-  that, every restart would replay every open prompt as if it had just happened.
+- **A session already waiting — or already idle — when the tray arrives is not an event.** The first
+  digest SEEDS the sets and announces nothing, and the sets are forgotten again the moment the last
+  listener leaves, so whoever subscribes next also starts from a seed. Without that, opening the tray
+  would replay every open prompt as if it had just happened — including one raised half an hour ago.
 - **The sets are per session, not counts.** One prompt answered and another raised in the same
   interval leaves the count at one, and that is exactly the moment worth an interruption.
-- LIMIT: a session that enters a wait, or finishes, during a stretch the tray could not read is
-  **never** announced — the next reading seeds it. The tray does not know when it happened, and the
+- LIMIT: a session that enters a wait, or finishes, during a stretch that could not be read is
+  **never** announced — the next reading seeds it. There is no way to know when it happened, and the
   icon and the panel are what say where it now stands.
 
 **A banner is one title and one line, and never the detail** (decided 2026-08-11). The line names
@@ -1273,23 +1290,16 @@ A finished turn with nothing on record notifies the same as any other — the ev
 becoming yours again, not the text. The title is the session (`project — subject`), because the
 banner already carries the app's name.
 
-**A toggle silences its banner, not the bookkeeping.** With notifications off the transitions are
-still tracked, so turning them back on does not then announce every session that had been waiting all
-along. The menu-bar icon is not covered by either setting: it is peripheral information that
-costs nothing to ignore, and a user who silenced the interruption has not asked to be blinded.
+**A switch silences its banner, not the bookkeeping.** The switches filter the OUTPUT of the watch
+and never its input (`notify-engine.ts`), so with one off the transitions are still tracked and
+turning it back on announces what happens next rather than the backlog. The menu-bar icon is not
+covered by any of them: it is peripheral information that costs nothing to ignore, and a user who
+silenced the interruption has not asked to be blinded.
 
-**None of the above is decided HERE any more.** The rules on this page are still the rules — they
-just live in the server (`notify-watch.ts`, `notify-engine.ts`), which already held the state and
-the words. The tray subscribes to `/api/stream` and shows the `notification` events it receives; it
-composes no title, no body, and no verdict about what counts as an event. Two implementations of one
-rule were free to diverge, which is how a phone and a menu bar end up disagreeing about one session.
-
-**The four switches live in the server's config**, under `notifications.tray` in
-`~/.seedeep/config.json`, alongside a second set for the webhook channel. Moving one is therefore a
-request that can fail: the toggle draws what the server answered, not what was clicked, and a
-failure leaves it where it was under **`Not saved — seedeep is not running`** — the same words the
-panel already uses for a server that is not there. The webhook's own set is edited from the portal,
-not from here: the tray's panel governs the tray.
+**Why none of it is decided here.** The rules above are the tray's rules and it obeys every one of
+them, but it implements none: two implementations of one rule are free to diverge, which is how a
+phone and a menu bar end up disagreeing about one session. The server already held the state and the
+words, so it kept them.
 
 **Verified end to end from the bundled app** (2026-07-30, macOS 26.5.2, unsigned `.app`), because
 `docs/tray.md`'s own rule says a dev run cannot confirm this feature. A stub digest was flipped from
@@ -1298,8 +1308,8 @@ holds the record: `titl` = `atlas — add a retry to the uploader`, `body` = `Wa
 — Bash` (the command followed it on a second line until 2026-08-11, when the body became one line —
 what that run PROVED, a single record per transition, is unaffected). **One** record across five
 consecutive waiting readings, which is the
-transition rule proven rather than argued. Repeated with `settings.json` at `notify: false`: the same
-flip, no record at all.
+transition rule proven rather than argued. Repeated with the switch off: the same flip, no record at
+all — that run flipped it in the tray's own `settings.json`, which is where it lived at the time.
 
 ### What an unsigned build can actually deliver
 
@@ -1342,7 +1352,9 @@ used, or break it and leave the app with two competing surfaces.
 DEFAULT was chosen — a design rationale, which is what this document is for. Measured at the real
 392×560 (2026-08-05): 991px of content in a 514px viewport, so two of the four switches and the
 whole About section sat below the fold, and "the server is behind" was ~990px down. Cut to labels
-only, the same view is 606px and effectively fits. Two sentences survived the cut because they
+only, the same view is 606px and effectively fits. The switches themselves left later, for the
+server's own panel, and what stands here now is one line saying where they are. Two sentences
+survived the cut because they
 prevent a MISREADING rather than justify a default — the menu-bar icon is never silenced by a
 toggle, and quitting the tray does not stop the server — and one because it is the only honest thing
 that can be said about delivery: a banner is the only proof. The interruption rule stays OFF the
@@ -1356,8 +1368,7 @@ Five things, which is the whole surface:
 | -- | -- |
 | **The server** | Its address, and what identifies it: the pinned certificate whole, all 32 bytes, through the same renderer the trust screen uses |
 | **One field** | The URL the portal's Settings → Remote access copies — the same `connect` command as the connection screen, so a server changed from here goes through the same trust and mismatch screens |
-| **Four notification switches** | Under the heading *Notify me when*, which each row completes: *A session needs you* (on), *A session fails* (on), *A session finishes* (off), *A new server version is out* (on) — in that order: the app's own urgency, then the one switch that is not about a session — see [Notifications](#notifications) |
-| **A test notification** | One banner, on demand |
+| **Notifications** | No switch: one line saying they are configured in seedeep's settings, in the browser — the server owns them, and two places to answer one question is one place too many (see [Notifications](#notifications)). Under it, a test banner on demand: the panel closes as it sends, because macOS draws nothing for the app in front |
 | **Stop seedeep** | Only when the server is on this machine and Rust can name exactly one process for it — see [A stop is aimed at the connection](#a-stop-is-aimed-at-the-connection) |
 | **About** | Both builds — `seedeep tray <version>` from `getVersion()`, and `seedeep server <version>` from `GET /api/config`, read when this view opens and never on the poll. Whichever is behind npm carries `— <latest> available` **on its own line**, so which install needs updating is never left to the reader; nothing is added when neither is |
 
@@ -1391,16 +1402,35 @@ Rules that are not preferences:
   or "plain HTTP, so there is nothing to pin", or — for `http://127.0.0.1:44842` — "the tray found
   this one by itself". An empty space where a fingerprint would be reads as *not checked yet* rather
   than as *nothing to check*.
-- **A toggle draws what came back from the app, never what the click intended.** Each command answers
-  with the WHOLE settings, so neither switch can be left showing a value the file does not hold; a
-  write that fails leaves the switch where the disk is and says why. It is a `<button role="switch">` rather than a
-  checkbox: `onclick` is this codebase's client idiom and `aria-checked` is a state a test can read.
+- **Nothing on this surface writes a setting**, which is why none of it can be left showing a value
+  the disk does not hold. The four switches were here once, as `<button role="switch">` toggles that
+  drew what the app answered rather than what the click intended; they left for the server's panel,
+  and the rule left with them. What is here now either states a fact (the server, the versions) or
+  performs an act (connect, test, stop) whose answer is the next screen.
 
 **Why a test button exists at all.** There is no way to ASK whether notifications will arrive: the
 plugin's `permission_state()` is a hardcoded `Granted` on desktop (verified in
 tauri-plugin-notification 2.3.3, `desktop.rs`), and `show()` returns `Ok(())` even when nothing is
 delivered. So the honest surfacing of that degradation is the only check that exists — send one and
-look — and the receipt says **Sent**, never *delivered*.
+look.
+
+**The popover closes as it sends, and that is the test, not a courtesy.** macOS does not PRESENT a
+notification posted by the app that is FRONTMOST — Apple says so on `shouldPresentNotification:`
+("the Notification Center has decided not to present your notification, for example when your
+application is front most", `NSUserNotification.h`) — and clicking this button is the one moment the
+tray is frontmost, because the popover takes focus when it opens. So the button posted a banner
+macOS was never going to draw, while every real one kept arriving: those are posted while the user
+is somewhere else. The delegate callback Apple documents as the override is not implemented by
+`mac-notification-sys`, so there is nothing of ours to answer YES with — the tray has to stop being
+frontmost instead. `test_notification` therefore hides the panel, waits out `NOTIFY_SETTLE` (the
+handover is the window server's and lands on a later turn of the run loop, so posting in the same
+breath posts while the rule still applies), and only then sends.
+
+**There is no receipt, and there must not be**: the surface that would carry it is the one being put
+away. The banner IS the answer — the same rule the stop follows, where the screen that comes next is
+the receipt — and the caveat that a system can hide them silently sits on the button's own note,
+read while deciding to click. The note also says the panel will close: a popover that vanishes
+unannounced reads as a crash.
 
 ## Platforms
 
@@ -1564,7 +1594,7 @@ first-run than the DMG rather than a better one.
 
 **What survives an uninstall is the app config dir, on purpose.**
 [Where the connection lives](#where-the-connection-lives) is keyed on the bundle identifier, so a
-reinstall of the same app finds its pinned server and its switches where it left them — the same
+reinstall of the same app finds its pinned server where it left it — the same
 property that carried them through the `productName` rename. On macOS nothing removes it and the
 README names the path. On Windows the NSIS uninstaller draws a **Delete app data** checkbox on its
 confirm page, **created unchecked** — Tauri's `installer.nsi` creates the box and never sends it a

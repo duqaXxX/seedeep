@@ -727,8 +727,8 @@ the thing you can act on is the thing that holds still, and a session whose call
 failed outranks one merely waiting, because an approval resumes the instant you
 answer it and a failed call does not resume at all.
 
-A notification when either happens, and optionally one when a session finishes,
-with the agent's last words. A click opens a small panel of your live sessions
+A notification when either happens, and optionally one when a session finishes —
+one title and one line, never the detail. A click opens a small panel of your live sessions
 ordered by urgency — **Broken**, *Needs you*, *Working*, *Idle*: what each one is
 asking for or what failed, what it says it is doing, its newest call, how full its
 context is. Only the sessions a person is actually in — headless `claude -p` runs
@@ -821,8 +821,10 @@ row it belongs to can never describe one event in two ways.
 
 Each **delivery channel has its own switches**. The same moment can be worth a
 banner on the machine you are sitting at and not worth a push somewhere else, and
-one shared set cannot say that. The tray's four are edited from its own panel; the
-webhook's from the portal's Settings.
+one shared set cannot say that. Both sets are edited from the portal's Settings —
+the tray's four under *Tray notifies you when*, the webhook's three beside its
+URL — because the server is what holds them, and a second place to answer one
+question is one place too many.
 
 The **webhook** is off until it has a URL, and it is the only thing in seedeep
 that sends session data off the machine (see `install.md`). It POSTs to any

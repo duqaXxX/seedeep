@@ -8,6 +8,7 @@ mod store;
 mod update;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use client::{Conn, Status};
 use local::LocalServer;
@@ -54,7 +55,7 @@ const LOCATE_PROBE: &str = "locate-probe";
 /// The ONE variable that decides which seedeep this process belongs to.
 ///
 /// Set, it is a development world: the server keeps its state there (`bun run dev`) and the tray
-/// keeps `connection.json` and `settings.json` in `<it>/tray`. Unset, it is the installed world —
+/// keeps `connection.json` in `<it>/tray`. Unset, it is the installed world —
 /// `~/.seedeep` and the app's own config directory.
 ///
 /// One variable and not two, which is what it was. The tray had a `SEEDEEP_TRAY_HOME` of its own,
@@ -79,6 +80,20 @@ const PANEL_MARGIN: f64 = 6.0;
 /// collapse the window to nothing, and a popover with no height cannot be clicked to recover.
 const PANEL_MIN_H: f64 = 90.0;
 
+/// The beat between the popover going away and the test banner being posted.
+///
+/// macOS does not PRESENT a notification posted by the frontmost app — Apple's own
+/// `NSUserNotification.h` says so on `shouldPresentNotification:` ("the Notification Center has
+/// decided not to present your notification, for example when your application is front most"), and
+/// that callback is the only way to override it. `mac-notification-sys` does not implement it, so
+/// there is nothing of ours to answer YES with: the tray has to stop being frontmost instead.
+///
+/// Hiding the popover is what does that, and the activation it hands back is the window server's to
+/// perform — it lands on a later turn of the run loop than the click that asked for it. Posting in
+/// the same breath posts while the rule still applies, which is the whole bug. Generous on purpose:
+/// nobody is waiting on a banner they asked to see with the panel out of the way.
+const NOTIFY_SETTLE: Duration = Duration::from_millis(400);
+
 /// The height the popover should take to show `content`, given where its top edge is and how much
 /// screen there is below it.
 ///
@@ -96,8 +111,8 @@ fn panel_height(content: f64, top: f64, available_bottom: f64) -> f64 {
     content.min(room).max(PANEL_MIN_H)
 }
 
-/// Where the tray keeps `connection.json` and `settings.json`: under {@link SEEDEEP_HOME} when that
-/// is set to something, the app's own config directory otherwise.
+/// Where the tray keeps `connection.json`: under {@link SEEDEEP_HOME} when that is set to something,
+/// the app's own config directory otherwise.
 ///
 /// A `tray` subdirectory rather than the home itself, so one variable names one world and the two
 /// apps inside it do not write over each other's files.
@@ -369,21 +384,43 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
     Ok(fitted)
 }
 
-/// Send one notification now, on purpose.
+/// Put the popover away, then post one notification.
 ///
 /// This is the ONLY honest way to surface the platform's own silence. The plugin's
 /// `permission_state()` is a hardcoded `Granted` on desktop (verified in
 /// tauri-plugin-notification 2.3.3, `desktop.rs`), and `show()` returns `Ok(())` even when nothing
 /// is delivered — so neither can tell the user whether notifications reach them. A banner they look
-/// for can. `Ok` here means "sent", never "seen", and the panel says exactly that.
+/// for can.
+///
+/// **The popover closing is not a courtesy, it is the test.** Clicking this button is the one moment
+/// the tray is the frontmost app — the panel took focus when it opened (`toggle_panel`) — and that
+/// is precisely the case macOS refuses to draw a banner for ({@link NOTIFY_SETTLE}). Real banners
+/// arrive while the user is somewhere else, so the check has to reproduce that condition rather than
+/// report a delivery the window server dropped on the floor.
+///
+/// Nothing is returned, and nothing could be: the post happens after this call has already answered,
+/// and `show()` cannot tell delivered from dropped anyway. The banner is the receipt — the same rule
+/// the stop already follows, where the screen that comes next IS the answer.
 #[tauri::command]
-fn test_notification(app: AppHandle) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title("Notifications are working")
-        .body("This is what a session stopping on a question looks like.")
-        .show()
-        .map_err(|e| format!("The notification could not be sent: {e}"))
+fn test_notification(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(PANEL) {
+        let _ = win.hide();
+        // Not left to the focus-loss handler: hiding a window that is not key raises no focus event,
+        // and the poll would keep the open cadence for a panel nobody is looking at.
+        set_panel_open(&app, false);
+    }
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(NOTIFY_SETTLE).await;
+        // Discarded like every other send here, and for the reason `poll.rs` gives: `show` returns
+        // Ok(()) in the case where nothing is delivered at all. By now there is no surface left to
+        // report on either — the panel is the thing that just went away.
+        let _ = app
+            .notification()
+            .builder()
+            .title("Notifications are working")
+            .body("This is what a session stopping on a question looks like.")
+            .show();
+    });
 }
 
 fn main() {
