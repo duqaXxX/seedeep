@@ -154,7 +154,9 @@ seedeep                   # watch, serve, and open the browser
 [the latest release](../../releases/latest) — macOS arm64/x64, Linux x64/arm64,
 Windows x64 — and run it. **That file is not an installer, it is the program**: it
 carries its own runtime and the whole browser GUI inside, installs nothing, and
-leaves behind only `~/.seedeep/`.
+leaves behind only `~/.seedeep/`. The Linux builds require **glibc** (Debian,
+Ubuntu, Fedora and derivatives) — Alpine and other musl-based distributions are
+not supported.
 
 The **menu-bar tray** is a separate, optional download from the same release: a
 universal `.dmg` for macOS, a `-setup.exe` for Windows. It is a pure client — the
@@ -182,7 +184,7 @@ a person on that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **Started on every release, never used.** CI runs the `.exe` on a Windows runner and checks it serves the GUI; nobody has worked in it | **Started on every release, never used.** Same check on x64 and arm64 runners, and the suite runs on Linux on every push |
+| **Server** — download or npm | Used daily; every claim above was checked here | **Started on every release, never used.** CI runs the `.exe` on a Windows runner and checks it serves the GUI; nobody has worked in it | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
 | **Tray** | Used daily on a real menu bar | **Never run.** The installer is built on every tag and nothing has opened it — a menu-bar app needs a desktop, and CI runners have none | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
 Concretely: on Windows and on Linux **you are the first to use it**. A defect there

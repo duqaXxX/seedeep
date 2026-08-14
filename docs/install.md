@@ -4,10 +4,11 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **Neither the Windows nor the Linux build has ever been run on its own system** —
-> they are built by CI and downloaded by you first. [Which platforms have actually
-> been run](../README.md#which-platforms-have-actually-been-run) says exactly what
-> that covers.
+> **The Windows build has never been run on its own system** — it is built by CI
+> and downloaded by you first. The Linux arm64 build was used on Ubuntu 24 in a VM
+> (2026-08-14); the x64 build has been started but never used in front of a person.
+> [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
+> says exactly what that covers.
 
 ## From npm — Node or Bun
 
