@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.24.0 (2026-08-14)
+
 **No release publishes until every executable in it has actually been STARTED.** All five server
 binaries are cross-compiled on one `ubuntu-latest` runner, so the Windows binary and both Linux ARM
 binaries had never been executed on any machine, ever — the shape of the v0.6.0 failure, five green
