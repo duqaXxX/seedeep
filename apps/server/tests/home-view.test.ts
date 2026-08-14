@@ -156,6 +156,22 @@ test('home-view: the time filter switches window client-side (no refetch)', asyn
   assert.equal(fetches, 1, 'all windows came in one response — no refetch on switch');
 });
 
+// `1 turns across 1 sessions` — and the corpus where it showed is a newcomer's, which is the one
+// audience that has exactly one of each.
+test('home-view: the title counts in the singular when there is one of a thing', async () => {
+  const container = mount();
+  createHomeView(container, {
+    loadRetro: async () => ({ ...retro, sessions: 1, windows: { ...retro.windows, all: win({ turns: 1 }) } }),
+  });
+  await tick();
+  // No `\b` after the noun: textOf concatenates the tree with no separator, so the next card's
+  // text runs straight into it. The doesNotMatch below is what actually pins the singular.
+  assert.match(textOf(container), /1 turn across 1 session/);
+  // Every count-noun pair on the page, not just the title: `spent working`, `verdict split` and
+  // the re-entry line each carried their own copy of the bug.
+  assert.doesNotMatch(textOf(container), /1 turns|1 sessions/);
+});
+
 test('home-view: empty corpus shows the empty state, not broken-looking charts', async () => {
   const container = mount();
   createHomeView(container, {

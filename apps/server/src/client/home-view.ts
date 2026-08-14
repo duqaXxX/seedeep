@@ -88,6 +88,18 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
   return n;
 }
 
+/**
+ * The WORD only — the number is rendered separately, in its own element and its own colour.
+ *
+ * Local rather than shared: the two other spellings of this in the client (`turnsWord` in graph.ts,
+ * `plural` in trace.ts) sit in modules this one has no reason to import, and three lines beat the
+ * dependency. It exists because the title read `1 turns across 1 sessions` — worst on the corpus a
+ * newcomer has, which is exactly one session.
+ */
+function plural(n: number, word: string): string {
+  return n === 1 ? word : `${word}s`;
+}
+
 /** True when the payload is a real Retrospective with at least one finished turn. */
 function hasCorpus(r: Retrospective | null): r is Retrospective {
   return !!r && !!r.windows?.all && r.windows.all.turns > 0 && !!r.baseline?.overall;
@@ -296,7 +308,13 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
     const title = el('div', 'rt-title');
     title.append(
       el('b', undefined, w.turns.toLocaleString()),
-      el('span', undefined, win === 'all' ? ` turns across ${r.sessions.toLocaleString()} sessions` : ' turns'),
+      el(
+        'span',
+        undefined,
+        win === 'all'
+          ? ` ${plural(w.turns, 'turn')} across ${r.sessions.toLocaleString()} ${plural(r.sessions, 'session')}`
+          : ` ${plural(w.turns, 'turn')}`,
+      ),
     );
     const scopeLabel =
       win === 'd7' ? 'last 7 days' : win === 'd30' ? 'last 30 days' : `all-time · ${r.spanDays}d on disk`;
@@ -335,7 +353,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
         `${w.crit.toLocaleString()} of ${w.turns.toLocaleString()}`,
       ),
       kpi('rt-crit', fmt(w.esc.tokens), 'abandoned to Esc', `${w.esc.turns.toLocaleString()} interrupted`),
-      kpi('', dur(w.workMs), 'spent working', `${w.turns.toLocaleString()} turns`),
+      kpi('', dur(w.workMs), 'spent working', `${w.turns.toLocaleString()} ${plural(w.turns, 'turn')}`),
     );
 
     // Hero: turn-size distribution (new tokens; single colour — not a severity)
@@ -386,7 +404,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
       'rt-third-wide',
       'where the waste comes from',
       w.resume.tokens > 0
-        ? `${fmt(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} sessions over 10%`
+        ? `${fmt(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} ${plural(r.sessions, 'session')} over 10%`
         : 'turns flagged',
     );
     const wr = [
@@ -418,7 +436,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
     grid.append(toolsCard);
 
     // Verdict split + footer
-    const verdict = card('rt-verdict', 'verdict split', `${w.turns.toLocaleString()} turns`);
+    const verdict = card('rt-verdict', 'verdict split', `${w.turns.toLocaleString()} ${plural(w.turns, 'turn')}`);
     const good = Math.max(0, w.turns - w.crit - w.warn);
     const bar = el('div', 'rt-rbar');
     const seg2 = (n: number, cls: string) => {

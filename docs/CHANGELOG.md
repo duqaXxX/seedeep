@@ -13,6 +13,13 @@ session that exists without a finished turn gets its own wording and a pointer t
 it is already watchable; a retrospective that never arrived drops the claim about the machine
 entirely, because nothing was read.
 
+**`1 turns across 1 sessions`** — and not only in the title. The count-noun pairs on this page were
+written with a fixed plural, so a corpus of one read wrong in four places at once: the title, the
+`spent working` tile, the `verdict split` card and the re-entry line (`11 of 1 sessions over 10%`).
+Worst exactly for a newcomer, who is the one reader with exactly one of each. A three-line local
+`plural()` now spells all four — local because the two other spellings in the client (`turnsWord` in
+graph.ts, `plural` in trace.ts) live in modules this one has no reason to import.
+
 **Which wording appears comes from the roster, and that is the bug this found.**
 `Retrospective.sessions` counts only sessions that closed a turn (`aggregate()` filters on
 `turns.length > 0`), so a transcript with none is 0 there and 1 in the picker sitting directly above
