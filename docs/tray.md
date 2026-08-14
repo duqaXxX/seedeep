@@ -1537,8 +1537,9 @@ the server rather than the app the user meant. The bundle IDENTIFIER did not cha
 (`app.seedeep.tray`), so the permission already granted, the config directory and the Windows
 uninstall key all survive the rename.
 
-**Publishing is a separate job, and that is what makes it safe to automate.** `needs: [tray, server]`
-will not start it unless EVERY matrix build and the server's own job succeeded, so a Windows failure
+**Publishing is a separate job, and that is what makes it safe to automate.**
+`needs: [tray, server, smoke]` will not start it unless EVERY matrix build, the server's own job and
+the smoke run of all five executables succeeded (`docs/architecture.md`, *Shipping the server*), so a Windows failure
 — or a server that would not compile — leaves a draft rather than putting half a download page in
 front of people; and it runs once, where the build job runs per platform. Publishing from a build
 job instead would put a release on the download page as soon as the FIRST runner finished — one
