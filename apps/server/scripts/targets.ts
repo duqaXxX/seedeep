@@ -23,7 +23,6 @@ export interface Target {
   label: string;
 }
 
-// Windows arm64 is absent deliberately: Bun documents no `bun-windows-arm64` target.
 export const TARGETS: Target[] = [
   {
     bun: 'bun-darwin-arm64',
@@ -64,6 +63,14 @@ export const TARGETS: Target[] = [
     os: 'win32',
     cpu: 'x64',
     label: 'Windows on x86-64',
+  },
+  {
+    bun: 'bun-windows-arm64',
+    asset: 'windows-arm64.exe',
+    npm: 'windows-arm64',
+    os: 'win32',
+    cpu: 'arm64',
+    label: 'Windows on arm64',
   },
 ];
 

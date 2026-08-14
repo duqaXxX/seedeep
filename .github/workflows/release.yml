@@ -66,7 +66,9 @@ jobs:
           under the tray.
 
           **Without a JS runtime**, download the file for your platform (`seedeep-server_…`) — it
-          carries its own runtime and installs nothing. It is a command-line program run from a
+          carries its own runtime and installs nothing. On Windows there are two: `_windows-arm64.exe`
+          on a Snapdragon or any other Windows-on-ARM machine, `_windows-x64.exe` on everything else.
+          It is a command-line program run from a
           terminal, and a downloaded file never arrives executable, so it takes one `chmod` first:
 
           ```sh
@@ -86,17 +88,18 @@ jobs:
           login password. That button is offered for about an hour after the refused attempt, so
           launch the app first and go to Settings second.
 
-          **Windows** — run the `-setup.exe`. SmartScreen shows *"Windows protected your PC"*:
-          choose **More info -> Run anyway**. It installs for the current user, so it never asks for
-          Administrator rights.
+          **Windows** — run the `-setup.exe` for your processor: `_arm64-` on a Snapdragon or any
+          other Windows-on-ARM machine, `_x64-` on everything else. SmartScreen shows *"Windows
+          protected your PC"*: choose **More info -> Run anyway**. It installs for the current user,
+          so it never asks for Administrator rights.
 
           The README has the same steps with more context.'
 
   tray:
     needs: draft
     strategy:
-      # Both platforms are reported even when one fails: a release with half its installers is a
-      # thing to know about in full, not one failure at a time.
+      # Every leg is reported even when one fails: a release with half its installers is a thing to
+      # know about in full, not one failure at a time.
       fail-fast: false
       matrix:
         include:
@@ -109,6 +112,16 @@ jobs:
           # NSIS, not MSI: its default `currentUser` install mode needs no Administrator rights, and
           # a UAC prompt for an unknown publisher is exactly where an unsigned installer loses people.
           - runner: windows-latest
+            targets: ''
+            args: --bundles nsis
+          # NATIVE, not cross-compiled from the x64 runner above - which does carry the ARM64 MSVC
+          # tools, so it could have been. Tauri documents installing those tools on the machine that
+          # builds, never a host-to-arm64 cross-build, and this leg differs from the one above by
+          # its runner alone: no `--target` to pass, nothing to get subtly right. `windows-11-arm`
+          # is GA and free on public repositories (2025-08-07) and its image already carries VS
+          # 2022, Rust and NSIS. What it produces is `…_arm64-setup.exe`: the installer itself is
+          # still x86 under emulation, by Tauri's design, and the app inside it is native arm64.
+          - runner: windows-11-arm
             targets: ''
             args: --bundles nsis
     runs-on: ${{ matrix.runner }}
@@ -194,7 +207,8 @@ jobs:
 
       # Independent of the release, so the artifacts exist whether or not this run published
       # anything - which is what a manual run is for. Named per runner: artifact names are unique
-      # within a run, and both matrix legs reach this step.
+      # within a run, and every matrix leg reaches this step - the two Windows ones included, which
+      # is why the runner and not the OS is what names them.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tray-${{ matrix.runner }}
@@ -229,7 +243,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
 
-  # The server's executables - one per platform, all five cross-compiled from ONE runner, which is
+  # The server's executables - one per platform, all six cross-compiled from ONE runner, which is
   # what `bun build --compile --target=…` buys and the tray cannot have (its matrix exists because
   # Tauri needs each platform's own SDK).
   server:
@@ -257,7 +271,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      # The five executables, attested for the reason the tray's step spells out — and here it also
+      # The six executables, attested for the reason the tray's step spells out — and here it also
       # covers the npm channel, which carries these same files: npm attaches its own provenance to
       # the packages, this attests the binaries inside them.
       - if: github.ref_type == 'tag'
@@ -274,7 +288,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
 
-  # Does what was built actually RUN? All five executables are cross-compiled on the ONE
+  # Does what was built actually RUN? All six executables are cross-compiled on the ONE
   # `ubuntu-latest` runner above, so until this job existed the Windows binary and both Linux ARM
   # binaries had never been EXECUTED on any machine, ever. That is the 0.6.0 failure exactly - five
   # green artifacts, dead at startup everywhere but where they were built - and it was invisible
@@ -292,7 +306,7 @@ jobs:
     needs: server
     strategy:
       # Every platform reports. Which ones start is the entire question, and stopping at the first
-      # failure would answer it for one of five.
+      # failure would answer it for one of six.
       fail-fast: false
       matrix:
         include:
@@ -308,6 +322,12 @@ jobs:
             asset: macos-x64
           - runner: windows-latest
             asset: windows-x64.exe
+          # The machine this job exists for: a Snapdragon laptop runs the arm64 Node from winget,
+          # npm resolves the arm64 package, and nothing else in this workflow ever executes that
+          # binary. `windows-11-arm` is GA and free on public repositories (2025-08-07); it is the
+          # only leg here that would start costing money if this repository went private.
+          - runner: windows-11-arm
+            asset: windows-arm64.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -346,13 +366,13 @@ jobs:
 
       # `shell: bash` on every platform, Windows included: v0.6.0 uploaded no Windows installer
       # because `"$TAG"` in PowerShell is an unassigned variable that expands to nothing. One
-      # script, five platforms, no per-OS dialect to get wrong. What it asserts is in its header.
+      # script, six platforms, no per-OS dialect to get wrong. What it asserts is in its header.
       - shell: bash
         env:
           ASSET: ${{ matrix.asset }}
         run: .github/scripts/smoke-server.sh "bin/seedeep-server_${VERSION}_${ASSET}" "$VERSION"
 
-  # The npm channel: the same five executables, each wrapped in a package npm resolves by `os`/`cpu`,
+  # The npm channel: the same six executables, each wrapped in a package npm resolves by `os`/`cpu`,
   # under one `seedeep` wrapper whose postinstall puts the binary where `bin` already points. Node is
   # needed to INSTALL, never to run. It exists because a binary that arrives through a package
   # manager is not quarantined - macOS sets that flag in the browser that downloads, not in npm - so
@@ -370,9 +390,14 @@ jobs:
     # only be configured on a package that already exists. So every tag builds these packages and
     # publishes none of them until the repository variable `SEEDEEP_NPM_PUBLISH` is set to `true`,
     # which is the moment the account, its 2FA and the trusted publisher are in place.
+    #
+    # That rule applies again to EVERY platform package added after the first release, one at a
+    # time: `seedeep-windows-arm64` is a name nobody owns until it is published by hand, and this
+    # job is not a dependency of `publish` - so a tag that finds it missing still produces a green
+    # release page beside a channel that did not ship.
     if: github.ref_type == 'tag' && vars.SEEDEEP_NPM_PUBLISH == 'true'
     runs-on: ubuntu-latest
-    # Named in the OIDC token, and the six trusted publishers on npmjs.com are configured to demand
+    # Named in the OIDC token, and the seven trusted publishers on npmjs.com are configured to demand
     # exactly this environment - so the two names are one setting written in two places, and a
     # rename here rejects every publish until the registry side is changed to match. It carries no
     # protection rule today: it is a claim to match, not an approval gate. Adding a required
@@ -415,11 +440,26 @@ jobs:
 
       # Platform packages FIRST, and the wrapper last: the wrapper names them at an exact version,
       # and a wrapper on the registry ahead of its binaries is an install that ends in a command
-      # which cannot run.
+      # which cannot run. The glob expands before the literal, so that order is the shell's own and
+      # not a second list to keep in step.
+      #
+      # A version already on the registry is SKIPPED, not retried - which is what makes this step
+      # re-runnable, the property `--clobber` gives the release half of the same tag.
+      # npm is immutable ("once published, a package cannot change"), so a run that died partway -
+      # a dropped connection on a 40 MB tarball, or a package added since whose trusted publisher
+      # nobody configured yet - used to leave the re-run failing on the FIRST package instead of
+      # finishing the remaining ones, with the wrapper still naming binaries at a version nobody
+      # ever published. `npm view` exits 0 only when that exact version is already there.
       - run: |
           set -euo pipefail
-          for dir in dist/npm/seedeep-*; do npm publish "$dir"; done
-          npm publish dist/npm/seedeep
+          for dir in dist/npm/seedeep-* dist/npm/seedeep; do
+            spec=$(node -p "const p = require('./$dir/package.json'); p.name + '@' + p.version")
+            if npm view "$spec" version >/dev/null 2>&1; then
+              echo "$spec is already on the registry"
+              continue
+            fi
+            npm publish "$dir"
+          done
 
   # Flips the draft to published, and is the only step in this repo that puts a binary in front of
   # a stranger. It is a job of its own for two reasons: `needs` will not start it unless EVERY

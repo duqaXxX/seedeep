@@ -55,16 +55,22 @@ test('publishing to npm needs a tag AND a switch', () => {
   const npm = job('npm');
   assert.match(npm, /if: github\.ref_type == 'tag' && vars\.SEEDEEP_NPM_PUBLISH == 'true'/);
   // The wrapper names its binaries at an exact version: on the registry ahead of them, it is an
-  // install that ends in a command which cannot run.
-  const platforms = npm.indexOf('npm publish "$dir"');
-  const wrapper = npm.indexOf('npm publish dist/npm/seedeep\n');
-  assert.ok(platforms !== -1 && wrapper > platforms, 'the wrapper is published after its binaries');
+  // install that ends in a command which cannot run. One `for` list holds the order now — the glob
+  // expands before the literal — so the list itself is what has to be right.
+  assert.equal(
+    npm.match(/for dir in (.+); do/)?.[1],
+    'dist/npm/seedeep-* dist/npm/seedeep',
+    'the wrapper is published after its binaries',
+  );
+  // Re-runnable: a version already there is skipped rather than retried, since npm refuses to
+  // publish over one and a half-finished run would otherwise be unrecoverable.
+  assert.match(npm, /npm view "\$spec" version/);
   // OIDC is the credential. A token in this workflow would mean a long-lived secret in the repo.
   assert.match(npm, /id-token: write/);
   assert.doesNotMatch(npm, /NODE_AUTH_TOKEN|NPM_TOKEN/);
-  // The environment is part of the OIDC claim, and npmjs.com's six trusted publishers are set to
+  // The environment is part of the OIDC claim, and npmjs.com's seven trusted publishers are set to
   // require this exact name. Renaming it here is not a local change: it rejects every publish until
-  // the registry side is edited to match, six packages at a time.
+  // the registry side is edited to match, seven packages at a time.
   assert.match(npm, /\n {4}environment: npm-publish\n/);
 });
 
@@ -112,7 +118,7 @@ test('the release is published only after both halves built', () => {
   assert.match(publish, /gh release edit .*--draft=false/);
 });
 
-// The gate that 0.6.0 was missing: five binaries cross-compiled on one runner, none of them ever
+// The gate that 0.6.0 was missing: six binaries cross-compiled on one runner, none of them ever
 // executed. Both exits from the pipeline wait for it — the release page and the registry — and npm
 // is the one that cannot be taken back.
 test('nothing reaches a stranger until the binaries have been RUN', () => {
@@ -127,6 +133,29 @@ test('the smoke matrix covers every target the server is built for', () => {
   const smoke = job('smoke');
   const tested = [...smoke.matchAll(/asset: (\S+)/g)].map((m) => m[1]).sort();
   assert.deepEqual(tested, TARGETS.map((t) => t.asset).sort());
+});
+
+/**
+ * Which runner builds the tray for which Windows architecture. The tray matrix names runners and
+ * never architectures, so this is the only place the two vocabularies meet — the mapping the test
+ * below needs, and the thing to extend the day a third Windows architecture exists.
+ */
+const WINDOWS_TRAY_RUNNER: Record<string, string> = {
+  x64: 'windows-latest',
+  arm64: 'windows-11-arm',
+};
+
+// The tray follows the server onto a platform, or the machine gets a server it can run beside an
+// installer it cannot: a Snapdragon laptop is exactly that case. Nothing else in the repo states
+// that rule, and the tray matrix cannot be derived from `targets.ts` the way the smoke matrix
+// above is - so it is asserted here, and adding a Windows target without its tray leg fails.
+test('every Windows platform the server ships has a tray installer of its own', () => {
+  const legs = [...job('tray').matchAll(/- runner: (\S+)/g)].map((m) => m[1]);
+  for (const target of TARGETS.filter((t) => t.os === 'win32')) {
+    const runner = WINDOWS_TRAY_RUNNER[target.cpu];
+    assert.ok(runner, `the server ships Windows ${target.cpu} and no runner here builds the tray for it`);
+    assert.ok(legs.includes(runner), `no tray leg runs on ${runner}, so Windows ${target.cpu} gets no installer`);
+  }
 });
 
 // One shell on five platforms. v0.6.0 uploaded no Windows installer because `"$TAG"` in PowerShell

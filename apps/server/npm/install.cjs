@@ -84,9 +84,11 @@ function main() {
   const supported = Object.keys(manifest.optionalDependencies || {});
   const name = platformPackage(process.platform, process.arch);
 
-  // The wrapper's own `os`/`cpu` already refuse most platforms, with npm's own EBADPLATFORM. What
-  // reaches here is the combination those two lists allow as a cross product but seedeep does not
-  // build — Windows on arm64, for which Bun documents no target. Failing is the honest answer: the
+  // The wrapper's own `os`/`cpu` already refuse most platforms, with npm's own EBADPLATFORM, and
+  // every combination those two independent lists admit as a cross product is now a package that
+  // exists — so nothing reaches here today. It stays because the lists are independent: adding a
+  // platform to one of them alone reopens the hole, which is precisely what left Windows on arm64
+  // installable and unrunnable until Bun had a target for it. Failing is the honest answer — the
   // install cannot produce a runnable `seedeep`, and saying so now beats a command that is not one.
   if (!name || !supported.includes(name)) {
     console.error(`seedeep: no build for ${process.platform} ${process.arch}.`);

@@ -14,8 +14,8 @@ changes the endpoint.
 > **State of the code.** The tray is feature-complete and packaged: it finds a server, pins its
 > certificate, polls the digest, shows the three bands, drives its icon from what it reads, notifies
 > when a session stops on you, has the settings surface that turns that off, and a tag builds its
-> installers ([Packaging and releases](#packaging-and-releases)). Both installers have been built by
-> CI and inspected; no release has been cut, which is a decision and not a missing piece.
+> installers ([Packaging and releases](#packaging-and-releases)). The macOS and the Windows x64
+> installers have been built by CI and inspected; the Windows arm64 leg is new and has never run.
 >
 > What has been checked on a real menu bar, not only by its tests: the icon renders and reads at
 > menu-bar size, the popover opens anchored under it and inside the screen, and it closes. The
@@ -1512,7 +1512,7 @@ leaves them on the workflow run: every step that writes to the repository is gat
 `github.ref_type == 'tag'`, so the pipeline can be proven without cutting a release, which is the
 one step here that cannot be taken back.
 
-**A release has two halves.** The `server` job builds the server's five executables
+**A release has two halves.** The `server` job builds the server's six executables
 (`docs/architecture.md`, *Shipping the server*); this one builds the installers. They no longer wait
 for each other: the draft is created by a job of its own (`gh release create --draft`) rather than
 by `tauri-action`, which used to make the server queue behind a 14-minute Windows build for nothing
@@ -1539,11 +1539,11 @@ uninstall key all survive the rename.
 
 **Publishing is a separate job, and that is what makes it safe to automate.**
 `needs: [tray, server, smoke]` will not start it unless EVERY matrix build, the server's own job and
-the smoke run of all five executables succeeded (`docs/architecture.md`, *Shipping the server*), so a Windows failure
+the smoke run of all six executables succeeded (`docs/architecture.md`, *Shipping the server*), so a Windows failure
 — or a server that would not compile — leaves a draft rather than putting half a download page in
 front of people; and it runs once, where the build job runs per platform. Publishing from a build
 job instead would put a release on the download page as soon as the FIRST runner finished — one
-installer out of two, live, for the minutes the other takes.
+installer out of three, live, for the minutes the others take.
 
 Leaving it a draft was the earlier rule, and it does not survive going public: a draft is invisible
 to anyone without push access and is never `releases/latest` (GitHub's REST docs — *"Only users with
@@ -1561,19 +1561,32 @@ about the build; what the reader needs is the next click.
 | Platform | Artifact | Why this shape |
 | -- | -- | -- |
 | macOS | ONE universal `.dmg` (`seedeep-tray_<version>_universal.dmg`, 6.6 MB for a 15 MB app) | `--target universal-apple-darwin`, so the download page never asks which processor the reader has — a question people get wrong, and the wrong answer is an app that will not start |
-| Windows | NSIS `-setup.exe` (4.2 MB) | Its default `currentUser` install mode needs no Administrator rights. A UAC prompt for an unknown publisher is where an unsigned installer loses people, and `.msi` documents no per-user mode |
+| Windows | TWO NSIS installers, `…_x64-setup.exe` (4.2 MB) and `…_arm64-setup.exe` | Its default `currentUser` install mode needs no Administrator rights. A UAC prompt for an unknown publisher is where an unsigned installer loses people, and `.msi` documents no per-user mode. Two files rather than one because Windows has no universal binary: the reader picks the processor, which is the question the macOS DMG exists to avoid |
 
-Both were built by a real run and inspected rather than trusted: the DMG mounts to `seedeep.app`
+The DMG and the x64 `-setup.exe` were built by a real run and inspected rather than trusted: the DMG
+mounts to `seedeep.app`
 beside the `Applications` symlink, `lipo` reports `x86_64 arm64`, and `CFBundleShortVersionString` is
 the `package.json` number; the Windows artifact is a `PE32 executable (GUI) … Nullsoft Installer
 self-extracting archive`. A cold runner with no Rust cache takes about 9 minutes on macOS and 14 on
-Windows.
+Windows. **The arm64 leg has never run**, so nothing here is measured about it — not the build time,
+not the artifact, not whether the runner's toolchain carries what Tauri needs. A
+`workflow_dispatch` run is what would settle that before a tag depends on it.
 
 Windows is why this is CI and not a script on a laptop: Tauri's own recipe uses one runner per
 platform, and it documents building the Windows installer from a Mac as possible for NSIS only
 *"with caveats"* and *"not tested as much"* — and impossible for `.msi`, since WiX runs on Windows.
 The macOS half could be built locally; it is there so both halves of a version come out of the same
 commit and the same recipe — the [one version](#one-version-for-every-deliverable) rule, applied.
+
+**The arm64 installer is built natively on `windows-11-arm`, not cross-compiled**, though it could
+have been: the `windows-latest` image carries `VC.Tools.ARM64`, so the x64 runner has everything
+`--target aarch64-pc-windows-msvc` would need. What it does not have is a recipe Tauri documents —
+the installer guide describes adding the ARM64 build tools to the machine that BUILDS, and says
+nothing about a host-to-arm64 cross-build. The native leg differs from the x64 one by its runner
+alone, with no flag to get subtly wrong, and the runner is GA and free on public repositories
+(2025-08-07); its image already carries VS 2022, Rust and NSIS. **The installer itself stays x86**
+either way — Tauri documents that it runs under emulation on the ARM machine, and only the app
+inside it is native arm64.
 
 **The workflow sets `TAURI_BUNDLER_DMG_IGNORE_CI: 'false'`, and that is not a formality.** The
 bundler passes `--skip-jenkins` to `bundle_dmg.sh` — skipping the Finder-prettifying AppleScript —
@@ -1606,8 +1619,9 @@ Nothing. The bundle carries only the linker's ad-hoc signature, and both systems
   was `open` over an SSH session, which is not a gesture any user performs. Two conclusions, and the
   second is the reusable one: a shell over SSH cannot answer a question about a GUI decision, and
   *"I could not reproduce the block"* is not *"there is no block"*.
-- **Nothing about Windows is measured**: there is no Windows machine here and the workflow has never
-  run. The SmartScreen wording in the README is Microsoft's documented behaviour, not an observation.
+- **Nothing about Windows is measured**: no Windows desktop is used here, and neither installer has
+  been opened on one. The SmartScreen wording in the README is Microsoft's documented behaviour, not
+  an observation.
 
 Signing and notarization stay out of scope until there is a release worth signing (EPIC 4).
 

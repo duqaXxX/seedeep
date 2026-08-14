@@ -213,9 +213,9 @@ not be accepted.
 
 ## Running it on Windows
 
-The single most useful contribution nobody here can make: **no Windows machine exists in this
-project**, so the tray's installer is built on every tag and has never been opened, and the server's
-`.exe` has never been launched. If you have Windows, one session settles six claims the code makes
+The single most useful contribution nobody here can make: **no Windows machine is used in this
+project**, so the tray's installers are built on every tag and have never been opened, and the
+server's `.exe` has been started by CI and never used. If you have Windows, one session settles six claims the code makes
 and the docs currently only reason about. Report what you see in an issue — a "it all worked"
 is as valuable as a defect, because today neither is known.
 
@@ -237,6 +237,12 @@ is as valuable as a defect, because today neither is known.
    has been seen on a desktop whose taskbar can sit on any edge.
 6. **Trust on first use and the connection screen**, against a `seedeep` server reached over HTTPS
    on another machine, including the fingerprint comparison.
+
+All six apply on **Windows on arm64** as well — a Snapdragon laptop, or a Windows 11 ARM guest on an
+Apple Silicon Mac. That machine gets its own server binary and its own tray installer, built by the
+same tag on a native arm64 runner; the installer NSIS produces is x86 under emulation by Tauri's
+design, and the app inside it is native. Say which of the two you were on: an answer from one says
+nothing certain about the other.
 
 Where the answers go: `docs/tray.md` holds the macOS measurements in a table under *What is signed,
 and what that costs*, and Windows belongs in the same shape — what was observed, and on which
