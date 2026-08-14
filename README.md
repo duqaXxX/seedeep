@@ -173,12 +173,19 @@ developed on. **It has never been installed on a Windows or a Linux box** — th
 neither here. Building for three systems is not the same as having used three, and
 this section is that difference written down rather than left for you to find.
 
+Since 0.24.0 there is a middle ground worth naming: **started is not used**. Every
+release now runs each server binary on a runner of its own operating system before
+anything is published — it must report its version, answer on its API and serve the
+browser GUI, or the release stays a draft. That rules out the download that dies at
+startup. It says nothing about whether the thing is pleasant, or correct, in front of
+a person on that machine.
+
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **Never run.** The `.exe` is built by CI on every tag and nothing has opened it | **Never run.** The suite does run on Linux in CI on every push, so the logic is exercised there — the compiled binary never has been |
-| **Tray** | Used daily on a real menu bar | **Never run.** The installer is built on every tag and nothing has opened it | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **Started on every release, never used.** CI runs the `.exe` on a Windows runner and checks it serves the GUI; nobody has worked in it | **Started on every release, never used.** Same check on x64 and arm64 runners, and the suite runs on Linux on every push |
+| **Tray** | Used daily on a real menu bar | **Never run.** The installer is built on every tag and nothing has opened it — a menu-bar app needs a desktop, and CI runners have none | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
-Concretely: on Windows and on Linux **you are the first to run it**. A defect there
+Concretely: on Windows and on Linux **you are the first to use it**. A defect there
 is expected rather than surprising, and [an issue](../../issues) saying what you saw
 is the most useful thing you can send. If you use Windows,
 [`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists the six things one
