@@ -1480,17 +1480,36 @@ export function createGraph(
       // used to live at the BOTTOM of two different cards (the calls under the token ledger, the
       // tools under four long paths in Main tools) — reachable without expanding anything and
       // findable by nobody, which is what the report was really about. Brought up here they were
-      // briefly three separate spans, and `20 turns 447 calls 461 tools` reads as one number with
-      // stray words in it: same colour, same weight, no separator, and two more times right after.
-      // Joined, they are one group answering one question — and it is what the turn scope already
-      // did with `5 API · 2 tools`. The per-type breakdown stays in Main tools, where it has a
-      // context.
+      // briefly three separate spans, and `20 turns 447 API calls 461 tools` reads as one number
+      // with stray words in it: same colour, same weight, no separator, and two more times right
+      // after. Joined, they are one group answering one question. The per-type breakdown stays in
+      // Main tools, where it has a context.
+      //
+      // `API calls`, not `calls`: the same field was already `API calls` in the Session card's
+      // footer, so one number wore two names on one page and neither said what it counted. The
+      // gloss goes in a `title` built alongside the parts — one entry per part, in the same order,
+      // so a missing count cannot leave the hover describing something that is not there. It is
+      // the only place that can say the subagents are NOT in this number, which no label can.
       const work: string[] = [];
-      if (fullSnap.turns > 0) work.push(nTurns(fullSnap.turns));
-      if (fullSnap.apiCalls > 0) work.push(kc(fullSnap.apiCalls) + ' calls');
+      const gloss: string[] = [];
+      if (fullSnap.turns > 0) {
+        work.push(nTurns(fullSnap.turns));
+        gloss.push('rounds of work');
+      }
+      if (fullSnap.apiCalls > 0) {
+        work.push(kc(fullSnap.apiCalls) + ' API calls');
+        gloss.push('model calls on the main thread, subagents excluded');
+      }
       const toolCount = summarizeTools(fullSnap.mainTools).count;
-      if (toolCount > 0) work.push(kc(toolCount) + ' tools');
-      if (work.length) scopeBanner.append(E('span', 'sbnum', work.join(' · ')));
+      if (toolCount > 0) {
+        work.push(kc(toolCount) + ' tools');
+        gloss.push('tool uses');
+      }
+      if (work.length) {
+        const span = E('span', 'sbnum', work.join(' · '));
+        span.title = gloss.join(' · ');
+        scopeBanner.append(span);
+      }
       // The live counter answers "how long has the current turn been running" — the only
       // live duration a whole-session scope has. Same guard as the turn scope below.
       const open = fullSnap.turnList.find((t) => working(t, fullSnap));

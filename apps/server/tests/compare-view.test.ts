@@ -78,7 +78,7 @@ test('a row is three stacked lines: the prompt, every chip, the bar', async () =
   const meta = findByClass(rows[0], 'cmp-meta');
   assert.equal(meta.length, 1, 'one meta line — the bar is no longer beside it');
   const text = meta[0].children.map((c: any) => textOf(c)).join(' ');
-  for (const expected of ['widgetco', 'Opus 4.8', 'ago', '561 calls', '1.2M tokens']) {
+  for (const expected of ['widgetco', 'Opus 4.8', 'ago', '561 API calls', '1.2M tokens']) {
     assert.ok(text.includes(expected), `states ${expected}: ${text}`);
   }
 

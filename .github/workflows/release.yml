@@ -274,6 +274,84 @@ jobs:
           REPO: ${{ github.repository }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$REPO"
 
+  # Does what was built actually RUN? All five executables are cross-compiled on the ONE
+  # `ubuntu-latest` runner above, so until this job existed the Windows binary and both Linux ARM
+  # binaries had never been EXECUTED on any machine, ever. That is the 0.6.0 failure exactly - five
+  # green artifacts, dead at startup everywhere but where they were built - and it was invisible
+  # from this workflow's own checkmarks, which is why no test could have caught it: the only proof
+  # is running the file on the OS it claims to be for.
+  #
+  # It gates `publish` and `npm` rather than reporting after them. A build that does not start then
+  # never leaves the draft and never reaches a registry, where a publish cannot be taken back - the
+  # remedy is a new tag, not an explanation owed to a stranger whose download does nothing.
+  #
+  # On a tag the binary is downloaded from the release, so this also proves the UPLOAD happened -
+  # v0.6.0's Windows installer was built and never uploaded. A manual run has no release, so it
+  # takes the same files from the run's artifact: the whole matrix is provable without cutting one.
+  smoke:
+    needs: server
+    strategy:
+      # Every platform reports. Which ones start is the entire question, and stopping at the first
+      # failure would answer it for one of five.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            asset: linux-x64
+          - runner: ubuntu-24.04-arm
+            asset: linux-arm64
+          - runner: macos-latest
+            asset: macos-arm64
+          # An x64 binary needs an x64 machine, and `macos-latest` is arm64. `macos-13` is no longer
+          # offered - the Intel runners are `macos-15-intel` and `macos-26-intel`.
+          - runner: macos-15-intel
+            asset: macos-x64
+          - runner: windows-latest
+            asset: windows-x64.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # A tag says which version it releases; a manual run has only the manifest. On a tag this is
+      # also what catches a forgotten bump: the binary prints the version `package.json` carried
+      # when it was compiled, and the smoke script requires the two to be the same string.
+      - shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
+        run: |
+          if [ "$IS_TAG" = true ]; then
+            version=${TAG#v}
+          else
+            version=$(grep -m1 '"version"' package.json | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # Through the environment, never interpolated into the command, for the reason the draft job
+      # gives: a ref name is repository input.
+      - if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          ASSET: ${{ matrix.asset }}
+        run: gh release download "$TAG" --repo "$REPO" --pattern "seedeep-server_${VERSION}_${ASSET}" --dir bin
+
+      - if: github.ref_type != 'tag'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: server-binaries
+          path: bin
+
+      # `shell: bash` on every platform, Windows included: v0.6.0 uploaded no Windows installer
+      # because `"$TAG"` in PowerShell is an unassigned variable that expands to nothing. One
+      # script, five platforms, no per-OS dialect to get wrong. What it asserts is in its header.
+      - shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: .github/scripts/smoke-server.sh "bin/seedeep-server_${VERSION}_${ASSET}" "$VERSION"
+
   # The npm channel: the same five executables, each wrapped in a package npm resolves by `os`/`cpu`,
   # under one `seedeep` wrapper whose postinstall puts the binary where `bin` already points. Node is
   # needed to INSTALL, never to run. It exists because a binary that arrives through a package
@@ -283,7 +361,10 @@ jobs:
   # Deliberately NOT a dependency of `publish`: if a publish to npm fails, the release page is still
   # worth having, and the failure is red here where it can be re-run.
   npm:
-    needs: server
+    # `smoke` gates this one harder than it gates `publish`: a draft release can be deleted, an npm
+    # version cannot (unpublish is restricted after 72 hours). A binary that does not start must
+    # never reach the registry.
+    needs: [server, smoke]
     # A tag AND a switch. Publishing to npm cannot be taken back (unpublish is restricted after 72
     # hours), and the FIRST publish of a package has to be manual anyway - a trusted publisher can
     # only be configured on a package that already exists. So every tag builds these packages and
@@ -351,7 +432,9 @@ jobs:
   # release is "the most recent non-prerelease, non-draft release"). So on a public repo an
   # unpublished release means the README's download link leads nowhere - which is what this closes.
   publish:
-    needs: [tray, server]
+    # `smoke` is here so a release nobody can start stays a draft: this job is the single step that
+    # makes a build visible to strangers, and it is the last place the decision can still be undone.
+    needs: [tray, server, smoke]
     # Only a tag has a release to publish. A manual run built the same artifacts and attached them
     # to the workflow run, deliberately touching nothing in the repository.
     if: github.ref_type == 'tag'

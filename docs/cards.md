@@ -98,7 +98,8 @@ card in scope yet.` and hides its **Expand all**, which would open an empty draw
 Each row: the id, a `read` chip when the session only looked, the title, and a click that opens the
 card on its tracker. A row with no link says so instead of doing nothing. The card shows the newest
 4 (median is 2, max measured 30) and defers the rest to the drawer, where every card is listed with how
-many calls named it (`4 calls`) — spelled out, since a bare `×4` reads as a count of cards.
+many calls named it (`4 tool calls`) — spelled out, since a bare `×4` reads as a count of cards, and
+named `tool calls` because everywhere else on the page a bare `calls` now means a call to the model.
 
 ## The inverse: search by card id
 
