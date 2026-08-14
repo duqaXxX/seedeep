@@ -173,6 +173,94 @@ test('home-view: a failed fetch falls back to the empty state (never throws)', a
   assert.equal(findByClass(container, 'rt-empty').length, 1);
 });
 
+const noTurns = (over: Partial<Retrospective> = {}): Retrospective => ({
+  ...retro,
+  ...over,
+  windows: { ...retro.windows, all: win({ turns: 0 }) },
+});
+
+const leadOf = async (loadRetro: () => Promise<Retrospective | null>, sessionsOnDisk?: () => number) => {
+  const container = mount();
+  createHomeView(container, { loadRetro, sessionsOnDisk });
+  await tick();
+  return textOf(findByClass(container, 'rt-empty-lead')[0]);
+};
+
+// The three situations reach ONE branch, and the text has to be true in each. The old single
+// sentence was true in one of them, which is the whole reason this is now three assertions.
+test('home-view: the empty state says WHY it is empty, and never claims more than it read', async () => {
+  // Nothing on disk: the requirement, stated as the requirement.
+  assert.match(
+    await leadOf(
+      async () => noTurns({ sessions: 0 }),
+      () => 0,
+    ),
+    /needs a Claude Code session\. There is none on this machine yet\./,
+  );
+
+  // Sessions ARE there, none finished: claiming "there is none" would be a lie told to someone
+  // who is watching one run.
+  assert.match(
+    await leadOf(
+      async () => noTurns(),
+      () => 3,
+    ),
+    /There are sessions here, none with a finished turn yet\./,
+  );
+
+  // Nothing was read at all — so nothing may be asserted about the machine.
+  const unread = await leadOf(async () => null);
+  assert.match(unread, /needs a Claude Code session\./);
+  assert.doesNotMatch(unread, /none on this machine/, 'a failed fetch must not describe the disk');
+});
+
+// The regression that produced `sessionsOnDisk`. `Retrospective.sessions` counts only sessions
+// that closed a turn, so a transcript with none is 0 there and 1 in the picker directly above this
+// box (measured on a truncated transcript: roster 1, retro 0). Reading the retro here printed
+// "there is none on this machine" over a picker showing one.
+test('home-view: a session with no finished turn is never called absent', async () => {
+  assert.match(
+    await leadOf(
+      async () => noTurns({ sessions: 0 }),
+      () => 1,
+    ),
+    /There are sessions here/,
+    'the roster decides the branch, not the retrospective',
+  );
+});
+
+// Found in the browser, not here: the box paints BEFORE the first roster reading lands, so a
+// machine with one unfinished session kept reading "there is none on this machine" for the life of
+// the tab. `repaint()` is what corrects it, and it must not re-fetch to do so.
+test('home-view: the box corrects itself when the roster answers after the first paint', async () => {
+  let known = 0;
+  let fetches = 0;
+  const container = mount();
+  const view = createHomeView(container, {
+    loadRetro: async () => {
+      fetches++;
+      return noTurns({ sessions: 0 });
+    },
+    sessionsOnDisk: () => known,
+  });
+  await tick();
+  const lead = () => textOf(findByClass(container, 'rt-empty-lead')[0]);
+  assert.match(lead(), /none on this machine/, 'nothing known yet');
+
+  known = 1; // the roster answers
+  view.repaint();
+  assert.match(lead(), /There are sessions here/, 'the box follows the roster');
+  assert.equal(fetches, 1, 'a repaint costs no corpus scan');
+});
+
+// A count here would be a third way of stating a corpus figure this page already states twice.
+test('home-view: the empty state prints no session count', async () => {
+  const container = mount();
+  createHomeView(container, { loadRetro: async () => noTurns(), sessionsOnDisk: () => 3 });
+  await tick();
+  assert.doesNotMatch(textOf(findByClass(container, 'rt-empty')[0]), /\d/, 'no digit in the empty box');
+});
+
 test('home-view: the CTA opens the picker', async () => {
   const container = mount();
   let picked = 0;

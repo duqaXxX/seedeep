@@ -90,6 +90,9 @@ let booted = false;
 // Roster size at the last Home refresh; a change means a session was added/removed, i.e. the
 // corpus retrospective moved. Guards the 3s poll from re-scanning the corpus on every tick.
 let lastRosterLen = -1;
+// Its own counter, because the boot path deliberately syncs `lastRosterLen` to skip the first
+// corpus re-scan — and that would take the free repaint with it.
+let lastPaintedLen = -1;
 
 // Declared before the handlers that capture them so no call path hits a
 // temporal-dead-zone ReferenceError, regardless of future call ordering.
@@ -196,6 +199,9 @@ const homeView = createHomeView(homePanel, {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null),
   onPickSession: () => dropdown.open(),
+  // The roster, not the retrospective: the empty box has to agree with the picker beside it, and
+  // the two count different things (see HomeViewOpts.sessionsOnDisk).
+  sessionsOnDisk: () => roster.current().length,
 });
 
 // The second fixed surface: the cross-session comparison. In the menu for the same reason Home
@@ -515,6 +521,14 @@ roster.onChange((rows) => {
         tabBar.setLabel(row.sessionId, newLabel);
       }
     }
+  }
+  // Free, and NOT guarded by `booted`: Home's empty box states whether this machine has any
+  // session at all, and it paints before the first roster reading lands. Without this the box
+  // keeps saying "there is none on this machine" over a picker that lists one — measured on a
+  // transcript with no finished turn, which the retrospective does not count but the roster does.
+  if (rows.length !== lastPaintedLen) {
+    lastPaintedLen = rows.length;
+    homeView.repaint();
   }
   if (booted) {
     autoOpenNew(rows); // a session that just started gets its tab, in the background

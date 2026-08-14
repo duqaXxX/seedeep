@@ -2086,13 +2086,31 @@ function createHomeView(container, opts) {
     e?.stopPropagation?.();
     opts.onPickSession?.();
   };
+  function emptyBox() {
+    const box = el3("div", "rt-empty");
+    const known = opts.sessionsOnDisk?.() ?? 0;
+    const read = known > 0 || !!data;
+    const hasSessions = known > 0;
+    const lead = el3("div", "rt-empty-lead");
+    lead.textContent = hasSessions ? "There are sessions here, none with a finished turn yet." : read ? "seedeep needs a Claude Code session. There is none on this machine yet." : "seedeep needs a Claude Code session.";
+    const then = el3("div", "rt-empty-then");
+    if (hasSessions) {
+      then.append(document.createTextNode("A turn lands here the moment it ends — and the session itself is watchable "), el3("b", undefined, "now"), document.createTextNode(", from "), el3("span", "rt-strong", "Open a session…"), document.createTextNode(" above."));
+    } else {
+      then.append(document.createTextNode("Run "), el3("code", undefined, "claude"), document.createTextNode(" in any project and leave this tab open: it fills in "), el3("b", undefined, "while"), document.createTextNode(" the turn runs, not after it ends."));
+    }
+    const watch = el3("div", "rt-empty-watch");
+    watch.append(el3("span", "rt-dot"), document.createTextNode("Watching "), el3("code", undefined, "~/.claude/projects"), document.createTextNode(" · it reads the logs Claude Code writes there, and nothing leaves this machine."));
+    box.append(lead, then, watch);
+    return box;
+  }
   function empty() {
     const root = el3("div", "rt-root");
     const head = el3("div", "rt-head");
     const h = el3("div");
     h.append(el3("div", "rt-kick", "seedeep · your Claude Code, so far"), el3("div", "rt-title", "Your retrospective"));
     head.append(h);
-    root.append(head, el3("div", "rt-empty", "No finished turns yet — run a Claude Code session and this fills in as it lands on disk."));
+    root.append(head, emptyBox());
     const foot = el3("div", "rt-foot");
     const cta = el3("button", "rt-cta", "Pick a session →");
     cta.onclick = pick;
@@ -2224,7 +2242,7 @@ function createHomeView(container, opts) {
   }
   paint();
   refresh();
-  return { refresh };
+  return { refresh, repaint: paint };
 }
 function toolTotal(r) {
   return r.tools.reduce((s, t) => s + t.count, 0);
@@ -9892,6 +9910,7 @@ var activeId = null;
 var known = new Set;
 var booted = false;
 var lastRosterLen = -1;
+var lastPaintedLen = -1;
 var tabBar = createTabBar(tabsEl, { onSwitch: switchTo, onClose: closeTab });
 var navMenu = createNavMenu(navEl, {
   items: [
@@ -9946,7 +9965,8 @@ homePanel.style.display = "none";
 panelsEl.append(homePanel);
 var homeView = createHomeView(homePanel, {
   loadRetro: () => authFetch("/api/retro").then((r) => r.ok ? r.json() : null).catch(() => null),
-  onPickSession: () => dropdown.open()
+  onPickSession: () => dropdown.open(),
+  sessionsOnDisk: () => roster.current().length
 });
 var comparePanel = document.createElement("div");
 comparePanel.className = "home-panel compare-panel";
@@ -10137,6 +10157,10 @@ roster.onChange((rows) => {
         tabBar.setLabel(row.sessionId, newLabel);
       }
     }
+  }
+  if (rows.length !== lastPaintedLen) {
+    lastPaintedLen = rows.length;
+    homeView.repaint();
   }
   if (booted) {
     autoOpenNew(rows);
