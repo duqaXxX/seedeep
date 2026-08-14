@@ -137,7 +137,9 @@ groups**: how much work — turns, API calls, tool calls — and how long — th
 turn, and every turn summed. The grouping is the readable part: five figures with
 four different units, set side by side without separators, read as one number with
 stray words in it. Selecting a turn re-scopes the bar to that turn, with the same
-two counts scoped along.
+two counts scoped along. Each count is named for what it counts — `33 API calls`,
+not `33 calls` — and hovering the group glosses them in the order they appear, which
+is the only place that can say the number leaves the subagents out.
 
 Both counts already existed — the calls under the token ledger, the tools under
 four file paths in Main tools — and neither could be found, which is a placement
@@ -656,7 +658,7 @@ flat: an Opus token and a Haiku token are not the same thing, and the raw total 
 stayed open.
 
 A row is three stacked lines — the prompt, every fact about the session on one line
-(project, the model its main thread ran on, when it ran, calls, the complete token
+(project, the model its main thread ran on, when it ran, API calls, the complete token
 count with cache reads included, the subagents' share), then the bar at full
 width — and the bar carries two facts at once: its length is the session's weight,
 its segments are the model mix, so *how heavy* and *why* are one object.
