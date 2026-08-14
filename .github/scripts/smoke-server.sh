@@ -2,7 +2,7 @@
 #
 # Does a built server executable actually RUN — on a machine that did not build it?
 #
-# All five executables are cross-compiled from one `ubuntu-latest` runner, so until this ran, the
+# All six executables are cross-compiled from one `ubuntu-latest` runner, so until this ran, the
 # Windows binary and both Linux ARM binaries had never been EXECUTED anywhere, ever. That is the
 # 0.6.0 shape: green artefacts, dead at startup on every machine but the builder's.
 #
@@ -25,7 +25,7 @@
 # run on a laptop and not only on a throwaway runner.
 #
 # Bash on every platform, never PowerShell: v0.6.0 uploaded no Windows installer because `"$TAG"`
-# in PowerShell is an unassigned variable that expands to nothing. One shell, one script, five
+# in PowerShell is an unassigned variable that expands to nothing. One shell, one script, six
 # platforms.
 
 set -euo pipefail

@@ -152,14 +152,14 @@ seedeep                   # watch, serve, and open the browser
 
 **With neither**, take the file for your platform from
 [the latest release](../../releases/latest) — macOS arm64/x64, Linux x64/arm64,
-Windows x64 — and run it. **That file is not an installer, it is the program**: it
+Windows x64/arm64 — and run it. **That file is not an installer, it is the program**: it
 carries its own runtime and the whole browser GUI inside, installs nothing, and
 leaves behind only `~/.seedeep/`. The Linux builds require **glibc** (Debian,
 Ubuntu, Fedora and derivatives) — Alpine and other musl-based distributions are
 not supported.
 
 The **menu-bar tray** is a separate, optional download from the same release: a
-universal `.dmg` for macOS, a `-setup.exe` for Windows. It is a pure client — the
+universal `.dmg` for macOS, a `-setup.exe` per architecture for Windows. It is a pure client — the
 server is what has to run where Claude Code runs. **Both are unsigned**, so macOS and
 Windows each show a first-launch warning.
 
@@ -171,9 +171,10 @@ the GUI, stops the server, or reports what the current session cost.
 ## Which platforms have actually been run
 
 Everything above was checked by hand on **macOS**, on the machine `seedeep` is
-developed on. **It has never been installed on a Windows or a Linux box** — there is
-neither here. Building for three systems is not the same as having used three, and
-this section is that difference written down rather than left for you to find.
+developed on. **Linux has been used once**, in a VM, on arm64 — the table says what
+that covered. **Windows has not been used at all.** Building for three systems is not
+the same as having used three, and this section is that difference written down
+rather than left for you to find.
 
 Since 0.24.0 there is a middle ground worth naming: **started is not used**. Every
 release now runs each server binary on a runner of its own operating system before
@@ -184,10 +185,10 @@ a person on that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **Started on every release, never used.** CI runs the `.exe` on a Windows runner and checks it serves the GUI; nobody has worked in it | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
-| **Tray** | Used daily on a real menu bar | **Never run.** The installer is built on every tag and nothing has opened it — a menu-bar app needs a desktop, and CI runners have none | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **x64 and arm64: started on every release, never used.** CI runs each `.exe` on a Windows runner of its own architecture and checks it serves the GUI; nobody has worked in either | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
+| **Tray** | Used daily on a real menu bar | **Never run.** Both installers, x64 and arm64, are built on every tag and nothing has opened either: a menu-bar app needs a desktop, and CI runners have none | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
-Concretely: on Windows and on Linux **you are the first to use it**. A defect there
+Concretely: on Windows **you are the first to use it**, and on Linux x64 as well. A defect there
 is expected rather than surprising, and [an issue](../../issues) saying what you saw
 is the most useful thing you can send. If you use Windows,
 [`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists the six things one

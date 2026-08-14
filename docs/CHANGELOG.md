@@ -4,6 +4,31 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A publish to npm that dies halfway can now be re-run.** The step published seven packages in a
+loop under `set -e`, and npm is immutable — *"once published, a package cannot change"* — so the
+re-run failed on the FIRST package instead of finishing the rest, leaving the wrapper naming
+binaries at a version nobody had published while the release page stayed green (the `npm` job is
+not a dependency of `publish`). A version already on the registry is skipped now rather than
+retried, which is the property `--clobber` gives the release half of the same tag. It takes a
+dropped connection on a 40 MB tarball to need it, or a package added since whose trusted publisher
+is not configured yet — the arm64 one was exactly that.
+
+**Windows on arm64 was an install that could begin and never finish.** `npm i -g seedeep` on a
+Snapdragon laptop — where the Node.js winget installs is the native arm64 build — died with
+`seedeep: no build for win32 arm64`, on the command the README puts first, with nothing to say the
+cause was the interpreter and not the package. The wrapper's `os` and `cpu` are two independent
+lists and npm reads them as a cross product, so `win32` × `arm64` was a pair npm accepted and no
+package carried. Bun documents a `bun-windows-arm64` target now (verified: compiled from a macOS
+host it produces a `PE32+ … Aarch64` executable), so the sixth binary is cross-compiled beside the
+other five on the same runner and `seedeep-windows-arm64` joins the npm channel. The smoke job
+gains a `windows-11-arm` leg, since nothing else in the workflow would ever EXECUTE that file. The
+tray gets an arm64 NSIS installer of its own, built natively on the same runner rather than
+cross-compiled from the x64 one: Tauri documents adding the ARM64 build tools to the machine that
+builds, never a host-to-arm64 cross-build, and the native leg differs by its runner alone. The test
+that covered this ground asserted the HOLE — that `seedeep-windows-arm64` was absent — and so
+passed happily while the channel was broken; it now walks the whole `os` × `cpu` cross product and
+demands a package behind every pair.
+
 ## 0.24.0 (2026-08-14)
 
 **No release publishes until every executable in it has actually been STARTED.** All five server

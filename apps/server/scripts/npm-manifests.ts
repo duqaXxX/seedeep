@@ -1,11 +1,11 @@
 /**
  * The manifests the npm channel publishes, as data — separated from the packager that writes them
- * so they can be asserted without compiling five executables first.
+ * so they can be asserted without compiling six executables first.
  *
  * The shape is the one Claude Code itself ships with (verified on the registry, 2.1.220): a wrapper
  * whose `bin` points at a file inside itself, and one `optionalDependency` per platform carrying
  * the real executable. npm resolves those against each package's `os`/`cpu`, so a machine downloads
- * one binary, not five.
+ * one binary, not six.
  */
 
 import { TARGETS, type Target } from './targets.ts';
@@ -30,7 +30,8 @@ export const BIN_PATH = 'bin/seedeep.exe';
 const REPO = 'https://github.com/duqaXxX/seedeep';
 
 /**
- * Fields identical on all six manifests. `author` deliberately carries a name and NO email: the
+ * Fields identical on all seven manifests — the six platform packages and the wrapper. `author`
+ * deliberately carries a name and NO email: the
  * registry takes the maintainer address from the npm ACCOUNT, and a personal address in a
  * versioned file is a leak the pre-commit hook is right to refuse.
  */
@@ -109,8 +110,9 @@ export function npmManifests(version: string): {
     // publishes both. A caret here would let npm pair a wrapper with an older executable.
     optionalDependencies: Object.fromEntries(platforms.map((p) => [p.manifest.name, version])),
     // npm refuses the install outright on anything outside these — the error names the platform,
-    // which is the point. They are a cross product, so they admit one combination seedeep does not
-    // build (Windows on arm64); the postinstall is what refuses that one.
+    // which is the point. npm reads them as a cross product, so a platform present in one list and
+    // absent from the other is an install that begins and cannot finish: that was Windows on arm64
+    // until Bun had a target for it. Every combination is a package today, and a test asserts it.
     os: [...new Set(TARGETS.map((t) => t.os))],
     cpu: [...new Set(TARGETS.map((t) => t.cpu))],
     engines: { node: '>=18' },

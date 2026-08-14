@@ -42,15 +42,26 @@ test('a platform package is resolvable only on its own platform', () => {
   }
 });
 
-test('the one platform the os×cpu cross product admits is refused by the postinstall', () => {
-  // `os` and `cpu` are two independent lists, so npm reads them as every combination of the two —
-  // and that admits Windows on arm64, which Bun has no target for. npm lets such an install begin;
-  // what stops it is the postinstall finding no package of that name to install, and the name it
-  // computes has to be the one that is genuinely absent for the guard to fire.
-  const orphan = install.platformPackage('win32', 'arm64');
-  assert.equal(orphan, 'seedeep-windows-arm64');
-  assert.ok(!(orphan in (wrapper.optionalDependencies as Record<string, string>)));
-  assert.ok((wrapper.os as string[]).includes('win32') && (wrapper.cpu as string[]).includes('arm64'));
+test('every platform the os×cpu cross product admits has a package behind it', () => {
+  // `os` and `cpu` are two independent lists and npm reads them as every combination of the two, so
+  // a pair present in one and unbuilt in the other is an install that BEGINS and cannot finish.
+  // That pair was Windows on arm64: a Snapdragon laptop with the native Node from winget hit
+  // `no build for win32 arm64` on the very command the README puts first, and nothing in the suite
+  // could see it — the old test asserted the hole instead, as a thing that was meant to be there.
+  const deps = wrapper.optionalDependencies as Record<string, string>;
+  for (const os of wrapper.os as string[]) {
+    for (const cpu of wrapper.cpu as string[]) {
+      const name = install.platformPackage(os, cpu);
+      assert.ok(name && name in deps, `npm admits ${os} ${cpu} and no package carries it`);
+    }
+  }
+});
+
+test('the postinstall refuses a platform seedeep names no package for', () => {
+  // The guard in `install.cjs` has no reachable case left, and one nothing exercises is one that
+  // rots. FreeBSD never gets that far — npm's own `os` refuses it first — so what this pins is the
+  // postinstall's answer on a platform it does not know, which is the shape of the next hole.
+  assert.equal(install.platformPackage('freebsd', 'x64'), null);
 });
 
 test('the wrapper pins its binaries to its own exact version', () => {

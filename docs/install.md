@@ -4,8 +4,9 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows build has never been run on its own system** — it is built by CI
-> and downloaded by you first. The Linux arm64 build was used on Ubuntu 24 in a VM
+> **Neither Windows build has ever been used on its own system** — x64 and arm64
+> alike are started by CI on a runner of their own architecture, and downloaded by you
+> first. The Linux arm64 build was used on Ubuntu 24 in a VM
 > (2026-08-14); the x64 build has been started but never used in front of a person.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
 > says exactly what that covers.
@@ -32,7 +33,7 @@ reports success and `seedeep` prints the one command that finishes the job
 
 Take the file for your platform from [the latest release](../../../releases/latest)
 — `seedeep-server_<version>_macos-arm64`, `…_macos-x64`, `…_linux-x64`,
-`…_linux-arm64`, `…_windows-x64.exe` — make it executable, and run it:
+`…_linux-arm64`, `…_windows-x64.exe`, `…_windows-arm64.exe` — make it executable, and run it:
 
 ```sh
 chmod +x seedeep-server_*            # macOS and Linux
@@ -357,7 +358,9 @@ full is in [`architecture.md`](architecture.md#security-model).
 The menu-bar tray is a separate download, built by CI from a tag and attached to
 [the latest release](../../../releases/latest) beside the server: one universal
 `seedeep-tray_<version>_universal.dmg` for macOS — Apple Silicon and Intel in the
-same file, so there is nothing to choose — and a `-setup.exe` for Windows. Until a
+same file, so there is nothing to choose — and one `-setup.exe` per architecture for
+Windows, `_arm64-` on a Snapdragon or any other Windows-on-ARM machine and `_x64-`
+on everything else, since Windows has no universal binary to hide the question. Until a
 release is listed there, `bun run tray:build` produces the same bundle locally,
 under the same name.
 

@@ -68,7 +68,7 @@ and two of them built from the same tag are compatible by construction — no
 compatibility matrix. It is not a convention anybody has to remember: the root
 `package.json` holds the only version number, and `apps/tray/src-tauri/tauri.conf.json`
 names that file as its `version` instead of carrying one of its own. Pushing a `v*` tag
-is what turns that number into downloads: the tray's two installers and the server's five
+is what turns that number into downloads: the tray's three installers and the server's six
 executables, out of the same workflow and the same commit — see
 [Shipping the server](#shipping-the-server).
 
@@ -105,7 +105,7 @@ reach it as imports (`assets.ts`), not as a path it resolves.
 ### Shipping the server
 
 The server is a **standalone executable, one per platform**, with the Bun runtime inside it —
-`bun run build:server:all` (`apps/server/scripts/build-binaries.ts`) writes all five into `dist/`,
+`bun run build:server:all` (`apps/server/scripts/build-binaries.ts`) writes all six into `dist/`,
 cross-compiled from whichever machine runs it, which is why CI builds them on one runner where the
 tray needs a matrix. Nothing has to be installed to run one: that is CLAUDE.md's distribution
 invariant, and it is why the GUI is embedded rather than served from a folder next to the binary.
@@ -133,7 +133,10 @@ Three things about that script are decisions, not detail:
 - **A binary may not contain the path of the machine that built it.** `assertNoBuildPath` fails the
   build on any occurrence, because that is the one class of defect a build-machine test cannot see.
   Measured: two occurrences in the broken binary, zero in the repaired one.
-- **No Windows arm64.** Bun documents no such `--compile` target.
+- **Windows arm64 is built like the rest.** Bun documented no such `--compile` target when this
+  list was written; `bun-windows-arm64` exists now, so the machine that runs the arm64 Node from
+  winget — a Snapdragon laptop, a Windows 11 ARM guest — is no longer an install that begins and
+  cannot finish.
 
 The Linux binaries are dynamically linked against glibc, so a musl distribution (Alpine) is not a
 target either.
@@ -143,7 +146,7 @@ the Windows binary and both Linux ARM binaries are never executed by the build t
 which is exactly how v0.6.0 shipped five artifacts that died at startup on every machine but the
 builder's, with a green workflow to show for it. `release.yml`'s `smoke` job downloads each asset
 onto a runner of its own OS (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`,
-`windows-latest`) and runs `.github/scripts/smoke-server.sh`, which asserts that `--version` prints
+`windows-latest`, `windows-11-arm`) and runs `.github/scripts/smoke-server.sh`, which asserts that `--version` prints
 the version being released, that `GET /api/config` answers, and that `/`, `/lib/app.js` and
 `/css/chrome.css` answer too — the last three because the measured failure mode of a first compile
 was an API that answered while every static path 404'd. Both exits from the pipeline wait for it:
@@ -154,7 +157,7 @@ the whole matrix is provable without cutting a release.
 
 #### The npm channel
 
-The same five executables also ship as npm packages, which is what `npm i -g seedeep` installs.
+The same six executables also ship as npm packages, which is what `npm i -g seedeep` installs.
 **Node is needed to install them, never to run one**: the package carries the compiled binary, and
 `bun run build:npm` (`apps/server/scripts/build-npm.ts`) only arranges files — it never compiles, so
 `bun run build:server:all` has to have run first, and in that order, since the compiler wipes
@@ -163,7 +166,7 @@ The same five executables also ship as npm packages, which is what `npm i -g see
 It is the shape Claude Code itself ships with (verified on the registry, 2.1.220): a wrapper package
 whose `bin` points at a file inside itself, plus one `optionalDependency` per platform carrying the
 real executable. npm resolves those against each package's `os`/`cpu`, so a machine downloads one
-binary rather than five, and the wrapper's postinstall (`apps/server/npm/install.cjs`) puts that
+binary rather than six, and the wrapper's postinstall (`apps/server/npm/install.cjs`) puts that
 binary over the placeholder the `bin` field already names. Nothing is fetched by the script itself,
 and no Node process survives the install — `seedeep` on PATH *is* the server.
 
@@ -179,9 +182,9 @@ Four decisions hold it up:
   every Windows install hand the native executable to an interpreter.
 - **An unsupported platform is refused by npm itself.** The wrapper declares the `os` and `cpu` it
   was built for, and npm reads them as a cross product: anything outside fails with `EBADPLATFORM`,
-  naming both what was wanted and what the machine is. The cross product admits one combination
-  seedeep does not build — Windows on arm64, for which Bun has no target — and the postinstall is
-  what refuses that one, by name.
+  naming both what was wanted and what the machine is. Every combination the cross product admits
+  is a package that exists, which a test asserts; the postinstall still refuses a pair it finds no
+  package for, because the two lists are independent and adding to one alone reopens the hole.
 - **The wrapper pins its binaries to its own exact version.** One tag publishes both halves; a range
   would let npm pair a wrapper with an older executable.
 

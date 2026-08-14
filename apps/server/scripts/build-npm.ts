@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   const { wrapper, platforms } = npmManifests(VERSION);
 
   // Checked before anything is written: a package published without its binary is the one failure
-  // this whole channel cannot recover from, and `dist/` holding four of five is what a `--host`
+  // this whole channel cannot recover from, and `dist/` holding five of six is what a `--host`
   // build leaves behind.
   for (const target of TARGETS) {
     const binary = join(DIST, `seedeep-server_${VERSION}_${target.asset}`);

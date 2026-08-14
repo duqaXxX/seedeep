@@ -762,7 +762,8 @@ because a client that links no code cannot import one.
 *The same session as everything above, from the menu bar — the one surface that is a
 recording rather than a crop, because the tray is a native app and not a page.*
 
-Packaged by CI from a tag into a universal DMG and a Windows `-setup.exe`,
+Packaged by CI from a tag into a universal DMG and a Windows `-setup.exe` per
+architecture (x64 and arm64),
 **unsigned**. **Verified on macOS only** — see [Which platforms have actually been
 run](../README.md#which-platforms-have-actually-been-run), because this project
 does not call a thing measured when it has not been. Full rules:
