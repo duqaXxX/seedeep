@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.25.0 (2026-08-14)
+
 **A publish to npm that dies halfway can now be re-run.** The step published seven packages in a
 loop under `set -e`, and npm is immutable — *"once published, a package cannot change"* — so the
 re-run failed on the FIRST package instead of finishing the rest, leaving the wrapper naming
