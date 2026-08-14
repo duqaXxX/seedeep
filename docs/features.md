@@ -624,6 +624,21 @@ First entry of the header menu (☰, left of the wordmark), never closable, and
 filled before you run anything: it reads the sessions already on disk, so an empty
 workspace never looks like a broken page.
 
+**With nothing to show it opens with the REASON, not with a pitch** — *"seedeep
+needs a Claude Code session. There is none on this machine yet."*, then what to do
+(`claude`, in any project) and what is being watched (`~/.claude/projects`), with
+the privacy claim attached to the directory that makes it checkable rather than
+standing alone as a promise. That box has to be true in three different situations,
+which is why it has three forms: a machine with no session, a session that exists
+but has closed no turn (*"There are sessions here, none with a finished turn yet"*
+— and it says the session is watchable **now**, from the picker), and a
+retrospective that has not arrived, where the claim about the machine is dropped
+because nothing was read. Which form appears comes from the **roster**, never from
+the retrospective: the latter counts only sessions that finished a turn, so a
+transcript with none is absent there and present in the picker directly above the
+box. No count is printed — the number would be a third way of stating a figure the
+page already gives twice.
+
 It answers *how do I actually use this agent* — your median turn against its p95,
 the tokens spent (the COMPLETE figure, cache reads included, because those are
 billed too), API calls, how many turns wasted tokens, what you abandoned to Esc,

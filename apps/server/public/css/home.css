@@ -40,13 +40,52 @@
   color: var(--lo);
   margin-top: 0.35rem;
 }
+/* Left-aligned since it stopped being one centred sentence: three lines that read top to bottom —
+   what is missing, what to do, what is being watched. */
 .rt-empty {
   color: var(--lo);
   border: 1px dashed var(--border2);
   border-radius: 10px;
-  padding: 1.5rem;
+  padding: 1.9rem 2rem;
   margin: 1.1rem 0;
-  text-align: center;
+  text-align: left;
+}
+.rt-empty-lead {
+  color: var(--hi);
+  font: 600 1.15rem / 1.45 var(--sans);
+}
+.rt-empty-then {
+  margin-top: 0.6rem;
+  font-size: 0.98rem;
+  line-height: 1.65;
+}
+.rt-empty-then b,
+.rt-strong {
+  color: var(--hi);
+  font-weight: 600;
+}
+.rt-empty code {
+  font: 0.9rem var(--mono);
+  color: var(--hi);
+}
+.rt-empty-watch {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+  font-size: 0.88rem;
+}
+.rt-empty-watch code {
+  font-size: 0.82rem;
+}
+/* Not an animation: it says "this is live" while costing nothing on a tab left open for hours. */
+.rt-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cache);
+  box-shadow: 0 0 0 3px rgb(56 189 248 / 15%);
+  flex: 0 0 7px;
 }
 .rt-filter {
   display: flex;

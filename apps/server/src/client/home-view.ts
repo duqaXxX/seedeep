@@ -88,6 +88,18 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
   return n;
 }
 
+/**
+ * The WORD only — the number is rendered separately, in its own element and its own colour.
+ *
+ * Local rather than shared: the two other spellings of this in the client (`turnsWord` in graph.ts,
+ * `plural` in trace.ts) sit in modules this one has no reason to import, and three lines beat the
+ * dependency. It exists because the title read `1 turns across 1 sessions` — worst on the corpus a
+ * newcomer has, which is exactly one session.
+ */
+function plural(n: number, word: string): string {
+  return n === 1 ? word : `${word}s`;
+}
+
 /** True when the payload is a real Retrospective with at least one finished turn. */
 function hasCorpus(r: Retrospective | null): r is Retrospective {
   return !!r && !!r.windows?.all && r.windows.all.turns > 0 && !!r.baseline?.overall;
@@ -151,11 +163,34 @@ export interface HomeViewOpts {
   loadRetro: () => Promise<Retrospective | null>;
   /** The "Pick a session" CTA — opens the session picker. */
   onPickSession?: () => void;
+  /**
+   * How many sessions this machine HAS, from the roster — not from the retrospective.
+   *
+   * The two disagree by design, and the empty state is the one place where the difference is
+   * visible to a reader: `Retrospective.sessions` counts only sessions that produced a finished
+   * turn (`aggregate()` filters on `turns.length > 0`), so a transcript that exists but has not
+   * closed a turn is 0 there and 1 in the picker directly above this box. Measured on a truncated
+   * transcript: roster 1, retro 0. Reading the retro here would print "there is none on this
+   * machine" over a picker showing one.
+   *
+   * Omitted (or 0) means "nothing known" and the box says only what it can defend.
+   */
+  sessionsOnDisk?: () => number;
 }
 
 export interface HomeView {
   /** Re-fetch and repaint. Called on mount and when new sessions land. */
   refresh(): void;
+  /**
+   * Repaint from what is already held — no fetch.
+   *
+   * The empty box reads the roster (see {@link HomeViewOpts.sessionsOnDisk}), and the roster
+   * answers AFTER the first paint: on a machine with one unfinished session the box would
+   * otherwise keep saying "there is none on this machine" for the life of the tab, over a picker
+   * listing it. Separate from `refresh()` because that one re-scans the corpus, which is the
+   * expensive thing the roster's poll is deliberately not allowed to trigger.
+   */
+  repaint(): void;
 }
 
 /**
@@ -175,16 +210,80 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
     opts.onPickSession?.();
   };
 
+  /**
+   * The empty box, which opens with the REASON the page is empty rather than with the pitch.
+   *
+   * It has to be true in three situations that reach the same branch, and the old single sentence
+   * ("No finished turns yet — run a Claude Code session…") was only true in one of them:
+   *
+   * - nothing on disk at all: the requirement is stated as the requirement;
+   * - sessions ARE there but no turn has finished (`hasCorpus` wants `turns > 0`): saying "there is
+   *   no session" would be a lie told to someone watching one run, so this branch says where that
+   *   session is already watchable instead;
+   * - the payload has not arrived, or failed: the same lead WITHOUT the claim about the machine —
+   *   nothing has been read, so nothing can be asserted about what is on it.
+   *
+   * Which branch is taken comes from the ROSTER, never from the retrospective — see
+   * {@link HomeViewOpts.sessionsOnDisk} for the measurement that forced that.
+   *
+   * The count is deliberately not printed: a number here is a fact about the corpus that the reader
+   * has no use for, and it would be the third different way this page states one.
+   */
+  function emptyBox(): HTMLElement {
+    const box = el('div', 'rt-empty');
+    const known = opts.sessionsOnDisk?.() ?? 0;
+    // "Read" means something answered: either the roster knows of sessions, or the retro payload
+    // arrived. Both silent = nothing to describe.
+    const read = known > 0 || !!data;
+    const hasSessions = known > 0;
+
+    const lead = el('div', 'rt-empty-lead');
+    lead.textContent = hasSessions
+      ? 'There are sessions here, none with a finished turn yet.'
+      : read
+        ? 'seedeep needs a Claude Code session. There is none on this machine yet.'
+        : 'seedeep needs a Claude Code session.';
+
+    const then = el('div', 'rt-empty-then');
+    if (hasSessions) {
+      then.append(
+        document.createTextNode('A turn lands here the moment it ends — and the session itself is watchable '),
+        el('b', undefined, 'now'),
+        document.createTextNode(', from '),
+        el('span', 'rt-strong', 'Open a session…'),
+        document.createTextNode(' above.'),
+      );
+    } else {
+      then.append(
+        document.createTextNode('Run '),
+        el('code', undefined, 'claude'),
+        document.createTextNode(' in any project and leave this tab open: it fills in '),
+        el('b', undefined, 'while'),
+        document.createTextNode(' the turn runs, not after it ends.'),
+      );
+    }
+
+    // The privacy line is attached to the thing that makes it checkable — the directory being
+    // watched — rather than standing alone as a promise.
+    const watch = el('div', 'rt-empty-watch');
+    watch.append(
+      el('span', 'rt-dot'),
+      document.createTextNode('Watching '),
+      el('code', undefined, '~/.claude/projects'),
+      document.createTextNode(' · it reads the logs Claude Code writes there, and nothing leaves this machine.'),
+    );
+
+    box.append(lead, then, watch);
+    return box;
+  }
+
   function empty(): void {
     const root = el('div', 'rt-root');
     const head = el('div', 'rt-head');
     const h = el('div');
     h.append(el('div', 'rt-kick', 'seedeep · your Claude Code, so far'), el('div', 'rt-title', 'Your retrospective'));
     head.append(h);
-    root.append(
-      head,
-      el('div', 'rt-empty', 'No finished turns yet — run a Claude Code session and this fills in as it lands on disk.'),
-    );
+    root.append(head, emptyBox());
     const foot = el('div', 'rt-foot');
     const cta = el('button', 'rt-cta', 'Pick a session →');
     cta.onclick = pick;
@@ -209,7 +308,13 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
     const title = el('div', 'rt-title');
     title.append(
       el('b', undefined, w.turns.toLocaleString()),
-      el('span', undefined, win === 'all' ? ` turns across ${r.sessions.toLocaleString()} sessions` : ' turns'),
+      el(
+        'span',
+        undefined,
+        win === 'all'
+          ? ` ${plural(w.turns, 'turn')} across ${r.sessions.toLocaleString()} ${plural(r.sessions, 'session')}`
+          : ` ${plural(w.turns, 'turn')}`,
+      ),
     );
     const scopeLabel =
       win === 'd7' ? 'last 7 days' : win === 'd30' ? 'last 30 days' : `all-time · ${r.spanDays}d on disk`;
@@ -248,7 +353,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
         `${w.crit.toLocaleString()} of ${w.turns.toLocaleString()}`,
       ),
       kpi('rt-crit', fmt(w.esc.tokens), 'abandoned to Esc', `${w.esc.turns.toLocaleString()} interrupted`),
-      kpi('', dur(w.workMs), 'spent working', `${w.turns.toLocaleString()} turns`),
+      kpi('', dur(w.workMs), 'spent working', `${w.turns.toLocaleString()} ${plural(w.turns, 'turn')}`),
     );
 
     // Hero: turn-size distribution (new tokens; single colour — not a severity)
@@ -299,7 +404,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
       'rt-third-wide',
       'where the waste comes from',
       w.resume.tokens > 0
-        ? `${fmt(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} sessions over 10%`
+        ? `${fmt(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} ${plural(r.sessions, 'session')} over 10%`
         : 'turns flagged',
     );
     const wr = [
@@ -331,7 +436,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
     grid.append(toolsCard);
 
     // Verdict split + footer
-    const verdict = card('rt-verdict', 'verdict split', `${w.turns.toLocaleString()} turns`);
+    const verdict = card('rt-verdict', 'verdict split', `${w.turns.toLocaleString()} ${plural(w.turns, 'turn')}`);
     const good = Math.max(0, w.turns - w.crit - w.warn);
     const bar = el('div', 'rt-rbar');
     const seg2 = (n: number, cls: string) => {
@@ -374,7 +479,7 @@ export function createHomeView(container: HTMLElement, opts: HomeViewOpts): Home
   }
   paint(); // immediate empty frame so the tab is never blank before the fetch resolves
   refresh();
-  return { refresh };
+  return { refresh, repaint: paint };
 }
 
 /** Total tool calls across the corpus (all-time). */

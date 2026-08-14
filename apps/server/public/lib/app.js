@@ -2031,6 +2031,9 @@ function el3(tag, className, text) {
     n.textContent = text;
   return n;
 }
+function plural(n, word) {
+  return n === 1 ? word : `${word}s`;
+}
 function hasCorpus(r) {
   return !!r && !!r.windows?.all && r.windows.all.turns > 0 && !!r.baseline?.overall;
 }
@@ -2086,13 +2089,31 @@ function createHomeView(container, opts) {
     e?.stopPropagation?.();
     opts.onPickSession?.();
   };
+  function emptyBox() {
+    const box = el3("div", "rt-empty");
+    const known = opts.sessionsOnDisk?.() ?? 0;
+    const read = known > 0 || !!data;
+    const hasSessions = known > 0;
+    const lead = el3("div", "rt-empty-lead");
+    lead.textContent = hasSessions ? "There are sessions here, none with a finished turn yet." : read ? "seedeep needs a Claude Code session. There is none on this machine yet." : "seedeep needs a Claude Code session.";
+    const then = el3("div", "rt-empty-then");
+    if (hasSessions) {
+      then.append(document.createTextNode("A turn lands here the moment it ends — and the session itself is watchable "), el3("b", undefined, "now"), document.createTextNode(", from "), el3("span", "rt-strong", "Open a session…"), document.createTextNode(" above."));
+    } else {
+      then.append(document.createTextNode("Run "), el3("code", undefined, "claude"), document.createTextNode(" in any project and leave this tab open: it fills in "), el3("b", undefined, "while"), document.createTextNode(" the turn runs, not after it ends."));
+    }
+    const watch = el3("div", "rt-empty-watch");
+    watch.append(el3("span", "rt-dot"), document.createTextNode("Watching "), el3("code", undefined, "~/.claude/projects"), document.createTextNode(" · it reads the logs Claude Code writes there, and nothing leaves this machine."));
+    box.append(lead, then, watch);
+    return box;
+  }
   function empty() {
     const root = el3("div", "rt-root");
     const head = el3("div", "rt-head");
     const h = el3("div");
     h.append(el3("div", "rt-kick", "seedeep · your Claude Code, so far"), el3("div", "rt-title", "Your retrospective"));
     head.append(h);
-    root.append(head, el3("div", "rt-empty", "No finished turns yet — run a Claude Code session and this fills in as it lands on disk."));
+    root.append(head, emptyBox());
     const foot = el3("div", "rt-foot");
     const cta = el3("button", "rt-cta", "Pick a session →");
     cta.onclick = pick;
@@ -2112,7 +2133,7 @@ function createHomeView(container, opts) {
     const htext = el3("div");
     htext.append(el3("div", "rt-kick", "seedeep · your Claude Code, so far"));
     const title = el3("div", "rt-title");
-    title.append(el3("b", undefined, w.turns.toLocaleString()), el3("span", undefined, win === "all" ? ` turns across ${r.sessions.toLocaleString()} sessions` : " turns"));
+    title.append(el3("b", undefined, w.turns.toLocaleString()), el3("span", undefined, win === "all" ? ` ${plural(w.turns, "turn")} across ${r.sessions.toLocaleString()} ${plural(r.sessions, "session")}` : ` ${plural(w.turns, "turn")}`));
     const scopeLabel = win === "d7" ? "last 7 days" : win === "d30" ? "last 30 days" : `all-time · ${r.spanDays}d on disk`;
     htext.append(title, el3("div", "rt-scope", `${scopeLabel} · ${dur(w.workMs)} working`));
     const filter = el3("div", "rt-filter");
@@ -2135,7 +2156,7 @@ function createHomeView(container, opts) {
     head.append(htext, filter);
     root.append(head);
     const grid = el3("div", "rt-grid");
-    grid.append(kpi("rt-accent", fmt2(w.p50Complete), "median turn", `complete · p95 ${fmt2(w.p95Complete)}`), kpi("rt-accent", fmt2(w.totalTokens), "tokens spent", `${fmt2(w.newTokens)} new · rest cache`), kpi("", fmt2(w.apiCalls), "API calls", `${fmt2(toolTotal(r))} tool calls`), kpi("rt-crit", pct2(w.crit, w.turns), "turns wasted tokens", `${w.crit.toLocaleString()} of ${w.turns.toLocaleString()}`), kpi("rt-crit", fmt2(w.esc.tokens), "abandoned to Esc", `${w.esc.turns.toLocaleString()} interrupted`), kpi("", dur(w.workMs), "spent working", `${w.turns.toLocaleString()} turns`));
+    grid.append(kpi("rt-accent", fmt2(w.p50Complete), "median turn", `complete · p95 ${fmt2(w.p95Complete)}`), kpi("rt-accent", fmt2(w.totalTokens), "tokens spent", `${fmt2(w.newTokens)} new · rest cache`), kpi("", fmt2(w.apiCalls), "API calls", `${fmt2(toolTotal(r))} tool calls`), kpi("rt-crit", pct2(w.crit, w.turns), "turns wasted tokens", `${w.crit.toLocaleString()} of ${w.turns.toLocaleString()}`), kpi("rt-crit", fmt2(w.esc.tokens), "abandoned to Esc", `${w.esc.turns.toLocaleString()} interrupted`), kpi("", dur(w.workMs), "spent working", `${w.turns.toLocaleString()} ${plural(w.turns, "turn")}`));
     const hero = card("rt-hero", "turn-size distribution", "new tokens / turn · excl. cache reads");
     hero.append(histChart(w));
     grid.append(hero);
@@ -2169,7 +2190,7 @@ function createHomeView(container, opts) {
       { cls: "rt-good", label: "clean" }
     ]) : legend([{ cls: "rt-solid", label: mActive.hint(gran) }]));
     grid.append(act);
-    const waste = card("rt-third-wide", "where the waste comes from", w.resume.tokens > 0 ? `${fmt2(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} sessions over 10%` : "turns flagged");
+    const waste = card("rt-third-wide", "where the waste comes from", w.resume.tokens > 0 ? `${fmt2(w.resume.tokens)} re-entering · ${r.reentrySessions} of ${r.sessions} ${plural(r.sessions, "session")} over 10%` : "turns flagged");
     const wr = [
       { k: "committed without tests", n: w.unverifiedShip, f: "rt-fill-crit" },
       { k: "context ≥70%", n: w.context, f: "rt-fill-warn" },
@@ -2190,7 +2211,7 @@ function createHomeView(container, opts) {
     for (const t of shownTools)
       toolsCard.append(barRow(t.label, t.value, tmax, "rt-fill-tool"));
     grid.append(toolsCard);
-    const verdict = card("rt-verdict", "verdict split", `${w.turns.toLocaleString()} turns`);
+    const verdict = card("rt-verdict", "verdict split", `${w.turns.toLocaleString()} ${plural(w.turns, "turn")}`);
     const good = Math.max(0, w.turns - w.crit - w.warn);
     const bar = el3("div", "rt-rbar");
     const seg2 = (n, cls) => {
@@ -2224,7 +2245,7 @@ function createHomeView(container, opts) {
   }
   paint();
   refresh();
-  return { refresh };
+  return { refresh, repaint: paint };
 }
 function toolTotal(r) {
   return r.tools.reduce((s, t) => s + t.count, 0);
@@ -5667,7 +5688,7 @@ function firstLine2(s) {
   }
   return "";
 }
-var plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+var plural2 = (n, w) => n + " " + w + (n === 1 ? "" : "s");
 var SPARK_BINS = 30;
 var SPARK_RANK = ["spawn", "skill", "tool", "result", "prompt", "api"];
 function binComposition(slice) {
@@ -5945,7 +5966,7 @@ function createTrace(container, opts = {}) {
         if (m.failed > 0) {
           const badge = document.createElement("button");
           badge.className = "terr";
-          badge.textContent = plural(m.failed, "failed step");
+          badge.textContent = plural2(m.failed, "failed step");
           badge.title = m.failed + " of this turn's steps failed (a tool error, or an API " + "call Claude Code flagged). The turn itself did not fail." + `
 Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
           badge.onclick = (e) => {
@@ -6116,7 +6137,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     }
     const num = document.createElement("span");
     num.className = "n";
-    num.textContent = plural(spans.length, "step");
+    num.textContent = plural2(spans.length, "step");
     box.append(bins, num);
     return box;
   }
@@ -6201,7 +6222,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
       const toolWord = (n) => n + (n === 1 ? " tool" : " tools");
       let base;
       if (isWf) {
-        base = plural(sg.spawnGroup.lanes.length, "agent");
+        base = plural2(sg.spawnGroup.lanes.length, "agent");
       } else if (lanes.length > 1) {
         const total = lanes.reduce((n, ln) => n + ln.toolCount, 0);
         const ms = Math.max(...lanes.map((ln) => ln.subspan.t1 - ln.subspan.t0));
@@ -6268,7 +6289,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     slDiv.append(document.createElement("i"), st);
     const ssDiv = document.createElement("div");
     ssDiv.className = "ss";
-    const base = lanes.length ? plural(lanes.length, "subagent") + " · " + plural(tools, "tool") + " · " + fmtDur(ms) : plural(item.spans.length, "subagent") + " · no child data yet";
+    const base = lanes.length ? plural2(lanes.length, "subagent") + " · " + plural2(tools, "tool") + " · " + fmtDur(ms) : plural2(item.spans.length, "subagent") + " · no child data yet";
     const openHint = " · ▾ fold", closedHint = " · ▸ expand flow";
     ssDiv.textContent = base + (open2 ? openHint : closedHint);
     sn._traceSsBase = base;
@@ -6328,7 +6349,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     gl.textContent = intent ? firstLine2(intent) : item.label;
     const gs = document.createElement("div");
     gs.className = "gs";
-    gs.textContent = intent ? item.label.replace(" round", "") + " · " + plural(item.steps, "step") + " · " + fmtDur(item.ms) : !isRound && item.intents.length > 0 ? plural(item.rounds, "round") + " · " + plural(item.intents.length, "intent") + " · " + fmtDur(item.ms) : (item.rounds > 1 ? plural(item.rounds, "round") + " · " : "") + plural(item.steps, "step") + " · " + fmtDur(item.ms);
+    gs.textContent = intent ? item.label.replace(" round", "") + " · " + plural2(item.steps, "step") + " · " + fmtDur(item.ms) : !isRound && item.intents.length > 0 ? plural2(item.rounds, "round") + " · " + plural2(item.intents.length, "intent") + " · " + fmtDur(item.ms) : (item.rounds > 1 ? plural2(item.rounds, "round") + " · " : "") + plural2(item.steps, "step") + " · " + fmtDur(item.ms);
     if (intent)
       g.title = intent;
     else if (item.intents.length > 0)
@@ -9902,6 +9923,7 @@ var activeId = null;
 var known = new Set;
 var booted = false;
 var lastRosterLen = -1;
+var lastPaintedLen = -1;
 var tabBar = createTabBar(tabsEl, { onSwitch: switchTo, onClose: closeTab });
 var navMenu = createNavMenu(navEl, {
   items: [
@@ -9956,7 +9978,8 @@ homePanel.style.display = "none";
 panelsEl.append(homePanel);
 var homeView = createHomeView(homePanel, {
   loadRetro: () => authFetch("/api/retro").then((r) => r.ok ? r.json() : null).catch(() => null),
-  onPickSession: () => dropdown.open()
+  onPickSession: () => dropdown.open(),
+  sessionsOnDisk: () => roster.current().length
 });
 var comparePanel = document.createElement("div");
 comparePanel.className = "home-panel compare-panel";
@@ -10147,6 +10170,10 @@ roster.onChange((rows) => {
         tabBar.setLabel(row.sessionId, newLabel);
       }
     }
+  }
+  if (rows.length !== lastPaintedLen) {
+    lastPaintedLen = rows.length;
+    homeView.repaint();
   }
   if (booted) {
     autoOpenNew(rows);

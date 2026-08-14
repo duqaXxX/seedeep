@@ -30,6 +30,31 @@ gloss is built alongside the parts, so a count that is absent cannot leave the h
 The Compare row deliberately gets no tooltip of its own: that row's hover exists to show the text an
 ellipsis cut off, and a span-level title would take it away exactly where the row is widest.
 
+**The empty Home now opens with the reason it is empty, not with a pitch.** It said *"No finished
+turns yet — run a Claude Code session and this fills in as it lands on disk"* — one sentence for
+three different situations, true in one of them. It now states the requirement first (*"seedeep
+needs a Claude Code session. There is none on this machine yet"*), then what to do and what is being
+watched, with the privacy claim attached to `~/.claude/projects` rather than standing alone. A
+session that exists without a finished turn gets its own wording and a pointer to the picker, where
+it is already watchable; a retrospective that never arrived drops the claim about the machine
+entirely, because nothing was read.
+
+**`1 turns across 1 sessions`** — and not only in the title. The count-noun pairs on this page were
+written with a fixed plural, so a corpus of one read wrong in four places at once: the title, the
+`spent working` tile, the `verdict split` card and the re-entry line (`11 of 1 sessions over 10%`).
+Worst exactly for a newcomer, who is the one reader with exactly one of each. A three-line local
+`plural()` now spells all four — local because the two other spellings in the client (`turnsWord` in
+graph.ts, `plural` in trace.ts) live in modules this one has no reason to import.
+
+**Which wording appears comes from the roster, and that is the bug this found.**
+`Retrospective.sessions` counts only sessions that closed a turn (`aggregate()` filters on
+`turns.length > 0`), so a transcript with none is 0 there and 1 in the picker sitting directly above
+the box — measured on a truncated transcript: roster 1, retro 0. Reading the retrospective here
+would print "there is none on this machine" over a picker listing one. **And the box paints before
+the first roster reading lands**, which no unit test could see: `HomeView.repaint()` (a redraw, no
+corpus scan) is now called whenever the roster's length changes, outside the `booted` guard that
+deliberately skips the first expensive re-scan.
+
 ## 0.23.1 (2026-08-14)
 
 **Closing the panel from the menu-bar icon was dropping the REAL banners too**, and nothing had ever
