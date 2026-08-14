@@ -67,8 +67,10 @@ export function cardsList(cards: readonly SessionCard[]): HTMLElement {
     if (c.evidence === 'read') row.append(el('span', 'crdlvl', 'read'));
     row.append(el('span', 'crdt wrap', c.title ?? '—'));
     // Spelled out, not `×4`: the number is how many calls named this card, and a bare multiplier
-    // reads as a quantity of cards. The drawer has the room the card does not.
-    if (c.touches > 1) row.append(el('span', 'crdn', `${c.touches} calls`));
+    // reads as a quantity of cards. The drawer has the room the card does not. `tool calls`, not
+    // `calls`: everywhere else on the page that word now means an API call to the model, and this
+    // is the one count that is not one.
+    if (c.touches > 1) row.append(el('span', 'crdn', `${c.touches} tool calls`));
     row.append(el('span', 'crdtime', hhmm(c.at)));
     if (c.url) {
       const url = c.url;

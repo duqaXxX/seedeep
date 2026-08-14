@@ -1384,7 +1384,7 @@ function createCompareView(host, deps) {
       add(modelLabel(r.mainModel) + (r.mainModels > 1 ? " +" + (r.mainModels - 1) : ""), "cmp-model", r.mainModels > 1 ? "the main thread’s dominant model, of " + r.mainModels + " it used — subagents excluded" : "the model the main thread ran on — subagents excluded");
     }
     add(ago(r.lastTs, now));
-    add(r.apiCalls + " calls");
+    add(r.apiCalls + " API calls");
     add(fmt(r.tokensComplete) + " tokens", "cmp-tok", "complete tokens processed: input + cache write + cache read + output, every model, subagents included");
     if (r.subagentWeight > 0)
       add(pct(r.subagentWeight, r.weight) + " subagents", "cmp-sub");
@@ -1396,7 +1396,7 @@ function createCompareView(host, deps) {
       r.project,
       r.mainModel ? modelLabel(r.mainModel) : null,
       ago(r.lastTs, now),
-      r.apiCalls + " calls",
+      r.apiCalls + " API calls",
       fmt(r.tokensComplete) + " tokens"
     ].filter((x) => x !== null).join(" · ");
     id.append(meta);
@@ -5001,7 +5001,7 @@ function cardsList(cards) {
       row.append(el5("span", "crdlvl", "read"));
     row.append(el5("span", "crdt wrap", c.title ?? "—"));
     if (c.touches > 1)
-      row.append(el5("span", "crdn", `${c.touches} calls`));
+      row.append(el5("span", "crdn", `${c.touches} tool calls`));
     row.append(el5("span", "crdtime", hhmm(c.at)));
     if (c.url) {
       const url = c.url;
@@ -7621,15 +7621,25 @@ function createGraph(container, state, opts = {}) {
       if (cs.escCount > 0)
         scopeBanner.append(E("span", "sbstats", cs.escCount + " interrupted"));
       const work = [];
-      if (fullSnap.turns > 0)
+      const gloss = [];
+      if (fullSnap.turns > 0) {
         work.push(nTurns(fullSnap.turns));
-      if (fullSnap.apiCalls > 0)
-        work.push(kc(fullSnap.apiCalls) + " calls");
+        gloss.push("rounds of work");
+      }
+      if (fullSnap.apiCalls > 0) {
+        work.push(kc(fullSnap.apiCalls) + " API calls");
+        gloss.push("model calls on the main thread, subagents excluded");
+      }
       const toolCount = summarizeTools(fullSnap.mainTools).count;
-      if (toolCount > 0)
+      if (toolCount > 0) {
         work.push(kc(toolCount) + " tools");
-      if (work.length)
-        scopeBanner.append(E("span", "sbnum", work.join(" · ")));
+        gloss.push("tool uses");
+      }
+      if (work.length) {
+        const span = E("span", "sbnum", work.join(" · "));
+        span.title = gloss.join(" · ");
+        scopeBanner.append(span);
+      }
       const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
       const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
       if (work.length && (open || worked))
