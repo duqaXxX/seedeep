@@ -163,7 +163,10 @@ export function createCompareView(host: HTMLElement, deps: CompareViewDeps): Com
       );
     }
     add(ago(r.lastTs, now));
-    add(r.apiCalls + ' calls');
+    // `API calls`, for the reason the session banner gives — one name for one number. No `title`
+    // of its own: the row's own hover exists to show the text an ellipsis cut off, and a tooltip
+    // on this span would take that hover away exactly where the row is widest.
+    add(r.apiCalls + ' API calls');
     // The UNWEIGHTED count, next to the calls that produced it: what the session actually put
     // through the model. The title spells out that it is the complete figure, since the row's
     // right-hand number is the weighted one and the two must not be confused.
@@ -190,7 +193,7 @@ export function createCompareView(host: HTMLElement, deps: CompareViewDeps): Com
       r.project,
       r.mainModel ? modelLabel(r.mainModel) : null,
       ago(r.lastTs, now),
-      r.apiCalls + ' calls',
+      r.apiCalls + ' API calls',
       fmt(r.tokensComplete) + ' tokens',
     ]
       .filter((x): x is string => x !== null)

@@ -4,6 +4,57 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**No release publishes until every executable in it has actually been STARTED.** All five server
+binaries are cross-compiled on one `ubuntu-latest` runner, so the Windows binary and both Linux ARM
+binaries had never been executed on any machine, ever — the shape of the v0.6.0 failure, five green
+artifacts dead at startup everywhere but where they were built, invisible from the workflow's own
+checkmarks. `release.yml` now has a `smoke` job that downloads each asset onto a runner of its own OS
+and runs `.github/scripts/smoke-server.sh`: `--version` must print the version being released (which
+also catches a forgotten bump), `GET /api/config` must answer, and `/`, `/lib/app.js` and
+`/css/chrome.css` must answer too — the browser GUI is embedded by `with { type: 'file' }` imports,
+and the measured failure of a first compile was an API that answered while every static path 404'd.
+It gates both exits: `publish` (a broken build stays a draft) and `npm` (which cannot be taken back
+at all). On a tag the asset comes from the release, which also proves the upload happened; on a
+manual run from the run's artifact, so the matrix is provable without cutting a release. Every step
+is `shell: bash`, Windows included, because `"$TAG"` in PowerShell is an unassigned variable — the
+reason v0.6.0 uploaded no Windows installer.
+
+**One number wore two names on the same page.** The session banner said `33 calls`, the Session
+card's footer said `33 API calls` about the same field, a turn's scope said `5 API`, and the Cards
+drawer said `4 calls` about something else entirely — how many TOOL calls named that card. Nothing
+on screen said which was which, and nothing said what the number leaves out. Every surface that
+counts `apiCalls` now says **`API calls`** (banner, Compare row and its hover), the Cards drawer says
+**`tool calls`**, and the banner's group carries a `title` glossing each count in the order it
+appears — `rounds of work · model calls on the main thread, subagents excluded · tool uses`. The
+gloss is built alongside the parts, so a count that is absent cannot leave the hover describing it.
+The Compare row deliberately gets no tooltip of its own: that row's hover exists to show the text an
+ellipsis cut off, and a span-level title would take it away exactly where the row is widest.
+
+**The empty Home now opens with the reason it is empty, not with a pitch.** It said *"No finished
+turns yet — run a Claude Code session and this fills in as it lands on disk"* — one sentence for
+three different situations, true in one of them. It now states the requirement first (*"seedeep
+needs a Claude Code session. There is none on this machine yet"*), then what to do and what is being
+watched, with the privacy claim attached to `~/.claude/projects` rather than standing alone. A
+session that exists without a finished turn gets its own wording and a pointer to the picker, where
+it is already watchable; a retrospective that never arrived drops the claim about the machine
+entirely, because nothing was read.
+
+**`1 turns across 1 sessions`** — and not only in the title. The count-noun pairs on this page were
+written with a fixed plural, so a corpus of one read wrong in four places at once: the title, the
+`spent working` tile, the `verdict split` card and the re-entry line (`11 of 1 sessions over 10%`).
+Worst exactly for a newcomer, who is the one reader with exactly one of each. A three-line local
+`plural()` now spells all four — local because the two other spellings in the client (`turnsWord` in
+graph.ts, `plural` in trace.ts) live in modules this one has no reason to import.
+
+**Which wording appears comes from the roster, and that is the bug this found.**
+`Retrospective.sessions` counts only sessions that closed a turn (`aggregate()` filters on
+`turns.length > 0`), so a transcript with none is 0 there and 1 in the picker sitting directly above
+the box — measured on a truncated transcript: roster 1, retro 0. Reading the retrospective here
+would print "there is none on this machine" over a picker listing one. **And the box paints before
+the first roster reading lands**, which no unit test could see: `HomeView.repaint()` (a redraw, no
+corpus scan) is now called whenever the roster's length changes, outside the `booted` guard that
+deliberately skips the first expensive re-scan.
+
 ## 0.23.1 (2026-08-14)
 
 **Closing the panel from the menu-bar icon was dropping the REAL banners too**, and nothing had ever

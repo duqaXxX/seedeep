@@ -6025,11 +6025,18 @@ test('scope banner: the whole-session summary carries the call and tool counts',
 
   const banner = findByClass(container, 'scope-banner')[0];
   const nums = findByClass(banner, 'sbnum').map((n: any) => n.textContent);
-  // ONE element, not three side by side: `2 turns 403 calls 3 tools` reads as a single number with
-  // stray words in it — same colour, same weight, no separator. The separators are the whole point.
+  // ONE element, not three side by side: `2 turns 403 API calls 3 tools` reads as a single number
+  // with stray words in it — same colour, same weight, no separator. The separators are the point.
   assert.ok(
-    nums.includes('2 turns · 403 calls · 3 tools'),
+    nums.includes('2 turns · 403 API calls · 3 tools'),
     `the three counts are one group with separators — got ${JSON.stringify(nums)}`,
+  );
+  // The hover is the only place that can say what a number leaves OUT, and it has to line up with
+  // the parts that are actually shown — one gloss per count, in the same order.
+  assert.equal(
+    findByClass(banner, 'sbnum')[0].title,
+    'rounds of work · model calls on the main thread, subagents excluded · tool uses',
+    'each count is glossed, in the order they appear',
   );
 
   view.destroy();

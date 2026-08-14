@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { TARGETS } from '../../server/scripts/targets.ts';
 
 // The release workflow is the only file in the repo that can take an irreversible action - it
 // publishes. Nothing else checks it: it runs on GitHub's machines, so a change that looks fine is
@@ -101,13 +102,41 @@ test('the draft job itself always runs; only the step that writes is conditional
 });
 
 // The whole point of publishing from a separate job. `needs` will not start it unless every matrix
-// build AND the server's job succeeded, so a Windows failure leaves a draft instead of putting half
-// a download page in front of people; and it runs once where the builds run per platform.
+// build, the server's job AND the smoke run succeeded, so a Windows failure leaves a draft instead
+// of putting half a download page in front of people; and it runs once where the builds run per
+// platform.
 test('the release is published only after both halves built', () => {
   const publish = job('publish');
-  assert.match(publish, /needs: \[tray, server\]/);
+  assert.match(publish, /needs: \[tray, server, smoke\]/);
   assert.match(publish, /if: github\.ref_type == 'tag'/);
   assert.match(publish, /gh release edit .*--draft=false/);
+});
+
+// The gate that 0.6.0 was missing: five binaries cross-compiled on one runner, none of them ever
+// executed. Both exits from the pipeline wait for it — the release page and the registry — and npm
+// is the one that cannot be taken back.
+test('nothing reaches a stranger until the binaries have been RUN', () => {
+  assert.match(job('publish'), /needs: \[tray, server, smoke\]/);
+  assert.match(job('npm'), /needs: \[server, smoke\]/);
+});
+
+// A target that is built and not smoke-tested is exactly the hole this closes, and it reopens
+// silently the day someone adds a platform to `targets.ts` — the one list both the compiler and
+// the npm packager read.
+test('the smoke matrix covers every target the server is built for', () => {
+  const smoke = job('smoke');
+  const tested = [...smoke.matchAll(/asset: (\S+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(tested, TARGETS.map((t) => t.asset).sort());
+});
+
+// One shell on five platforms. v0.6.0 uploaded no Windows installer because `"$TAG"` in PowerShell
+// is an unassigned variable that expands to nothing, and `windows-latest` defaults to PowerShell:
+// a `run:` here without `shell: bash` is that bug waiting to happen again.
+test('every command the smoke job runs is bash, Windows included', () => {
+  const smoke = job('smoke');
+  const steps = smoke.split(/\n {6}- /).filter((s) => /(^|\n)\s*run:/.test(s));
+  assert.equal(steps.length, 3, 'the version, the download on a tag, the script');
+  for (const step of steps) assert.match(step, /shell: bash/, `a step runs outside bash:\n${step}`);
 });
 
 // The rule is about the DOWNLOAD PAGE: two macOS files sharing one prefix say nothing about which
