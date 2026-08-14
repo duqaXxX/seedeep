@@ -138,6 +138,20 @@ Three things about that script are decisions, not detail:
 The Linux binaries are dynamically linked against glibc, so a musl distribution (Alpine) is not a
 target either.
 
+**Every executable is STARTED before anything publishes it.** Cross-compiling from one runner means
+the Windows binary and both Linux ARM binaries are never executed by the build that produces them —
+which is exactly how v0.6.0 shipped five artifacts that died at startup on every machine but the
+builder's, with a green workflow to show for it. `release.yml`'s `smoke` job downloads each asset
+onto a runner of its own OS (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`,
+`windows-latest`) and runs `.github/scripts/smoke-server.sh`, which asserts that `--version` prints
+the version being released, that `GET /api/config` answers, and that `/`, `/lib/app.js` and
+`/css/chrome.css` answer too — the last three because the measured failure mode of a first compile
+was an API that answered while every static path 404'd. Both exits from the pipeline wait for it:
+`publish` (so a broken build stays a draft) and `npm` (which cannot be taken back at all). On a tag
+the binary comes from the release itself, which also proves the upload happened — v0.6.0's Windows
+installer was built and never uploaded — and on a manual run it comes from the run's artifact, so
+the whole matrix is provable without cutting a release.
+
 #### The npm channel
 
 The same five executables also ship as npm packages, which is what `npm i -g seedeep` installs.
