@@ -4,6 +4,17 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A restart handed over the process without handing over the port.** It spawned the successor and
+exited while still holding the socket, so the successor won the race only by taking longer to boot
+than this process took to die. That margin does not exist on Windows: measured on 0.26.0, the
+successor started, reached `Failed to start server. Is port 44842 in use?` and exited, leaving
+`seedeep restart` with an old server stopped and no new one — the symptom `detached` was necessary
+but not sufficient to fix. The listener is now closed before the successor is spawned, with
+`closeActiveConnections`, since the request that asked for the restart is itself one of them and
+would keep the port held. A test asserts the property rather than the order — at the instant the
+successor is spawned, the port can be bound — and it fails without the close on macOS too, where the
+race was always there and simply kept being won.
+
 **`status` shortened its path to the half that says nothing.** The headline names which executable
 is running, and it kept the last two segments — which is exactly what every installation shares:
 npm, bun and a moved download all printed `…/bin/seedeep.exe`, so the path described nothing and the
