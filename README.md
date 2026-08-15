@@ -172,7 +172,7 @@ the GUI, stops the server, or reports what the current session cost.
 
 Everything above was checked by hand on **macOS**, on the machine `seedeep` is
 developed on. **Linux has been used once**, in a VM, on arm64. **Windows has been
-used once too**, in a VM, on arm64 — and only so far: the table says exactly how far
+used twice**, in a VM, and on arm64 both times — the table says exactly how far
 each got, and what each found. Building for three systems is not the same as having
 used three, and this section is that difference written down rather than left for you
 to find.
@@ -186,16 +186,16 @@ a person on that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **arm64: used on Windows 11 in a VM** (2026-08-14) — installed from npm on a native arm64 Node, server started and served its API against a real Claude Code session, `status`, `stop` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Four defects it found — a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, and unreadable punctuation — are fixed and **await a build somebody can run**. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)). **x64: started on every release, never used** — and on a Windows-on-arm machine, where an x64 Node makes npm resolve it, it crashes within seconds of starting; install an arm64 Node so npm resolves the native build | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
-| **Tray** | Used daily on a real menu bar | **arm64: opened once** (2026-08-14), and it got no further than the popover — which appeared off the bottom of the screen, beside a console window the app had no reason to open. Both are fixed and await a build somebody can run; the icon's legibility, the notifications and the connection screen are still unanswered. **x64: never run** — its installer is built on every tag and nothing has opened it | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **arm64: used on Windows 11 in a VM** (2026-08-14, then again on 2026-08-15) — installed from npm on a native arm64 Node, server started and served its API against a real Claude Code session, `status`, `stop`, `restart` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Six defects the two sessions found are fixed: a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, unreadable punctuation, a panel button that swallowed about one click in ten, and a burst of console windows on a portal refresh. Four of them were driven again on that machine after the fix — the restart, the popover, the tray's console window and the button; the punctuation and the console burst were not re-checked there. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)). **x64: started on every release, never used** — and on a Windows-on-arm machine, where an x64 Node makes npm resolve it, it crashes within seconds of starting; install an arm64 Node so npm resolves the native build | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
+| **Tray** | Used daily on a real menu bar | **arm64: installed and used on Windows 11 in a VM** (2026-08-15) — the installer runs, the icon reads in the notification area, the popover opens upward at full height against a taskbar at the bottom, trust-on-first-use and the connection screen work, the panel's buttons respond, and no console window appears. **Notifications are the one thing nothing has exercised**, along with the animation's cost and a taskbar on the other three edges. **x64: never run** — its installer is built on every tag and nothing has opened it | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
-Concretely: on **Windows x64**, on **Linux x64**, and on the **tray anywhere but macOS**,
+Concretely: on **Windows x64**, on **Linux x64**, and on the **Windows x64 tray**,
 you are the first to use it. A defect there is expected rather than surprising, and
 [an issue](../../issues) saying what you saw is the most useful thing you can send.
-The one Windows session behind the table above found four defects in an evening, which
-is the honest estimate of what the untouched squares still hold; if you use Windows,
-[`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists what a session on that
-machine would settle next.
+The two Windows sessions behind the table above found six defects, all of them on one
+architecture, which is the honest estimate of what the untouched squares still hold; if
+you use Windows, [`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists what a
+session on that machine would settle next.
 
 ## Design principles
 

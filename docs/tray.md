@@ -14,8 +14,8 @@ changes the endpoint.
 > **State of the code.** The tray is feature-complete and packaged: it finds a server, pins its
 > certificate, polls the digest, shows the three bands, drives its icon from what it reads, notifies
 > when a session stops on you, has the settings surface that turns that off, and a tag builds its
-> installers ([Packaging and releases](#packaging-and-releases)). The macOS and the Windows x64
-> installers have been built by CI and inspected; the Windows arm64 leg is new and has never run.
+> installers ([Packaging and releases](#packaging-and-releases)). All three have been built by CI and
+> inspected, and the Windows arm64 one has additionally been installed and used (2026-08-15).
 >
 > What has been checked on a real menu bar, not only by its tests: the icon renders and reads at
 > menu-bar size, the popover opens anchored under it and inside the screen, and it closes. The
@@ -1143,11 +1143,17 @@ has given to something else, and picking either would be a signal sent to an unr
 
 Known limits, none of them silent:
 
-- **Windows was opened once**, on arm64 (2026-08-14), and got no further than the popover. That one
-  look found two defects, both since fixed: the popover opened off the bottom of the screen, and the
-  crate had no `windows_subsystem` attribute, so launching it left a console window open. The icon's
-  legibility, the animation's cost, notifications and the connection screen are all still
-  unanswered, and the x64 build has never been run at all.
+- **Windows has been used on arm64 only** — opened on 2026-08-14, then installed and driven on
+  2026-08-15. The first look found two defects, both since fixed — the popover opened off the bottom
+  of the screen, and the crate had no `windows_subsystem` attribute, so launching it left a console
+  window open; fixing the second turned up a third by reading, two of the three spawn sites missing
+  `CREATE_NO_WINDOW`. The second session found one more — a panel button that swallowed about one
+  click in ten, the live view being replaced under the press — and answered the rest: the installer
+  runs, the icon reads at notification-area size, the popover opens upward at full
+  height against a taskbar at the bottom, trust-on-first-use and the connection screen work, and
+  every button responds. **Notifications remain the one thing nothing has
+  exercised**, along with the animation's cost, a taskbar on the other three edges, and the entire
+  x64 build, whose installer has never been opened.
 - `taskkill /F` is a hard stop — the server never runs its shutdown path, so its record is left for
   the next start's sweep. Marked `// LIMIT:` at both sites. The lookup there also has a rule this
   platform does not need: `npm i -g` installs three shims and `where.exe` lists the extensionless sh
@@ -1599,9 +1605,10 @@ mounts to `seedeep.app`
 beside the `Applications` symlink, `lipo` reports `x86_64 arm64`, and `CFBundleShortVersionString` is
 the `package.json` number; the Windows artifact is a `PE32 executable (GUI) … Nullsoft Installer
 self-extracting archive`. A cold runner with no Rust cache takes about 9 minutes on macOS and 14 on
-Windows. **The arm64 leg has never run**, so nothing here is measured about it — not the build time,
-not the artifact, not whether the runner's toolchain carries what Tauri needs. A
-`workflow_dispatch` run is what would settle that before a tag depends on it.
+Windows. **The arm64 leg runs on every tag from 0.26.0**, in about 7 minutes — the shortest of the
+three — and its artifact was inspected the same way: `PE32 executable (GUI) Intel 80386 … Nullsoft
+Installer self-extracting archive`, 4.1 MB. The installer really is x86 while the app inside it is
+arm64, which is the behaviour Tauri documents (below) seen rather than trusted.
 
 Windows is why this is CI and not a script on a laptop: Tauri's own recipe uses one runner per
 platform, and it documents building the Windows installer from a Mac as possible for NSIS only
