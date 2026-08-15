@@ -4,6 +4,15 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**What the CLI prints came out as mojibake on a Windows console.** A Windows console runs in a
+legacy code page unless something changes it, and seedeep writes UTF-8, so the em dash it separates
+its lines with arrived as `ΓÇö`. Five characters reach a console — `—`, `…`, `·`, `→`, `≥`, measured
+by reading what the commands actually emit rather than by counting source lines — and on Windows
+they are now spelled `-`, `...`, `-`, `->` and `>=` at the one place seedeep prints from. macOS and
+Linux keep the typography they render correctly, and are not wrapped at all. The `▲ ✓ 🔒 × ↔` in
+`core/` are untouched: they are rendered in the browser and the share card, where UTF-8 is not in
+question.
+
 **The tray's popover opened off the bottom of the screen on Windows, and collapsed while it did.**
 The panel was anchored below the icon unconditionally — correct for a menu bar, which macOS always
 draws as the top strip, and wrong for a taskbar, which sits on any edge and puts its icons in the
