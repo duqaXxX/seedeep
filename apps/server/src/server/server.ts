@@ -814,9 +814,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       }
 
       if (pathname === '/api/restart' && req.method === 'POST') {
-        // Spawn a detached copy of this process, then exit. The child inherits all argv
-        // so flags like --no-open survive the restart. unref() detaches it from our
-        // lifetime — it keeps running after process.exit(0).
+        // Spawn a copy of this process, then exit. The child inherits all argv, so flags like
+        // --no-open survive the restart. What lets it outlive this process differs by platform and
+        // is decided in {@link selfSpawnPlan}: `unref()` only stops the handle holding this event
+        // loop open, and on Windows that is not enough on its own.
         setTimeout(() => {
           spawnSelfFn();
           exitFn(0);

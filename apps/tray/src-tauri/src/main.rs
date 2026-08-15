@@ -157,18 +157,45 @@ struct PanelGeom {
 /// window on the wrong side of its icon. All arithmetic, and none of it observable from an SSH
 /// shell — which is the whole reason this is a function and not five lines inside a command.
 fn panel_geometry(content: f64, icon_top: f64, icon_height: f64, area: Option<(f64, f64)>) -> PanelGeom {
-    let Some((area_top, area_bottom)) = area else {
-        // Nothing to respect, so honour the content in full and grow down, as this did before it
-        // knew about edges.
-        return PanelGeom { top: icon_top + icon_height, height: content.max(PANEL_MIN_H), grows_up: false };
+    let up = grows_up(icon_top, icon_height, area);
+    let room = match area {
+        Some((area_top, area_bottom)) => {
+            (if up { icon_top - area_top } else { area_bottom - icon_top - icon_height }) - PANEL_MARGIN
+        }
+        // Nothing to respect, so honour the content in full.
+        None => f64::INFINITY,
     };
-    let grows_up = icon_top + icon_height / 2.0 > (area_top + area_bottom) / 2.0;
-    let room = (if grows_up { icon_top - area_top } else { area_bottom - icon_top - icon_height }) - PANEL_MARGIN;
-    // `min` then `max`, never `clamp`: with less room than the floor the range inverts, and
-    // `clamp` panics on an inverted range (the same trap the x position already documents).
-    let height = content.min(room).max(PANEL_MIN_H);
-    let top = if grows_up { icon_top - height } else { icon_top + icon_height };
-    PanelGeom { top, height, grows_up }
+    let height = fitted_height(content, room);
+    PanelGeom { top: panel_top(height, icon_top, icon_height, up), height, grows_up: up }
+}
+
+/// The height a popover takes for `content` with `room` in the direction it grows.
+///
+/// One function because two callers need the rule and it has a trap in it: `min` then `max`, never
+/// `clamp` — with less room than the floor the range inverts, and `clamp` panics on an inverted
+/// range. A tray that panics is a tray that disappears.
+fn fitted_height(content: f64, room: f64) -> f64 {
+    content.min(room).max(PANEL_MIN_H)
+}
+
+/// Which way the popover opens. `None` — no monitor answered — grows down, as this did before it
+/// knew about edges.
+fn grows_up(icon_top: f64, icon_height: f64, area: Option<(f64, f64)>) -> bool {
+    match area {
+        Some((area_top, area_bottom)) => icon_top + icon_height / 2.0 > (area_top + area_bottom) / 2.0,
+        None => false,
+    }
+}
+
+/// The top edge of a popover `height` tall, opening `up` or down from the icon.
+///
+/// Separate from {@link panel_geometry} because the click that opens the panel does NOT know the
+/// content height and must not guess at one: it places the window at the size it already has. Asking
+/// for a clamped height there and applying it made the panel ratchet DOWN and never back up — the
+/// clamped result became the next open's stand-in, and `fit()` caches the height it asked for
+/// (`ui/panel.ts`), so unchanged content never calls `resize` to correct it.
+fn panel_top(height: f64, icon_top: f64, icon_height: f64, up: bool) -> f64 {
+    if up { icon_top - height } else { icon_top + icon_height }
 }
 
 /// The vertical bounds of a monitor's work area, in logical points, or `None` when none answered.
@@ -262,18 +289,12 @@ fn toggle_panel(app: &AppHandle, rect: Rect) {
         };
         let icon_anchor =
             IconAnchor { x: anchor.x / scale, top: anchor.y / scale, height: icon.height / scale };
-        // The window's CURRENT height stands in for the content until the webview measures itself
-        // and calls `resize`; both the position AND the size are applied, since a panel placed as
-        // if it had been clamped while keeping its old height would hang over the icon it opened
-        // from.
-        let geom = panel_geometry(
-            size.height as f64 / scale,
-            icon_anchor.top,
-            icon_anchor.height,
-            work_area_v(mon.as_ref(), scale),
-        );
-        let _ = win.set_position(PhysicalPosition::new(x, geom.top * scale));
-        let _ = win.set_size(tauri::LogicalSize::new(size.width as f64 / scale, geom.height));
+        // Placed at the size it ALREADY has, and never resized here: the click does not know the
+        // content height, and a clamped guess would become the next open's stand-in and ratchet the
+        // panel down for good. `resize` is what fits it, the moment the webview has measured itself.
+        let up = grows_up(icon_anchor.top, icon_anchor.height, work_area_v(mon.as_ref(), scale));
+        let top = panel_top(size.height as f64 / scale, icon_anchor.top, icon_anchor.height, up);
+        let _ = win.set_position(PhysicalPosition::new(x, top * scale));
         if let Some(state) = app.try_state::<Mutex<Option<IconAnchor>>>() {
             if let Ok(mut slot) = state.lock() {
                 *slot = Some(icon_anchor);
@@ -496,11 +517,14 @@ fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
         }
         // Nothing has been opened from the icon yet, so there is no anchor to keep: hold the top
         // where it is and grow down, which is what this command did before it knew about edges.
+        // Expressed through the same function rather than repeating its clamp — an icon of zero
+        // height at the window's own top is exactly "grow down from here", and the arithmetic that
+        // must never become `clamp` then lives in one place.
         None => {
             let top = pos.to_logical::<f64>(scale).y;
             let mon = win.monitor_from_point(f64::from(pos.x), f64::from(pos.y)).ok().flatten();
             let bottom = work_area_v(mon.as_ref(), scale).map_or(f64::INFINITY, |(_, b)| b);
-            PanelGeom { top, height: height.min(bottom - top - PANEL_MARGIN).max(PANEL_MIN_H), grows_up: false }
+            PanelGeom { top, height: fitted_height(height, bottom - top - PANEL_MARGIN), grows_up: false }
         }
     };
     // Position first: growing upward, moving after resizing would put the bottom edge through the
@@ -702,6 +726,11 @@ fn main() {
                 // open question. `println!` stays for the macOS run, where a terminal is how this
                 // is used.
                 println!("NOTIFY_PROBE: {outcome:?}");
+                // The directory is created here because nothing else has yet: Tauri does not make
+                // `app_config_dir`, and the two places that do are save paths that have not run on
+                // a fresh install. Without it the write fails with NotFound on exactly the first
+                // run the file exists for.
+                let _ = std::fs::create_dir_all(&config_dir);
                 let _ = std::fs::write(config_dir.join(NOTIFY_PROBE_OUT), format!("{outcome:?}\n"));
             }
             Ok(())
@@ -722,7 +751,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_root, panel_geometry, PANEL_MARGIN, PANEL_MIN_H};
+    use super::{config_root, panel_geometry, panel_top, PANEL_MARGIN, PANEL_MIN_H};
     use std::path::PathBuf;
 
     // The default, and the only one a user ever takes: the app's own directory, untouched.
@@ -830,6 +859,17 @@ mod tests {
         assert!(geom.grows_up);
         assert_eq!(geom.height, PANEL_MIN_H);
         assert!(geom.top < 0.0, "it overhangs the top rather than vanishing: {}", geom.top);
+    }
+
+    // The ratchet, as arithmetic. Asking the clamped rule for a height at open time made the
+    // clamped result the NEXT open's stand-in, so the panel could only ever shrink — and `fit()`
+    // caches the height it asked for, so unchanged content never calls `resize` to undo it. The
+    // click uses `panel_top` with the height the window HAS, so nothing feeds back into itself.
+    #[test]
+    fn the_open_time_placement_does_not_clamp() {
+        let (t, h, area) = TASKBAR_BOTTOM;
+        assert!(panel_geometry(2000.0, t, h, area).height < 2000.0, "the fitting rule does clamp");
+        assert_eq!(panel_top(2000.0, t, h, true), t - 2000.0, "the placement rule does not");
     }
 
     // No monitor answered. Expressed as its own branch and not as an infinite work area: infinities
