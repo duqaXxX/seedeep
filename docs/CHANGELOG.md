@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.28.0 (2026-08-16)
+
 **Every binary is now RUN, not merely started — and the crash nobody had measured gets a controlled
 experiment.** All six legs of `smoke` go on to run two new scripts against the asset they just
 started: `idle-survival.sh` with three starts and a 20-second idle window (the cheap regression — a
