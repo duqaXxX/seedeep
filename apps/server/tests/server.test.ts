@@ -1621,3 +1621,37 @@ test('a hand-edited webhook URL asks for a restart, so the signal can be cleared
     srv.stop();
   }
 });
+
+// The successor's first act is to bind the port, and the handover used to spawn it while this
+// process still held the socket — it won only by being slower to boot than the parent was to die.
+// On Windows that margin is not there: measured 2026-08-15, the successor reached
+// `Failed to start server. Is port 44842 in use?` and exited, so `restart` left the old server
+// stopped and no new one. Asserted as the property rather than the call order: at the instant the
+// successor is spawned, the port is free.
+test('POST /api/restart frees the port before it spawns the successor', async () => {
+  let rebound: boolean | null = null;
+  let port = 0;
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    spawnSelf: () => {
+      try {
+        Bun.serve({ port, hostname: '127.0.0.1', fetch: () => new Response('') }).stop(true);
+        rebound = true;
+      } catch {
+        rebound = false;
+      }
+    },
+    exit: () => {},
+  });
+  port = Number(new URL(srv.url).port);
+  try {
+    assert.equal((await fetch(`${srv.url}/api/restart`, { method: 'POST' })).status, 200);
+    // Both callbacks run on the same 80 ms timer the handler sets.
+    await new Promise((r) => setTimeout(r, 250));
+    assert.equal(rebound, true, 'the successor could not have bound the port it was spawned for');
+  } finally {
+    srv.stop();
+  }
+});

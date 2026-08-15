@@ -814,11 +814,22 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       }
 
       if (pathname === '/api/restart' && req.method === 'POST') {
-        // Spawn a copy of this process, then exit. The child inherits all argv, so flags like
-        // --no-open survive the restart. What lets it outlive this process differs by platform and
-        // is decided in {@link selfSpawnPlan}: `unref()` only stops the handle holding this event
-        // loop open, and on Windows that is not enough on its own.
+        // Hand the PORT over before the process: close the listener, then spawn, then exit. The
+        // child inherits all argv, so flags like --no-open survive the restart, and what lets it
+        // outlive this process is decided in {@link selfSpawnPlan}.
+        //
+        // The close is what makes the handover deterministic rather than lucky. This used to spawn
+        // and exit while still holding the socket, and the successor won only because it takes
+        // longer to boot than this process takes to die — a margin that does not exist on Windows,
+        // where the successor reached `Failed to start server. Is port 44842 in use?` and exited,
+        // leaving `restart` with an old server stopped and no new one (measured, 2026-08-15).
+        //
+        // `true` because the default waits for active connections to drain, and the request that
+        // asked for the restart is one of them: the port would still be held. The response above
+        // has already gone out — `restart-cmd` treats a connection dropped here as this request's
+        // normal ending.
         setTimeout(() => {
+          server.stop(true);
           spawnSelfFn();
           exitFn(0);
         }, 80);
