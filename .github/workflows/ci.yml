@@ -89,3 +89,39 @@ jobs:
           bun run build:client
           git diff --exit-code -- apps/server/public/lib/app.js \
             || { echo "::error::apps/server/public/lib/app.js is stale — run 'bun run build:client' and commit it"; exit 1; }
+
+  # The tray is Rust, and Rust compiles by PLATFORM: `#[cfg(windows)]` is not merely untested off
+  # Windows, it is never handed to the compiler there. `local.rs` alone carries 14 `cfg(unix)`
+  # blocks, 4 `cfg(target_os = "macos")` and 5 `cfg(windows)` — and until this job existed, the
+  # first two were checked only because development happens on a Mac and somebody ran the tests,
+  # while the third was checked by nothing until a tag built the installer. Four changes to those
+  # Windows blocks shipped that way (2026-08-15).
+  #
+  # One job and one command for both, deliberately: a matrix where each leg does something
+  # different is two jobs wearing one name, and the platform that gets the weaker half is the one
+  # nobody notices. Linux is absent because the tray has no code there — it is a non-target by
+  # decision, and `release.yml` builds no Linux tray either (`docs/tray.md`).
+  tray:
+    name: Tray (Rust)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # `stable`, matching release.yml: this must fail for the same reasons the release build does,
+      # never for a different toolchain.
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+        with:
+          workspaces: apps/tray/src-tauri
+
+      # cargo directly rather than `bun run test:tray`: that script's first step guards a
+      # contributor's PATH for cargo, which a job that just installed the toolchain does not need,
+      # and it saves a bun install on two more runners.
+      - run: cargo test --manifest-path apps/tray/src-tauri/Cargo.toml

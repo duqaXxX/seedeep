@@ -137,7 +137,9 @@ it looks for test files, so `bun test` on its own misses the checks that live in
 `bun run test` does **not** run the type-checker, so run `bun run typecheck`
 separately before opening a PR. It runs the tray's TypeScript tests with
 everything else, but nothing of its **Rust** side — a change under
-`apps/tray/src-tauri/` needs `bun run test:tray` as well.
+`apps/tray/src-tauri/` needs `bun run test:tray` as well. That command compiles the blocks
+your platform selects and no others, so a change inside `#[cfg(windows)]` on a Mac is
+checked by CI and by nothing you can run; the reverse holds on Windows.
 
 ### Where the code lives
 
@@ -205,8 +207,10 @@ not be accepted.
   tests in the same commit.
 - **Run before you push:** `bun run test` and `bun run typecheck` must pass — plus
   `bun run test:tray` if you touched `apps/tray/src-tauri/`, since `bun run test`
-  does not reach the Rust side. CI runs the first two on every push and pull request, so a
-  failure here is a failure there; the Rust tests are yours to run locally.
+  does not reach the Rust side. CI runs all three on every push and pull request, so a
+  failure here is a failure there. It runs the Rust ones on **macOS and Windows both**,
+  which your machine cannot: `#[cfg(windows)]` is not merely untested off Windows, it is
+  never handed to the compiler there, and `local.rs` carries five such blocks.
 - Fixtures (`apps/server/tests/fixtures/*.jsonl`) must be **synthetic and anonymized** — no
   real paths, project names, or session content. The repo is public; never
   commit a real session log, real user data, or a screenshot of a real session.
