@@ -4,6 +4,22 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.27.1 (2026-08-15)
+
+**The guard 0.27.0 claimed to have on its restart was never in the file.** The edit that added it
+silently matched nothing; only the constant it referenced landed, unused, and the release notes said
+it was fixed because nobody checked the code. So 0.27.0 shipped `await server.stop(true)` bare — and
+an unhandled rejection inside a timer callback takes the process down where it stands (measured on
+Bun 1.3.13), which would end a restart with the old server gone and no successor at all, where the
+un-awaited 0.26.0 version at least always spawned one.
+
+The handover is now a named function with three tests, and that is the point of it: a close that
+REJECTS still hands over, a close that never settles gives up at a deadline — this server holds SSE
+streams open with no idle timeout — and a close that settles is waited for, since freeing the port
+before the successor asks for it is the whole reason any of this is awaited. Two of those endings
+are invisible from the handler that calls it, which is why the last two attempts at this were
+written without noticing they were wrong.
+
 ## 0.27.0 (2026-08-15)
 
 **Eight more corrections, from a review of the commit that answered the last review.** Two were

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { mergeRoster } from '../src/core/roster.ts';
 import type { SessionRecord } from '../src/core/types.ts';
 import { defaultConfig, type SeedDeepConfig } from '../src/server/config.ts';
-import { isLoopback, parseMarks, selfSpawnPlan, startServer } from '../src/server/server.ts';
+import { handOver, isLoopback, parseMarks, selfSpawnPlan, startServer } from '../src/server/server.ts';
 import type { Channel } from '../src/server/update-cmd.ts';
 import { VERSION } from '../src/server/version.ts';
 
@@ -1654,4 +1654,48 @@ test('POST /api/restart frees the port before it spawns the successor', async ()
   } finally {
     srv.stop();
   }
+});
+
+// The correction to a correction. Awaiting the close is what frees the port before the successor
+// asks for it, and awaiting it bare is worse than the race it replaced: an unhandled rejection in a
+// timer callback takes the process down where it stands, so a close that failed would end a restart
+// with the old server gone and no successor at all. Both endings are asserted, because neither is
+// visible from the handler that calls this.
+test('the handover spawns the successor even when the close fails', async () => {
+  const done: string[] = [];
+  await handOver(
+    () => Promise.reject(new Error('the listener would not close')),
+    () => done.push('spawn'),
+    () => done.push('exit'),
+  );
+  assert.deepEqual(done, ['spawn', 'exit'], 'a rejected close must not reach these');
+});
+
+test('the handover gives up on a close that never settles', async () => {
+  const done: string[] = [];
+  const began = Date.now();
+  await handOver(
+    () => new Promise<void>(() => {}),
+    () => done.push('spawn'),
+    () => done.push('exit'),
+    30,
+  );
+  assert.deepEqual(done, ['spawn', 'exit']);
+  assert.ok(Date.now() - began >= 25, 'it waited for the deadline rather than skipping the close');
+});
+
+test('the handover waits for a close that does settle, and does not wait longer', async () => {
+  const done: string[] = [];
+  const began = Date.now();
+  await handOver(
+    async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      done.push('closed');
+    },
+    () => done.push('spawn'),
+    () => done.push('exit'),
+    5_000,
+  );
+  assert.deepEqual(done, ['closed', 'spawn', 'exit'], 'the port is free before the successor asks');
+  assert.ok(Date.now() - began < 1_000, 'the deadline is a ceiling, never a delay');
 });
