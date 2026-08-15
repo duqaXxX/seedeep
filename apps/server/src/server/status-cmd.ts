@@ -75,7 +75,13 @@ export interface StatusFacts {
  * them untouched — the reason this was never noticed there.
  */
 export function shortPath(p: string, home = homedir()): string {
-  const tilde = home && p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+  // On a SEGMENT boundary, never a bare prefix. A home directory is not the parent of a sibling
+  // whose name merely starts with the same letters — `carolyn` beside `carol` — and the naive test
+  // spelled that sibling's files `~yn/bin/seedeep`, an address nobody can act on. Under a home of
+  // `/` it would have done that to every path on the machine.
+  const rest = home !== '' && p.startsWith(home) ? p.slice(home.length) : null;
+  const inside = rest !== null && (rest === '' || rest.startsWith('/') || rest.startsWith('\\'));
+  const tilde = inside ? `~${rest}` : p;
   const cut = /^(.*?)([/\\])node_modules[/\\].*[/\\]([^/\\]+)$/.exec(tilde);
   return cut ? `${cut[1]}${cut[2]}…${cut[2]}${cut[3]}` : tilde;
 }

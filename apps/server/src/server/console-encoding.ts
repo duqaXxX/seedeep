@@ -26,10 +26,12 @@
  * `SetConsoleOutputCP` through FFI in a cross-compiled binary, and nothing here could verify it.
  */
 
-// LIMIT: seedeep's OWN typography only. The data it prints verbatim — commit subjects, card titles,
-// project paths, file names — can carry anything, and an accented directory or a curly apostrophe
-// still garbles on a legacy code page. Covering that needs the console's code page set to UTF-8
-// (`SetConsoleOutputCP` through FFI), which is declined above, not a longer table.
+// LIMIT: the table is seedeep's own typography, and it is applied to every string printed — the
+// data included. So a commit subject or a project path carrying one of these five is rewritten too,
+// which is harmless for a separator and a liberty on somebody else's text; while an accented
+// directory or a curly apostrophe, which are not in the table, still garbles. Both halves of that
+// need the console's code page set to UTF-8 (`SetConsoleOutputCP` through FFI), which is declined
+// above — a longer table would fix neither.
 /** What a legacy Windows console cannot show, and what it is spelled as instead. */
 const ASCII: ReadonlyArray<readonly [string, string]> = [
   ['—', '-'],
@@ -61,8 +63,16 @@ export interface ConsoleLike {
  * correctly should receive them. Strings only: an argument that is not a string was not encoded
  * here, and rewriting bytes it did not encode is how an encoder becomes a corruption.
  */
-export function useAsciiConsole(target: ConsoleLike = console, platform: string = process.platform): boolean {
-  if (platform !== 'win32') return false;
+export function useAsciiConsole(
+  target: ConsoleLike = console,
+  platform: string = process.platform,
+  isTty: boolean = process.stdout.isTTY === true,
+): boolean {
+  // A CONSOLE, not a redirect. The tray starts the server with its output going to `server.log`, and
+  // `seedeep start` does the same: those are UTF-8 files that no code page touches, and degrading
+  // them would be this module doing to a file what it exists to prevent on a terminal. It also
+  // keeps the rewrite off anything piped into another program.
+  if (platform !== 'win32' || !isTty) return false;
   for (const name of ['log', 'error', 'warn'] as const) {
     const original = target[name].bind(target);
     target[name] = (...args: unknown[]) => original(...args.map((a) => (typeof a === 'string' ? asciiFallback(a) : a)));

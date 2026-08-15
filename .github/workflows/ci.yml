@@ -2,13 +2,11 @@
 # CONTRIBUTING.md ("`bun run typecheck` must pass") were enforced by nothing, and the type-checker
 # was red on main while every local `bun test` stayed green.
 #
-# Two jobs rather than one, because the two failures mean different things and one must not hide
-# the other: `scan` guards what must never enter a public history, `check` guards whether the code
-# is correct. A leak is not a reason to stop reporting a broken test.
+# Three jobs rather than one, so a red check names what broke without anybody opening a log.
 #
-# The tray's Rust tests (`bun run test:tray`) are deliberately NOT here: building the Tauri crate on
-# a Linux runner needs system webkit packages, and a pipeline that is red for its own dependencies
-# teaches people to ignore red. Run them locally on macOS until that job is worth its setup.
+# The tray's Rust lives in the third: `cfg(windows)` code is not merely untested off Windows, it is
+# never handed to a compiler there, so the matrix runs both. Linux is absent from it because the
+# tray has no code for Linux — a non-target by decision (`docs/tray.md`), not a setup cost.
 name: CI
 
 on:

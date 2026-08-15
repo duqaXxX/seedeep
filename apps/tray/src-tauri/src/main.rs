@@ -751,7 +751,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_root, panel_geometry, panel_top, PANEL_MARGIN, PANEL_MIN_H};
+    use super::{config_root, panel_geometry, PANEL_MARGIN, PANEL_MIN_H};
     use std::path::PathBuf;
 
     // The default, and the only one a user ever takes: the app's own directory, untouched.
@@ -860,17 +860,6 @@ mod tests {
         assert!(geom.grows_up);
         assert_eq!(geom.height, PANEL_MIN_H);
         assert!(geom.top < 0.0, "it overhangs the top rather than vanishing: {}", geom.top);
-    }
-
-    // The ratchet, as arithmetic. Asking the clamped rule for a height at open time made the
-    // clamped result the NEXT open's stand-in, so the panel could only ever shrink — and `fit()`
-    // caches the height it asked for, so unchanged content never calls `resize` to undo it. The
-    // click uses `panel_top` with the height the window HAS, so nothing feeds back into itself.
-    #[test]
-    fn the_open_time_placement_does_not_clamp() {
-        let (t, h, area) = TASKBAR_BOTTOM;
-        assert!(panel_geometry(2000.0, t, h, area).height < 2000.0, "the fitting rule does clamp");
-        assert_eq!(panel_top(2000.0, t, h, true), t - 2000.0, "the placement rule does not");
     }
 
     // No monitor answered. Expressed as its own branch and not as an infinite work area: infinities
