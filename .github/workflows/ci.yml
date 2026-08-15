@@ -121,7 +121,17 @@ jobs:
         with:
           workspaces: apps/tray/src-tauri
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - run: bun install --frozen-lockfile
+
+      # `generate_context!()` reads `frontendDist` at COMPILE time and panics when the directory is
+      # not there, so the panel has to be bundled before cargo runs — the same `beforeBuildCommand`
+      # tauri would run for a real build. A local `cargo test` passes without this only because the
+      # directory is already on disk from an earlier build, which is how it went unnoticed until a
+      # clean machine ran it.
+      - run: bun run build:tray-ui
+
       # cargo directly rather than `bun run test:tray`: that script's first step guards a
-      # contributor's PATH for cargo, which a job that just installed the toolchain does not need,
-      # and it saves a bun install on two more runners.
+      # contributor's PATH for cargo, which a job that just installed the toolchain does not need.
       - run: cargo test --manifest-path apps/tray/src-tauri/Cargo.toml
