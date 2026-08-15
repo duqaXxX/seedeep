@@ -61,7 +61,7 @@ async function fileExists(path: string): Promise<boolean> {
 function runCmd(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     let errOut = '';
-    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     child.stderr?.on('data', (d: Buffer) => {
       errOut += d.toString();
     });

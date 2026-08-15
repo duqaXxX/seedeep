@@ -36,7 +36,14 @@ function git(cwd: string, args: string[]): Promise<string | null> {
     };
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn('git', ['--no-optional-locks', ...args], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+      // `windowsHide`, like every subprocess this server starts: after a restart the server is
+      // detached and therefore has NO console, so Windows gives a new one to each console child
+      // — and this spawns one git per commit, so a portal refresh flashed a burst of them.
+      child = spawn('git', ['--no-optional-locks', ...args], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      });
     } catch {
       return finish(null);
     }

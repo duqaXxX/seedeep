@@ -189,7 +189,7 @@ const HANDOVER_CLOSE_MS = 2_000;
  */
 export async function handOver(
   close: () => Promise<void>,
-  spawn: () => void,
+  handOff: () => void,
   exit: (code: number) => void,
   deadlineMs = HANDOVER_CLOSE_MS,
 ): Promise<void> {
@@ -206,7 +206,7 @@ export async function handOver(
   } finally {
     if (timer) clearTimeout(timer);
   }
-  spawn();
+  handOff();
   exit(0);
 }
 
@@ -404,8 +404,10 @@ function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unkn
 export interface SelfSpawnPlan {
   /** argv for `Bun.spawn` — this executable, then the flags this process was given. */
   cmd: string[];
-  /** `detached` is present on Windows and absent everywhere else; see {@link selfSpawnPlan}. */
-  options: { stdio: ['inherit', 'inherit', 'inherit']; detached?: true };
+  /** `detached` is present on Windows and absent everywhere else; see {@link selfSpawnPlan}.
+   * `windowsHide` is the rule every subprocess here obeys — no console child of a console-less
+   * parent may flash a window at the user. */
+  options: { stdio: ['inherit', 'inherit', 'inherit']; detached?: true; windowsHide: true };
 }
 
 /**
@@ -441,6 +443,7 @@ export function selfSpawnPlan(
     cmd: [...selfInvocation(execPath, main, fromSource), ...argv.slice(2)],
     options: {
       stdio: ['inherit', 'inherit', 'inherit'],
+      windowsHide: true,
       ...(platform === 'win32' ? { detached: true as const } : {}),
     },
   };

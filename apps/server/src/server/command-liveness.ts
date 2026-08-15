@@ -179,7 +179,7 @@ function lsof(paths: readonly string[]): Promise<string | null> {
     const child = execFile(
       'lsof',
       ['-F', 'pn', '--', ...paths],
-      { timeout: PROBE_TIMEOUT_MS, maxBuffer: 1_000_000 },
+      { timeout: PROBE_TIMEOUT_MS, maxBuffer: 1_000_000, windowsHide: true },
       (err, stdout, stderr) => resolve(lsofVerdict(err, stdout, stderr)),
     );
     child.on('error', () => resolve(null));

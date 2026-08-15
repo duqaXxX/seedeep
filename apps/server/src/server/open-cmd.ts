@@ -218,6 +218,7 @@ export function spawnDetachedServer(
   const child = spawn(exe, [...entry, 'serve', '--no-open', '--port', String(port)], {
     detached: true,
     stdio: ['ignore', fd, fd],
+    windowsHide: true,
   });
   // The child holds its own duplicate; this process has no reason to keep the descriptor open.
   closeSync(fd);

@@ -4,6 +4,20 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.27.2 (2026-08-15)
+
+**A portal refresh flashed console windows on Windows, and only after a restart.** Same mechanism as
+the tray's flash one layer up: a process with no console is given a NEW one for each console child
+it spawns, and a seedeep started detached — by `seedeep start` or by a restart — has no console. The
+server starts subprocesses on eight sites and not one passed `windowsHide`; `git.ts` runs one git
+per commit, so a refresh spawned a burst of them at once. Reported on Windows 11, 2026-08-15.
+
+All eight pass it now — git, the liveness prober, openssl, both halves of `self-update`, the browser
+opener, the detached server and the restart's successor — and a test reads the source to keep it
+that way, because what has to be true is that a ninth site cannot be added without meeting the rule.
+That test failed its own first red-check: it asked whether the file MENTIONED `windowsHide`, so
+deleting the option from a call left it green on the strength of the comment explaining it.
+
 ## 0.27.1 (2026-08-15)
 
 **The guard 0.27.0 claimed to have on its restart was never in the file.** The edit that added it
