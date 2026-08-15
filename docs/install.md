@@ -4,12 +4,12 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **Neither Windows build has ever been used on its own system** — x64 and arm64
-> alike are started by CI on a runner of their own architecture, and downloaded by you
-> first. The Linux arm64 build was used on Ubuntu 24 in a VM
-> (2026-08-14); the x64 build has been started but never used in front of a person.
+> **The Windows arm64 build has been used once**, in a VM (2026-08-14), which found four
+> defects in an evening; the **x64** build is started by CI on a runner of its own
+> architecture and has never been used in front of a person. The Linux arm64 build was
+> used on Ubuntu 24 in a VM (2026-08-14); its x64 build has been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
-> says exactly what that covers.
+> says exactly what each of those covers.
 
 ## From npm — Node or Bun
 
@@ -150,6 +150,27 @@ The command file it writes calls `seedeep` **by name**, so the binary has to be 
 your PATH under that name. From npm it already is. From a downloaded file it is not
 until you move it there (see above) — otherwise `install-command` succeeds and
 `/seedeep` then fails with *command not found*.
+
+**On native Windows it needs one line of configuration.** The command file carries a
+single shell line, and Claude Code runs it in the shell it has: with Git Bash on the
+machine that is Bash, and without it the PowerShell tool, which splits that line into
+more than one operation and stops on the part it has no rule for. `/seedeep` then
+answers with a permission error naming the command instead of running it. Allow it once,
+in `%USERPROFILE%\.claude\settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["PowerShell(seedeep claude-code *)"]
+  }
+}
+```
+
+Restart Claude Code afterwards — settings are read at startup. If the file already
+exists, merge the `permissions` key into it rather than replacing the file. Installing
+[Git for Windows](https://git-scm.com/downloads/win) fixes it too, by giving Claude Code
+the Bash tool the line is written for. Inside WSL none of this applies: the shell there
+is already Bash.
 
 After that, any Claude Code session has these:
 
