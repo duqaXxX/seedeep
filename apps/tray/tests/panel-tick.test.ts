@@ -226,3 +226,42 @@ test('starting the server from the field ends it', async () => {
 
   assert.equal(find('conn-input').length, 0, 'the form is still over a server that is running');
 });
+
+// A DOM click exists only when the press and the release land on the same element, and the live view
+// is redrawn unconditionally once a second. Roughly one press in ten therefore had its button
+// swapped out underneath it and produced nothing — reported on the settings button, Windows 11,
+// 2026-08-15. The reading is still taken while a pointer is down; only the drawing waits.
+/** The node the panel currently has on screen — identity is the assertion, not its contents. */
+function drawn(): unknown {
+  return (root as { children: unknown[] }).children[0];
+}
+
+test('a tick does not rebuild the panel under a pointer that is pressed', async () => {
+  await atScreen(CONNECTED);
+  const before = drawn();
+  assert.ok(before, 'the live view is up');
+
+  doc._fire('pointerdown', {});
+  await tick(CONNECTED);
+  assert.equal(drawn(), before, 'the surface was replaced under a press');
+
+  // The release does not draw either — that would race the click it exists to protect. The next
+  // tick does, which is at most a second away on a surface whose whole cadence is a second.
+  doc._fire('pointerup', {});
+  assert.equal(drawn(), before, 'nothing is scheduled on the release');
+  await tick(CONNECTED);
+  assert.notEqual(drawn(), before, 'the tick after the release draws again');
+});
+
+// A press released outside the panel, or taken away by the OS, must not leave the panel frozen —
+// that would be a worse bug than the one the hold fixes.
+test('a cancelled press does not freeze the panel', async () => {
+  await atScreen(CONNECTED);
+  const before = drawn();
+  doc._fire('pointerdown', {});
+  await tick(CONNECTED);
+  assert.equal(drawn(), before);
+  doc._fire('pointercancel', {});
+  await tick(CONNECTED);
+  assert.notEqual(drawn(), before, 'a cancelled press releases the hold');
+});

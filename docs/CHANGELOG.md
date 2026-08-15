@@ -4,6 +4,18 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**A button in the tray's panel sometimes did nothing when clicked.** A DOM click exists only when
+the press and the release land on the SAME element, and the live view is redrawn with an
+unconditional replace once a second — its data really does change that often. A press lasts about a
+tenth of that, so roughly one in ten had its button swapped out underneath it and produced no
+action, no error, and nothing to notice: reported on the settings button, whose home is that view's
+footer. The connection screens were never affected, since they draw only when their status changes.
+A tick arriving while a pointer is down now takes its reading and withholds only the DRAWING — the
+same bargain the URL field, the trust prompt and the settings view already strike against the same
+clock — and the next tick draws it, at most a second later. Nothing is scheduled on the release,
+deliberately: `pointerup`, `mouseup` and `click` are dispatched in one sequence, and drawing in the
+middle of it would race the click the hold exists to protect.
+
 **Two tests picked ports in ways that made `main` go red at random.** Both were found by the runs on
 `main` itself, which are a second execution of the same commit a pull request already passed — a
 flake shows up there and nowhere else. The tray's offline test asserted WHICH friendly sentence a
