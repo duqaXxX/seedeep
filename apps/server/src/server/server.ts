@@ -170,6 +170,47 @@ export const LIVENESS_MS = 15_000;
 const HANDOVER_CLOSE_MS = 2_000;
 
 /**
+ * Close the listener, then hand the machine to the successor: spawn it and leave.
+ *
+ * **Nothing `close` does may stop the spawn**, and that is the whole reason this is a function with
+ * a test rather than three lines in a handler. Awaiting the close is what makes the port free before
+ * the successor asks for it, and awaiting it BARE is a worse bug than the race it replaced: an
+ * unhandled rejection inside a timer callback takes the process down where it stands (measured on
+ * Bun 1.3.13), so a close that failed would end a restart with the old server gone and no successor
+ * at all — where the un-awaited version at least always spawned one.
+ *
+ * The deadline covers the other ending. This server holds SSE streams open with `idleTimeout: 0`,
+ * and a close that never settles strands the handover just as completely as one that throws. Late is
+ * recoverable: the successor pays one failed bind, exactly as it did before any of this. Never is
+ * not.
+ *
+ * Exported for the test, which is the only thing that can prove a promise's failure does not reach
+ * the two calls after it.
+ */
+export async function handOver(
+  close: () => Promise<void>,
+  spawn: () => void,
+  exit: (code: number) => void,
+  deadlineMs = HANDOVER_CLOSE_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve()
+        .then(close)
+        .catch(() => {}),
+      new Promise<void>((done) => {
+        timer = setTimeout(done, deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  spawn();
+  exit(0);
+}
+
+/**
  * How long the notification engine waits after a transcript event before reading the digest.
  *
  * A turn appends many lines in a burst — a thinking block, a text block, then each tool call — and
@@ -837,15 +878,7 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         // asked for the restart is one of them: the port would still be held. The response above
         // has already gone out — `restart-cmd` treats a connection dropped here as this request's
         // normal ending.
-        setTimeout(async () => {
-          // AWAITED. `stop` answers with a promise (`bun-types`, `serve.d.ts`) and its own docs say
-          // "it may take some time before all network activity stops" — so spawning on the next
-          // statement would be the same bet the old code made, just a shorter one. The point of
-          // this handover is that it does not depend on which of two processes is quicker.
-          await server.stop(true);
-          spawnSelfFn();
-          exitFn(0);
-        }, 80);
+        setTimeout(() => void handOver(() => server.stop(true), spawnSelfFn, exitFn), 80);
         return json(req, { ok: true });
       }
 
