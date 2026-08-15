@@ -4,6 +4,7 @@ import { type CliOptions, parseArgs } from './args.ts';
 import { openBrowser } from './browser.ts';
 import { planClaudeCommand } from './claude-command.ts';
 import { defaultConfig, readConfigStrict, resolveConfig, type SeedDeepConfig } from './config.ts';
+import { useAsciiConsole } from './console-encoding.ts';
 import { discoverSessions } from './discovery.ts';
 import { usage, versionLine } from './help.ts';
 import { refreshOwnedCommandFile, runInstallCommand, staleCommandNotice } from './install-command.ts';
@@ -229,6 +230,9 @@ async function withConfig(
 }
 
 function main(): void {
+  // First, before anything can print: every subcommand and the server itself go through `console`,
+  // and on Windows the console cannot render the characters they carry.
+  useAsciiConsole();
   runSubcommand(process.argv.slice(2))
     .then((code) => {
       if (code !== null) process.exit(code);
