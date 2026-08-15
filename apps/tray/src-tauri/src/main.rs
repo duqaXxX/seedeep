@@ -16,7 +16,7 @@ mod poll;
 mod store;
 mod update;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use client::{Conn, Status};
@@ -114,21 +114,70 @@ const PANEL_MIN_H: f64 = 90.0;
 /// way.
 const NOTIFY_SETTLE: Duration = Duration::from_millis(400);
 
-/// The height the popover should take to show `content`, given where its top edge is and how much
-/// screen there is below it.
+/// Where the OS last drew the tray icon, in logical points.
 ///
-/// Pure, and tested: the two failure modes are a window taller than the screen (the bottom of the
-/// list unreachable, since a popover cannot be dragged) and a window collapsed to nothing. Both are
-/// arithmetic, and neither is observable from an SSH shell — which is the whole reason this is a
-/// function and not three lines inside a command.
+/// Held because two things need the icon after the click that reported it: the edge {@link resize}
+/// keeps fixed — the BOTTOM one when the popover opens upward, which the window's own position
+/// cannot say — and the point the monitor is looked up from, which has to be the icon's because the
+/// window's may be off the screen.
+#[derive(Clone, Copy)]
+struct IconAnchor {
+    x: f64,
+    top: f64,
+    height: f64,
+}
+
+/// The popover's vertical geometry: where its top edge goes, how tall it is, and which way it grew.
+struct PanelGeom {
+    top: f64,
+    height: f64,
+    grows_up: bool,
+}
+
+/// Place and size the popover for an icon at `icon_top`/`icon_height` inside a work area spanning
+/// `area`, all in logical points. `None` is "no monitor answered", not "no room".
 ///
-/// `top` and `available_bottom` are in the same units as `content` (points). A screen with no room
-/// at all still yields {@link PANEL_MIN_H}: better a panel that overhangs than one that vanishes.
-fn panel_height(content: f64, top: f64, available_bottom: f64) -> f64 {
-    let room = available_bottom - top - PANEL_MARGIN;
+/// **Which way it opens is read off the icon, never off the platform.** The panel used to be
+/// anchored below the icon unconditionally, which is right for a menu bar — macOS always draws one
+/// as the top strip, so the icon's centre is always in the upper half and this returns exactly the
+/// behaviour that shipped. A Windows taskbar sits on any edge, and on three of the four the icons
+/// are in the LOWER half: anchoring below them put the panel's top edge at the bottom of the screen,
+/// which left it off-screen and, since the room below was then a few pixels, collapsed it to
+/// {@link PANEL_MIN_H} with the content scrolling inside. One cause, both symptoms, observed on
+/// Windows 11 arm64 on 2026-08-14.
+///
+/// The absent work area is its own branch rather than an infinite pair, and that is not tidiness: an
+/// infinite pair makes the midpoint `NaN`, every comparison with `NaN` is false, and the direction
+/// would silently fall back to downward — re-creating the bug on the one machine where the lookup
+/// fails, which is the machine whose window is off-screen.
+///
+/// Pure, and tested: the failure modes are a window taller than the screen (the bottom of the list
+/// unreachable, since a popover cannot be dragged), a window collapsed to nothing, an inverted range
+/// in either direction (`clamp` panics there; a tray that panics is a tray that disappears), and a
+/// window on the wrong side of its icon. All arithmetic, and none of it observable from an SSH
+/// shell — which is the whole reason this is a function and not five lines inside a command.
+fn panel_geometry(content: f64, icon_top: f64, icon_height: f64, area: Option<(f64, f64)>) -> PanelGeom {
+    let Some((area_top, area_bottom)) = area else {
+        // Nothing to respect, so honour the content in full and grow down, as this did before it
+        // knew about edges.
+        return PanelGeom { top: icon_top + icon_height, height: content.max(PANEL_MIN_H), grows_up: false };
+    };
+    let grows_up = icon_top + icon_height / 2.0 > (area_top + area_bottom) / 2.0;
+    let room = (if grows_up { icon_top - area_top } else { area_bottom - icon_top - icon_height }) - PANEL_MARGIN;
     // `min` then `max`, never `clamp`: with less room than the floor the range inverts, and
     // `clamp` panics on an inverted range (the same trap the x position already documents).
-    content.min(room).max(PANEL_MIN_H)
+    let height = content.min(room).max(PANEL_MIN_H);
+    let top = if grows_up { icon_top - height } else { icon_top + icon_height };
+    PanelGeom { top, height, grows_up }
+}
+
+/// The vertical bounds of a monitor's work area, in logical points, or `None` when none answered.
+fn work_area_v(mon: Option<&tauri::Monitor>, scale: f64) -> Option<(f64, f64)> {
+    let area = mon?.work_area();
+    Some((
+        f64::from(area.position.y) / scale,
+        f64::from(area.position.y + area.size.height as i32) / scale,
+    ))
 }
 
 /// Where the tray keeps `connection.json`: under {@link SEEDEEP_HOME} when that is set to something,
@@ -190,13 +239,16 @@ fn toggle_panel(app: &AppHandle, rect: Rect) {
         let anchor = rect.position.to_physical::<f64>(scale);
         let icon = rect.size.to_physical::<f64>(scale);
         let centred = anchor.x + icon.width / 2.0 - size.width as f64 / 2.0;
+        // The work area of the monitor UNDER THE ICON — `current_monitor` would answer for a
+        // window that is still hidden and has no position worth trusting. Asked once: both axes
+        // need it.
+        let mon = win.monitor_from_point(anchor.x, anchor.y).ok().flatten();
         // Merely centring hangs the panel off the screen: the menu bar's right-hand end is
         // where the icon usually sits, and a 392 pt panel centred there loses everything past
-        // the edge. Clamp to the work area of the monitor UNDER THE ICON — `current_monitor`
-        // would answer for a window that is still hidden and has no position worth trusting.
-        let x = match win.monitor_from_point(anchor.x, anchor.y) {
-            Ok(Some(mon)) => {
-                let area = mon.work_area();
+        // the edge.
+        let x = match &mon {
+            Some(m) => {
+                let area = m.work_area();
                 let margin = PANEL_MARGIN * scale;
                 let left = f64::from(area.position.x) + margin;
                 let right = f64::from(area.position.x + area.size.width as i32)
@@ -206,9 +258,27 @@ fn toggle_panel(app: &AppHandle, rect: Rect) {
                 // `right < left`, and `clamp` panics on an inverted range.
                 centred.min(right).max(left)
             }
-            _ => centred,
+            None => centred,
         };
-        let _ = win.set_position(PhysicalPosition::new(x, anchor.y + icon.height));
+        let icon_anchor =
+            IconAnchor { x: anchor.x / scale, top: anchor.y / scale, height: icon.height / scale };
+        // The window's CURRENT height stands in for the content until the webview measures itself
+        // and calls `resize`; both the position AND the size are applied, since a panel placed as
+        // if it had been clamped while keeping its old height would hang over the icon it opened
+        // from.
+        let geom = panel_geometry(
+            size.height as f64 / scale,
+            icon_anchor.top,
+            icon_anchor.height,
+            work_area_v(mon.as_ref(), scale),
+        );
+        let _ = win.set_position(PhysicalPosition::new(x, geom.top * scale));
+        let _ = win.set_size(tauri::LogicalSize::new(size.width as f64 / scale, geom.height));
+        if let Some(state) = app.try_state::<Mutex<Option<IconAnchor>>>() {
+            if let Ok(mut slot) = state.lock() {
+                *slot = Some(icon_anchor);
+            }
+        }
     }
     // Before the window, and harmless in every other case: the test notification hides the whole APP
     // to stop being frontmost (`test_notification`), and every window of a hidden app stays down
@@ -403,28 +473,45 @@ fn hand_to_browser(app: &AppHandle, url: String) -> Result<(), String> {
 /// Answers with the height actually applied, which is not always the one asked for: the panel needs
 /// to know when it was clamped, because that is exactly when its list has to scroll.
 ///
-/// Growing DOWNWARD only — the top edge is anchored under the tray icon and is never moved here. A
-/// popover that re-centred itself as its content changed would walk across the menu bar.
+/// **The anchored edge is the icon's, not the window's.** Growing downward the top never moves, as
+/// before; growing upward the BOTTOM edge is what stays put, so a taller panel moves as well as
+/// grows. The monitor is looked up from the ICON's point for the same reason: the window's may be
+/// off the screen — that is the state this whole change exists to repair — and a lookup that finds
+/// no monitor there would drop the direction back to downward and put it there again.
 #[tauri::command]
 fn resize(height: f64, app: AppHandle) -> Result<f64, String> {
     let win = app.get_webview_window(PANEL).ok_or("no panel window")?;
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let size = win.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
-    let top = win.outer_position().map_err(|e| e.to_string())?.to_logical::<f64>(scale).y;
-    // The monitor under the popover's own top edge, not `primary_monitor`: a menu bar exists on
-    // every screen and the icon may well be on the second one.
-    let bottom = match win.monitor_from_point(top * scale, top * scale) {
-        Ok(Some(mon)) => {
-            let area = mon.work_area();
-            f64::from(area.position.y + area.size.height as i32) / scale
+    let pos = win.outer_position().map_err(|e| e.to_string())?;
+    let icon = app
+        .try_state::<Mutex<Option<IconAnchor>>>()
+        .and_then(|state| state.lock().ok().and_then(|slot| *slot));
+    let geom = match icon {
+        Some(icon) => {
+            // Not `primary_monitor`: a work area exists on every screen and the icon may well be
+            // on the second one.
+            let mon = win.monitor_from_point(icon.x * scale, icon.top * scale).ok().flatten();
+            panel_geometry(height, icon.top, icon.height, work_area_v(mon.as_ref(), scale))
         }
-        // No monitor to ask: honour the content rather than invent a ceiling for it.
-        _ => f64::INFINITY,
+        // Nothing has been opened from the icon yet, so there is no anchor to keep: hold the top
+        // where it is and grow down, which is what this command did before it knew about edges.
+        None => {
+            let top = pos.to_logical::<f64>(scale).y;
+            let mon = win.monitor_from_point(f64::from(pos.x), f64::from(pos.y)).ok().flatten();
+            let bottom = work_area_v(mon.as_ref(), scale).map_or(f64::INFINITY, |(_, b)| b);
+            PanelGeom { top, height: height.min(bottom - top - PANEL_MARGIN).max(PANEL_MIN_H), grows_up: false }
+        }
     };
-    let fitted = panel_height(height, top, bottom);
-    win.set_size(tauri::LogicalSize::new(size.width, fitted))
+    // Position first: growing upward, moving after resizing would put the bottom edge through the
+    // taskbar for a frame. Growing downward the top is already where it belongs and this is a no-op.
+    if geom.grows_up {
+        win.set_position(PhysicalPosition::new(f64::from(pos.x), geom.top * scale))
+            .map_err(|e| e.to_string())?;
+    }
+    win.set_size(tauri::LogicalSize::new(size.width, geom.height))
         .map_err(|e| e.to_string())?;
-    Ok(fitted)
+    Ok(geom.height)
 }
 
 /// Put the popover away, then post one notification.
@@ -518,6 +605,9 @@ fn main() {
             // guessing at a port.
             let local = Arc::new(LocalServer::new(local::seedeep_home(app.path().home_dir()?, home)));
             app.manage(local.clone());
+            // Empty until the first click on the icon; `resize` holds the window where it is
+            // until then, which is where it would sit anyway with nothing yet shown.
+            app.manage(Mutex::new(None::<IconAnchor>));
             // The connection is the app's, not a window's: it outlives the popover, which is
             // created and hidden repeatedly, and a per-window client would re-handshake on every
             // open. Shared with the poll, which reads through the same one so a tick and a click
@@ -632,7 +722,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_root, panel_height, PANEL_MARGIN, PANEL_MIN_H};
+    use super::{config_root, panel_geometry, PANEL_MARGIN, PANEL_MIN_H};
     use std::path::PathBuf;
 
     // The default, and the only one a user ever takes: the app's own directory, untouched.
@@ -668,32 +758,90 @@ mod tests {
         assert!(resolved.ends_with(".seedeep-dev/tray"), "{resolved:?}");
     }
 
+    /// A macOS menu bar: a 24 pt icon strip above a work area that starts under it.
+    const MENU_BAR: (f64, f64, Option<(f64, f64)>) = (0.0, 24.0, Some((25.0, 1050.0)));
+    /// A Windows taskbar on the bottom edge: the work area stops above it, the icon sits below.
+    const TASKBAR_BOTTOM: (f64, f64, Option<(f64, f64)>) = (1038.0, 24.0, Some((0.0, 1032.0)));
+
     // The ordinary case, and the whole point of the clamp: a short screen gets a short window rather
     // than 360 pt of void under it.
     #[test]
     fn a_short_panel_is_as_tall_as_its_content() {
-        assert_eq!(panel_height(200.0, 40.0, 1000.0), 200.0);
+        let (t, h, area) = MENU_BAR;
+        let geom = panel_geometry(200.0, t, h, area);
+        assert_eq!(geom.height, 200.0);
+        assert_eq!(geom.top, 24.0, "flush under the icon");
+        assert!(!geom.grows_up);
     }
 
-    // A menu-bar popover cannot be dragged, so anything past the bottom of the screen is not merely
-    // ugly — it is unreachable. The list scrolls instead, which is why the applied height is
-    // returned to the panel.
+    // A popover cannot be dragged, so anything past the bottom of the screen is not merely ugly —
+    // it is unreachable. The list scrolls instead, which is why the applied height is returned to
+    // the panel.
     #[test]
     fn a_tall_panel_stops_at_the_bottom_of_the_screen() {
-        assert_eq!(panel_height(2000.0, 40.0, 1000.0), 1000.0 - 40.0 - PANEL_MARGIN);
+        let (t, h, area) = MENU_BAR;
+        assert_eq!(panel_geometry(2000.0, t, h, area).height, 1050.0 - (t + h) - PANEL_MARGIN);
     }
 
     // A webview that has not laid out yet reports 0. Collapsing the window to nothing would leave
     // no way to click the panel back, so the floor wins over an honest reading of an empty page.
     #[test]
     fn a_panel_never_collapses_to_nothing() {
-        assert_eq!(panel_height(0.0, 40.0, 1000.0), PANEL_MIN_H);
+        let (t, h, area) = MENU_BAR;
+        assert_eq!(panel_geometry(0.0, t, h, area).height, PANEL_MIN_H);
     }
 
-    // An icon low enough that the margin eats the whole screen inverts the range. `clamp` panics
-    // there; a tray that panics is a tray that disappears.
+    // The Windows defect, as arithmetic. Anchoring below a taskbar icon put the top edge at 1062 —
+    // off the bottom of a 1080 screen — and left about -30 pt of room, so the height collapsed to
+    // the floor and the content scrolled inside it. Both symptoms, one cause.
     #[test]
-    fn no_room_at_all_overhangs_rather_than_panicking() {
-        assert_eq!(panel_height(300.0, 990.0, 1000.0), PANEL_MIN_H);
+    fn an_icon_in_the_lower_half_opens_upward() {
+        let (t, h, area) = TASKBAR_BOTTOM;
+        let geom = panel_geometry(400.0, t, h, area);
+        assert!(geom.grows_up, "a taskbar icon is below its work area, so the panel goes up");
+        assert_eq!(geom.height, 400.0, "there is a whole screen above it — nothing to clamp");
+        assert_eq!(geom.top, t - 400.0, "the anchored edge is the BOTTOM, flush above the icon");
+    }
+
+    // The property that makes the change safe to ship: macOS draws its menu bar as the top strip and
+    // nothing else, so the icon is always in the upper half and this is the behaviour that shipped.
+    #[test]
+    fn a_menu_bar_icon_still_opens_downward() {
+        let (t, h, area) = MENU_BAR;
+        let geom = panel_geometry(400.0, t, h, area);
+        assert!(!geom.grows_up);
+        assert_eq!(geom.top, t + h);
+    }
+
+    // An inverted range panics under `clamp`, and a tray that panics is a tray that disappears. It
+    // is reachable in BOTH directions, so both are held: this is the downward one, an icon in the
+    // upper half of a work area too short for the floor.
+    #[test]
+    fn no_room_below_overhangs_rather_than_panicking() {
+        let geom = panel_geometry(300.0, 0.0, 4.0, Some((0.0, 60.0)));
+        assert!(!geom.grows_up);
+        assert_eq!(geom.height, PANEL_MIN_H);
+    }
+
+    // And the upward one, which overhangs the TOP of the screen rather than vanishing.
+    #[test]
+    fn no_room_above_overhangs_rather_than_panicking() {
+        let geom = panel_geometry(300.0, 56.0, 4.0, Some((0.0, 60.0)));
+        assert!(geom.grows_up);
+        assert_eq!(geom.height, PANEL_MIN_H);
+        assert!(geom.top < 0.0, "it overhangs the top rather than vanishing: {}", geom.top);
+    }
+
+    // No monitor answered. Expressed as its own branch and not as an infinite work area: infinities
+    // make the midpoint NaN, every comparison with NaN is false, and the direction would fall back
+    // to downward — putting the panel off-screen again on exactly the machine whose window is
+    // off-screen, which is where the lookup fails.
+    #[test]
+    fn no_monitor_honours_the_content_and_grows_down() {
+        let geom = panel_geometry(400.0, 1038.0, 24.0, None);
+        assert!(!geom.grows_up);
+        assert_eq!(geom.height, 400.0);
+        assert_eq!(geom.top, 1062.0);
+        assert!(geom.top.is_finite() && geom.height.is_finite(), "no NaN reaches the window");
     }
 }

@@ -4,6 +4,18 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray's popover opened off the bottom of the screen on Windows, and collapsed while it did.**
+The panel was anchored below the icon unconditionally — correct for a menu bar, which macOS always
+draws as the top strip, and wrong for a taskbar, which sits on any edge and puts its icons in the
+lower half on three of the four. The top edge landed below the taskbar, so the panel was off-screen;
+the room below it was then a few pixels, so the height collapsed to the 90 pt floor and the content
+scrolled inside. Two symptoms, one cause. The direction is now read off where the OS drew the icon
+inside the work area, so nothing about the platform is assumed, and a test holds the macOS behaviour
+still — which the rule guarantees by construction, since a menu-bar icon is always in the upper half.
+The absent work area is its own branch rather than an infinite pair: infinities make the midpoint
+`NaN`, every comparison with `NaN` is false, and the direction would have fallen back to downward on
+exactly the machine whose window is off the screen.
+
 **`restart` left the old server stopped and no replacement running, on Windows.** The handover
 spawns the successor and exits, and a Windows child stays in its parent's job object: it was
 terminated the moment the parent went, before writing a single line. `detached` is what breaks it
