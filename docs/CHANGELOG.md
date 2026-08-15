@@ -16,6 +16,16 @@ The absent work area is its own branch rather than an infinite pair: infinities 
 `NaN`, every comparison with `NaN` is false, and the direction would have fallen back to downward on
 exactly the machine whose window is off the screen.
 
+**Every npm install on Windows was told its own launcher was a different seedeep.** Windows has no
+symlink for the PATH check to resolve: npm writes a `.cmd` into its global bin directory and lets it
+exec the binary under that directory's `node_modules`, so `…\npm\seedeep.cmd` and
+`…\npm\node_modules\seedeep\bin\seedeep.exe` never compared equal and `install-command` and `status`
+both warned that one install was two. That exact shape is now recognised — the `node_modules`
+segment is required rather than any ancestor, so a stray launcher cannot vouch for an unrelated
+binary — while a downloaded executable run from elsewhere still reports honestly, which is the case
+the warning exists for. Bun's layout on Windows is not covered: it has never been measured, and the
+code says so rather than guessing.
+
 **`restart` left the old server stopped and no replacement running, on Windows.** The handover
 spawns the successor and exits, and a Windows child stays in its parent's job object: it was
 terminated the moment the parent went, before writing a single line. `detached` is what breaks it
