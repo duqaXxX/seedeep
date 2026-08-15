@@ -47,7 +47,9 @@ Bun.serve({
  * running seedeep.
  */
 function freePort(): number {
-  const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') });
+  // Bound the way the fake server binds — no hostname, so every interface — or a port free on
+  // loopback and taken on another one would be reported free and then fail to bind.
+  const probe = Bun.serve({ port: 0, fetch: () => new Response('') });
   const { port } = probe;
   probe.stop(true);
   return port;

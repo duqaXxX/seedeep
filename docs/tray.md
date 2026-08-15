@@ -389,11 +389,13 @@ anchoring below them put the panel's top edge at the bottom of the screen, which
 and, since the room below was then a few pixels, collapsed it to the 90 pt floor with the content
 scrolling inside. One cause, both symptoms, observed on Windows 11 arm64 on 2026-08-14.
 
-Two consequences worth naming, because both were defects in the first attempt at this. The anchored
-edge is the icon's, not the window's: growing downward the top never moves, growing upward the panel
-has to move as well as grow, and the click that opens it applies BOTH the position and the size —
-a panel placed as if it had been clamped while keeping its old height hangs over the icon it opened
-from. And the monitor is looked up from the ICON's point, never the window's: the window may be off
+Two consequences worth naming, because both were defects in earlier attempts at this. The anchored
+edge is the icon's, not the window's: growing downward the top never moves, while growing upward the
+panel has to move as well as grow. The click that opens it therefore PLACES but never sizes — it
+does not know the content height, and a clamped guess would become the next opening's stand-in and
+ratchet the panel down for good; the webview measures itself and `resize` fits it, and the opening
+clears the height cache so a panel clamped on a short screen asks again on a taller one. And the
+monitor is looked up from the ICON's point, never the window's: the window may be off
 the screen, which is the state this repairs, and a lookup that found no monitor there would drop the
 direction back to downward and put it there again. `panel_geometry` is pure and carries the tests,
 including the one that holds the macOS behaviour still and the two that hold the inverted range in
@@ -1141,7 +1143,16 @@ has given to something else, and picking either would be a signal sent to an unr
 
 Known limits, none of them silent:
 
-- **Windows is compiled but unverified.** `taskkill /F` is a hard stop — the server never runs its
+- **Windows: the tray was opened once, on arm64 (2026-08-14), and got no further than its popover.**
+That one look found two defects, both fixed: the popover opened off the bottom of the screen, and
+the app had no `windows_subsystem` attribute so launching it left a console window open. The icon's
+legibility, the animation's cost, notifications and the connection screen are all still unanswered,
+and the x64 build has never been run at all.
+
+**Every process the tray starts on Windows passes `CREATE_NO_WINDOW`.** A GUI application has no
+console, so Windows gives one to each console child it spawns and the user sees it flash: two of the
+three spawn sites were missing the flag, which is why it is one shared constant in `local.rs` rather
+than three literals — a fourth site cannot be added without meeting it. `taskkill /F` is a hard stop — the server never runs its
   shutdown path, so its record is left for the next start's sweep. Marked `// LIMIT:` at both sites.
   The lookup there also has a rule this platform does not need: `npm i -g` installs three shims and
   `where.exe` lists the extensionless sh script first, so only a file `cmd` can actually start —

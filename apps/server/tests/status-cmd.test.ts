@@ -19,7 +19,10 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
   return {
     version: '0.10.1',
     channel: { kind: 'bun', command: 'bun install -g seedeep --trust' },
-    execPath: '/home/dev/.bun/install/global/node_modules/seedeep/bin/seedeep.exe',
+    // Under /opt, which cannot be anybody's home: `statusReport` calls `shortPath` with the
+    // ambient `homedir()`, and the neutral placeholder this project prescribes elsewhere is a
+    // plausible container home — which would have turned this assertion into `~/...`.
+    execPath: '/opt/seedeep/.bun/install/global/node_modules/seedeep/bin/seedeep.exe',
     server: {
       kind: 'up',
       record: { pid: 91116, baseUrl: 'https://box.local:44842' },
@@ -39,7 +42,7 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
 test('a healthy machine reports the four things and asks for nothing', () => {
   const out = statusReport(facts(), NOW);
   // The install's own directory, not the `bin/seedeep.exe` every channel shares.
-  assert.match(out, /seedeep 0\.10\.1\s+\(bun, \/home\/dev\/\.bun\/install\/global\/…\/seedeep\.exe\)/);
+  assert.match(out, /seedeep 0\.10\.1\s+\(bun, \/opt\/seedeep\/\.bun\/install\/global\/…\/seedeep\.exe\)/);
   assert.match(out, /running — https:\/\/box\.local:44842/);
   assert.match(out, /pid 91116 · remote mode/);
   assert.match(out, /serving 0\.10\.1/);

@@ -828,8 +828,12 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         // asked for the restart is one of them: the port would still be held. The response above
         // has already gone out — `restart-cmd` treats a connection dropped here as this request's
         // normal ending.
-        setTimeout(() => {
-          server.stop(true);
+        setTimeout(async () => {
+          // AWAITED. `stop` answers with a promise (`bun-types`, `serve.d.ts`) and its own docs say
+          // "it may take some time before all network activity stops" — so spawning on the next
+          // statement would be the same bet the old code made, just a shorter one. The point of
+          // this handover is that it does not depend on which of two processes is quicker.
+          await server.stop(true);
           spawnSelfFn();
           exitFn(0);
         }, 80);

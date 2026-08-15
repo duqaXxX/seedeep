@@ -32,7 +32,7 @@ test('asciiFallback: the five measured characters, every occurrence', () => {
 // through these three methods and through nothing else.
 test('useAsciiConsole: log, error and warn are all translated on Windows', () => {
   const fake = fakeConsole();
-  assert.equal(useAsciiConsole(fake, 'win32'), true);
+  assert.equal(useAsciiConsole(fake, 'win32', true), true);
   fake.log('seedeep watching — url');
   fake.error('seedeep: pid 7 → 9');
   fake.warn('a … b');
@@ -44,16 +44,26 @@ test('useAsciiConsole: log, error and warn are all translated on Windows', () =>
 test('useAsciiConsole: off Windows it does not even wrap', () => {
   for (const platform of ['darwin', 'linux']) {
     const fake = fakeConsole();
-    assert.equal(useAsciiConsole(fake, platform), false, platform);
+    assert.equal(useAsciiConsole(fake, platform, true), false, platform);
     fake.log('seedeep watching — url');
     assert.deepEqual(fake.said, ['seedeep watching — url'], platform);
   }
 });
 
+// The tray starts the server with its output going to `server.log`, and `seedeep start` does the
+// same. Those are UTF-8 files no code page touches, so degrading them would be this module doing to
+// a file exactly what it exists to prevent on a terminal.
+test('useAsciiConsole: a redirect is left alone, console or not', () => {
+  const fake = fakeConsole();
+  assert.equal(useAsciiConsole(fake, 'win32', false), false);
+  fake.log('seedeep watching — url');
+  assert.deepEqual(fake.said, ['seedeep watching — url']);
+});
+
 // An encoder that rewrites what it did not encode is a corruption. Only strings are translated.
 test('useAsciiConsole: a non-string argument passes through untouched', () => {
   const fake = fakeConsole();
-  useAsciiConsole(fake, 'win32');
+  useAsciiConsole(fake, 'win32', true);
   const obj = { dash: '—' };
   fake.log(obj, 42);
   assert.deepEqual(fake.said, [obj, 42]);
@@ -65,7 +75,7 @@ test('useAsciiConsole: a non-string argument passes through untouched', () => {
 test('the help screen comes out pure ASCII on Windows', () => {
   assert.notEqual(nonAscii(usage()), '', 'the source text must contain some, or this proves nothing');
   const fake = fakeConsole();
-  useAsciiConsole(fake, 'win32');
+  useAsciiConsole(fake, 'win32', true);
   fake.log(usage());
   assert.equal(nonAscii(String(fake.said[0])), '');
 });

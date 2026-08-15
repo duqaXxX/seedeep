@@ -294,6 +294,12 @@ function apply(tick: Tick): void {
   // Asked on the EDGE of the popover opening, never every tick: the answer moves only when a human
   // edits config.json or saves the portal's panel, and one request per click is the whole cost.
   if (tick.open && !wasOpen) void askRestartPending();
+  // And the height is asked for again, on the same edge. `fit` skips a `resize` whose natural
+  // height matches the last one it ASKED for, and that cache outlives a close — the popover is
+  // hidden, never rebuilt. So a panel clamped once by a short screen kept its clamped height on
+  // every later opening, including on a screen with room, with its list scrolling in the space it
+  // had been given. The open is the moment the geometry can have changed; nothing else knows.
+  if (tick.open && !wasOpen) sentHeight = 0;
   wasOpen = tick.open;
   // A pending state belongs to the server that reported it. Pointed elsewhere — or at nothing —
   // the tray holds no claim about the new one until it has asked it.

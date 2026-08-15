@@ -4,6 +4,29 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Nine corrections a review of the previous twelve commits found.** Four were real: the restart
+handover called `stop(true)` and spawned on the next statement, but that call answers with a promise
+and its own docs say network activity may outlive it — so the fix billed as "deterministic rather
+than lucky" was still a bet, and is awaited now. The popover's height ratchet was moved rather than
+removed: `fit` skips a resize whose natural height matches the last one it ASKED for, and that cache
+outlives a close, so a panel clamped once by a short screen kept its clamped height on every later
+opening; the opening clears it. `status` abbreviated a home directory on a bare string prefix, so a
+sibling whose name merely STARTS with the home's — `carolyn` beside `carol` — came out as `~yn/…`,
+an address nobody can act on; and under a home of `/` it would have been every path on the machine.
+It tests a segment boundary now. And the Windows console encoder wrapped
+every write, including the server's redirect into `server.log` — a UTF-8 file that no code page
+touches — so it now applies to a terminal only.
+
+The rest were the record rather than the code. `docs/tray.md` still described the popover applying
+both position and size at open, which a commit in that range had deliberately stopped, and still
+called the tray's Windows side unverified after the README had been rewritten to say it was opened;
+it also never carried the rule that every process the tray starts there passes `CREATE_NO_WINDOW`.
+The CI workflow's own header said the tray's Rust tests were deliberately absent, one commit after
+adding them. A test asserted a one-line function against its own body and was deleted. One asserted
+a placeholder path everyone is told to use while reading the ambient home, so a container named
+that would have failed it. And the smoke probe bound loopback
+while the server it hands the port to binds every interface.
+
 **A button in the tray's panel sometimes did nothing when clicked.** A DOM click exists only when
 the press and the release land on the SAME element, and the live view is redrawn with an
 unconditional replace once a second — its data really does change that often. A press lasts about a

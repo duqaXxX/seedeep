@@ -29,9 +29,12 @@ let deliver: ((event: { payload: unknown }) => void) | undefined;
 let pending: unknown;
 
 mock.module('@tauri-apps/api/core', () => ({
-  invoke: async (name: string) => {
+  invoke: async (name: string, args?: unknown) => {
     if (name === 'tick' || name === 'look_again') return pending;
-    if (name === 'resize') return 200;
+    if (name === 'resize') {
+      resizes.push(args as { height: number });
+      return 200;
+    }
     if (name === 'restart_pending') return false;
     if (name === 'connect') {
       if ('err' in connectAnswer) throw new Error(connectAnswer.err);
@@ -49,6 +52,9 @@ mock.module('@tauri-apps/api/event', () => ({
 mock.module('@tauri-apps/api/app', () => ({ getVersion: async () => '0.0.0-test' }));
 
 await import('../ui/panel.ts');
+
+/** Every `resize` the panel asked Rust for, so a test can assert that it did or did not ask. */
+const resizes: Array<{ height: number }> = [];
 
 /** What `connect` answers with, so both endings of a submitted URL can be driven. */
 let connectAnswer: { ok: Status } | { err: string } = { err: 'not asked' };
@@ -264,4 +270,20 @@ test('a cancelled press does not freeze the panel', async () => {
   doc._fire('pointercancel', {});
   await tick(CONNECTED);
   assert.notEqual(drawn(), before, 'a cancelled press releases the hold');
+});
+
+// `fit` skips a resize whose natural height matches the last one it ASKED for, and that cache
+// outlives a close — the popover is hidden, never rebuilt. So a panel clamped once by a short screen
+// kept its clamped height on every later opening, list scrolling in the space it had been given.
+// The opening is the moment the geometry can have changed, and nothing else knows.
+test('reopening the popover asks for the height again', async () => {
+  await atScreen(CONNECTED);
+  resizes.length = 0;
+  // Same content, still open: nothing to ask for.
+  await tick(CONNECTED);
+  assert.deepEqual(resizes, [], 'an unchanged panel does not cross into Rust');
+
+  await tick(CONNECTED, false);
+  await tick(CONNECTED, true);
+  assert.equal(resizes.length, 1, 'the opening asks again, whatever it asked last time');
 });

@@ -1391,12 +1391,12 @@ mod tests {
     async fn a_stored_server_that_is_down_stays_stored() {
         let dir = std::env::temp_dir().join(format!("seedeep-tray-down-{}", std::process::id()));
         let store = connection::store_path(&dir);
-        // A port the OS has just handed back and released. It is CLOSED, which is all this needs;
-        // whether the kernel then refuses or stays silent is the platform's business and not
-        // something to assert on — see the two sentences below.
-        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = closed.local_addr().unwrap().port();
-        drop(closed);
+        // Port 1 needs no listener to be certain: it is reserved and privileged, and no ephemeral
+        // allocation can ever land on it. Asking the OS for a free port and releasing it looked
+        // safer and is not — it leaves a window in which anything on a busy runner can take the
+        // number, and this test's own client draws from that same range. What was wrong here was
+        // never the port; it was asserting WHICH sentence a closed one produces.
+        let port = 1;
         let target = Connection {
             base_url: format!("http://127.0.0.1:{port}"),
             fingerprint: None,
