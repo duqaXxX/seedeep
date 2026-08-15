@@ -97,11 +97,9 @@ jobs:
   # while the third was checked by nothing until a tag built the installer. Four changes to those
   # Windows blocks shipped that way (2026-08-15).
   #
-  # One job, one matrix. The legs do differ, and only in what they do AFTER compiling: macOS runs
-  # the tests, Windows does not, because six of them are coupled to a POSIX filesystem — they assert
-  # on `/home/dev` and ask whether `/usr/bin/true` is a file. Making them portable is its own piece
-  # of work; the gap this job exists for is COMPILING, and both legs close it in full. The
-  # difference is named here rather than left for somebody to discover in a red run.
+  # One job, one matrix, one command. Both legs compile and both run the tests: six of them used to
+  # be coupled to a POSIX filesystem — asserting on `/home/dev`, asking whether `/usr/bin/true` is a
+  # file — and this job is what found that, on its first run.
   #
   # Linux is absent because the tray has no code there — a non-target by decision, and `release.yml`
   # builds no Linux tray either (`docs/tray.md`).
@@ -138,10 +136,4 @@ jobs:
 
       # cargo directly rather than `bun run test:tray`: that script's first step guards a
       # contributor's PATH for cargo, which a job that just installed the toolchain does not need.
-      - if: runner.os == 'macOS'
-        run: cargo test --manifest-path apps/tray/src-tauri/Cargo.toml
-
-      # `--all-targets` so the `#[cfg(test)]` module is compiled here too: it is Rust that has to
-      # keep building on Windows even while its assertions cannot run there.
-      - if: runner.os == 'Windows'
-        run: cargo check --all-targets --manifest-path apps/tray/src-tauri/Cargo.toml
+      - run: cargo test --manifest-path apps/tray/src-tauri/Cargo.toml

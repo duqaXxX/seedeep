@@ -1391,9 +1391,16 @@ mod tests {
     async fn a_stored_server_that_is_down_stays_stored() {
         let dir = std::env::temp_dir().join(format!("seedeep-tray-down-{}", std::process::id()));
         let store = connection::store_path(&dir);
-        // Port 1 needs no listener to be certain: it is reserved and privileged.
+        // A port the OS has just handed back, rather than port 1. The reasoning was "reserved and
+        // privileged, so nothing can be listening" — true, and not the same as "refuses". macOS
+        // refuses on port 1 at once; Windows says nothing and the connection runs into the timeout
+        // instead, which is a different message and a different branch. Binding and dropping proves
+        // the port is closed on the machine actually running this.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
         let target = Connection {
-            base_url: "http://127.0.0.1:1".into(),
+            base_url: format!("http://127.0.0.1:{port}"),
             fingerprint: None,
             token: Some("t".into()),
         };
@@ -1403,7 +1410,7 @@ mod tests {
 
         match status {
             Status::Offline { base_url, detail } => {
-                assert_eq!(base_url, "http://127.0.0.1:1");
+                assert_eq!(base_url, format!("http://127.0.0.1:{port}"));
                 // The panel prints this verbatim, so it is asserted as PROSE. The regression it
                 // guards: the innermost cause of a reqwest timeout is the phrase "deadline has
                 // elapsed" (measured on 0.13.4), which the panel used to show for the most likely
