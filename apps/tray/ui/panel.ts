@@ -120,6 +120,26 @@ let restartPending = false;
 let wasOpen = false;
 
 /**
+ * Whether a pointer is down on the panel right now.
+ *
+ * A DOM `click` exists only when the press and the release land on the SAME element, and the live
+ * view is drawn with `Surface.put` — an unconditional replace, every tick, because its data really
+ * does change each second. The settings button lives in that view's footer. With the popover open the poll ticks once a second and a click lasts
+ * about a tenth of that, so roughly one press in ten had its button swapped out underneath it and
+ * produced nothing at all — no action, no error, nothing to notice but a button that "sometimes does
+ * not work". Reported on Windows 11, 2026-08-15, on the settings button.
+ *
+ * The reading is still taken and still kept; only the DRAWING waits, which is the same bargain every
+ * other guard in {@link apply} strikes — the URL field, the trust prompt, the settings view. The
+ * next tick draws it, at most a second later, on a surface whose whole cadence is a second.
+ *
+ * Nothing is scheduled on the release, deliberately. Drawing there would race the click it exists to
+ * protect: `pointerup`, `mouseup` and `click` are dispatched in one sequence, and a callback queued
+ * in the middle of it can land before the handler the press was aimed at.
+ */
+let pressed = false;
+
+/**
  * Ask the server whether it is honouring `config.json`, and redraw only if the answer changed.
  *
  * Never over the settings view: nothing there moves on this clock, and a redraw would wipe a
@@ -296,6 +316,10 @@ function apply(tick: Tick): void {
   // that has to get through is a status that has stopped being connected, which `show` turns back
   // into the live path — everything else waits for the user to come back to the sessions.
   if (view === 'settings' && status.kind === 'connected') return;
+  // A click the user is in the middle of outlives the clock, for the same reason the field and the
+  // prompt above do: `show` swaps the surface, and a button replaced between the press and the
+  // release never becomes a click at all. Flushed by the release — see {@link pressed}.
+  if (pressed) return;
   show();
 }
 
@@ -529,3 +553,16 @@ void listen<Tick>('tick', (event) => apply(event.payload));
 window.addEventListener('focus', () => {
   if (!busy) void refresh();
 });
+
+// On `document` rather than on the panel, and both endings handled: a press that begins on a button
+// and is released off it, or cancelled by the OS taking the pointer away, has to clear the hold just
+// the same — a panel frozen because nobody said the click was over would be a worse bug than the one
+// this fixes. `pointer*` and not `mouse*`: it is the family a webview reports for every input.
+document.addEventListener('pointerdown', () => {
+  pressed = true;
+});
+for (const ending of ['pointerup', 'pointercancel'] as const) {
+  document.addEventListener(ending, () => {
+    pressed = false;
+  });
+}
