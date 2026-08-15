@@ -4,6 +4,16 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Two tests picked ports in ways that made `main` go red at random.** Both were found by the runs on
+`main` itself, which are a second execution of the same commit a pull request already passed — a
+flake shows up there and nowhere else. The tray's offline test asserted WHICH friendly sentence a
+closed port produces, and that is the kernel's answer: macOS refuses and the connect branch fires,
+Windows drops the packets and the same port reaches the timeout. It asserts what belongs to seedeep
+now — that the prose is one of its own two sentences and never leaks the library's "deadline has
+elapsed". The smoke script's test chose its port at random from a 400-wide range and eventually
+collided, failing on `Is port 45440 in use?` with nothing wrong in the change beneath it; it asks
+the OS for a free one now.
+
 **The tray's Rust tests run on Windows too, and one of them was reporting a real defect.** Six could
 not pass there at all, and the CI job added a day earlier is what found them. Five were fixtures
 assuming a POSIX machine: `/tmp/...` is not an absolute path on Windows, so a literal turned an
