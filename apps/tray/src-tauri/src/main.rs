@@ -1,3 +1,12 @@
+// A tray app has no console, and Windows gives it one unless it is told otherwise: without this the
+// release binary is linked as a console subsystem application, so launching `seedeep-tray` opens a
+// terminal window that sits there for the life of the app. Observed on Windows 11 arm64,
+// 2026-08-14. It is the line Tauri's own template carries and this crate never had.
+//
+// `not(debug_assertions)` so a debug build keeps its console, which is where a panic goes; the
+// attribute means nothing on macOS and Linux, where rustc ignores it.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod client;
 mod connection;
 mod icon;
@@ -51,6 +60,13 @@ const SHOW_PANEL: &str = "SEEDEEP_TRAY_SHOW_PANEL";
 /// terminal's environment nor `launchctl setenv` (measured 2026-08-04 — the variable was simply
 /// absent). A file is the only channel into a process nobody can hand arguments to.
 const LOCATE_PROBE: &str = "locate-probe";
+
+/// Where {@link NOTIFY_PROBE} leaves its answer, in the tray's config directory.
+///
+/// A file because the release build has no console on Windows — see the subsystem attribute at the
+/// top of this file — and Windows is exactly where the question *"is a banner delivered at all?"* is
+/// still open. Written on every probe run, on every platform, so the two agree.
+const NOTIFY_PROBE_OUT: &str = "notify-probe";
 
 /// The ONE variable that decides which seedeep this process belongs to.
 ///
@@ -590,7 +606,13 @@ fn main() {
                     .title("seedeep")
                     .body("Notification probe — this build is unsigned.")
                     .show();
+                // To a file BESIDE stdout, not instead of it: a release build has no console on
+                // Windows (the subsystem attribute at the top of this file), so a probe that only
+                // printed would be unreadable on the one platform whose notifications are the
+                // open question. `println!` stays for the macOS run, where a terminal is how this
+                // is used.
                 println!("NOTIFY_PROBE: {outcome:?}");
+                let _ = std::fs::write(config_dir.join(NOTIFY_PROBE_OUT), format!("{outcome:?}\n"));
             }
             Ok(())
         })

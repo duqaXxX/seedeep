@@ -107,7 +107,7 @@ Two more variables exist for development and are never set for a user:
 
 | Variable | Effect |
 | -- | -- |
-| `SEEDEEP_TRAY_NOTIFY_PROBE` | Sends one notification at startup and prints the outcome. It exists so the finding in [Notifications](#notifications) can be re-measured on a later OS. |
+| `SEEDEEP_TRAY_NOTIFY_PROBE` | Sends one notification at startup, prints the outcome **and writes it to `notify-probe`** beside the connection file. It exists so the finding in [Notifications](#notifications) can be re-measured on a later OS. The file is what makes it readable on Windows, where a release build has no console to print to. |
 | `SEEDEEP_TRAY_SHOW_PANEL` | Shows the popover at startup, so the panel can be LOOKED at without a click on the menu bar — which is the one thing no test can perform. |
 
 `SEEDEEP_TRAY_STATE`, which forced an icon state, is gone: the icon now comes from the digest, and

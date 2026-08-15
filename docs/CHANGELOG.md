@@ -4,6 +4,14 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Launching the tray on Windows opened a console window that stayed for the life of the app.** The
+line Tauri's own template carries — `windows_subsystem = "windows"` — had never been added, so the
+release binary was linked as a console subsystem application and Windows gave it a terminal.
+Invisible on macOS and Linux, where rustc ignores the attribute, which is how it got this far.
+Observed on Windows 11 arm64, 2026-08-14. The notification probe writes its outcome to a
+`notify-probe` file as well as printing it, since without a console the print was the only record of
+the one question Windows notifications still have open.
+
 ## 0.25.0 (2026-08-14)
 
 **A publish to npm that dies halfway can now be re-run.** The step published seven packages in a
