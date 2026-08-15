@@ -69,9 +69,10 @@ export interface ServerDeps {
    */
   exit?: (code: number) => void;
   /**
-   * Injectable self-restart function for `POST /api/restart`. Defaults to spawning a
-   * detached copy of the current process via `Bun.spawn` + `unref()`. Override in tests
-   * to avoid actually spawning a child process.
+   * Injectable self-restart function for `POST /api/restart`. Defaults to `Bun.spawn` on
+   * {@link selfSpawnPlan} plus `unref()`. Override in tests to avoid actually spawning a child —
+   * but note that an override cannot see HOW the real one spawns, which is why the plan is
+   * asserted separately.
    */
   spawnSelf?: () => void;
   /**
@@ -349,6 +350,52 @@ function mergeNotificationsPost(stored: NotifyConfig, given: Record<string, unkn
   };
 }
 
+/** How the successor of a restart is launched: the same executable, the same flags. */
+export interface SelfSpawnPlan {
+  /** argv for `Bun.spawn` — this executable, then the flags this process was given. */
+  cmd: string[];
+  /** `detached` is present on Windows and absent everywhere else; see {@link selfSpawnPlan}. */
+  options: { stdio: ['inherit', 'inherit', 'inherit']; detached?: true };
+}
+
+/**
+ * Build the command line and options for the server a restart hands over to.
+ *
+ * Separated from the spawn itself because the two things that decide whether the handover works are
+ * both in here, and neither is visible to a test that injects `ServerDeps.spawnSelf`.
+ *
+ * **`detached` on Windows, and only there.** A Windows child stays in its parent's job object and is
+ * terminated the moment the parent exits, which is why `restart` left the old server stopped with no
+ * replacement running and not one line in the log — measured on Windows 11 arm64, 2026-08-14, on the
+ * same machine where `seedeep start`, the path that passes the flag, survived ten starts of ten.
+ * On POSIX the flag is `setsid()`: it would put the successor in a session of its own, so a Ctrl-C
+ * in the terminal that started `seedeep serve` would no longer reach it and closing that terminal
+ * would leave an orphan holding the port. Nothing there needs it — `unref()` plus adoption by init
+ * already outlives this process — so fixing Windows must not change macOS and Linux at all.
+ *
+ * `selfInvocation` rather than `argv.slice(1)`: in the compiled binary that slice starts with the
+ * bunfs entry path, which is not an argument the program can be given back. Measured on the real
+ * binary — the restarted server refused it and never came up.
+ */
+export function selfSpawnPlan(
+  deps: { argv?: readonly string[]; execPath?: string; main?: string; fromSource?: boolean; platform?: string } = {},
+): SelfSpawnPlan {
+  const {
+    argv = process.argv,
+    execPath = process.execPath,
+    main = Bun.main,
+    fromSource = FROM_SOURCE,
+    platform = process.platform,
+  } = deps;
+  return {
+    cmd: [...selfInvocation(execPath, main, fromSource), ...argv.slice(2)],
+    options: {
+      stdio: ['inherit', 'inherit', 'inherit'],
+      ...(platform === 'win32' ? { detached: true as const } : {}),
+    },
+  };
+}
+
 /** Run the macOS `security add-generic-password` command and return the result. */
 /**
  * Start the local HTTP(S) server. On a non-loopback `host`:
@@ -370,13 +417,8 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   const spawnSelfFn =
     deps.spawnSelf ??
     (() => {
-      // `selfInvocation` rather than `argv.slice(1)`: in the compiled binary that slice starts
-      // with the bunfs entry path, which is not an argument the program can be given back.
-      // Measured on the real binary — the restarted server refused it and never came up.
-      const child = Bun.spawn([...selfInvocation(process.execPath, Bun.main, FROM_SOURCE), ...process.argv.slice(2)], {
-        stdio: ['inherit', 'inherit', 'inherit'],
-      });
-      child.unref();
+      const plan = selfSpawnPlan();
+      Bun.spawn(plan.cmd, plan.options).unref();
     });
 
   // Mutable config copy — updated by POST /api/config without touching the rest of the server.
