@@ -2,11 +2,9 @@
 # CONTRIBUTING.md ("`bun run typecheck` must pass") were enforced by nothing, and the type-checker
 # was red on main while every local `bun test` stayed green.
 #
-# Three jobs rather than one, so a red check names what broke without anybody opening a log.
-#
-# The tray's Rust lives in the third: `cfg(windows)` code is not merely untested off Windows, it is
-# never handed to a compiler there, so the matrix runs both. Linux is absent from it because the
-# tray has no code for Linux — a non-target by decision (`docs/tray.md`), not a setup cost.
+# Three jobs rather than one, and they stay separate: a leak is not a reason to stop reporting a
+# broken test, nor the reverse, so a red check names what broke without anybody opening a log. Each
+# job states its own reason for existing where it is defined.
 name: CI
 
 on:

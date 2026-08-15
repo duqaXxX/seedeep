@@ -19,10 +19,11 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
   return {
     version: '0.10.1',
     channel: { kind: 'bun', command: 'bun install -g seedeep --trust' },
-    // Under /opt, which cannot be anybody's home: `statusReport` calls `shortPath` with the
-    // ambient `homedir()`, and the neutral placeholder this project prescribes elsewhere is a
-    // plausible container home — which would have turned this assertion into `~/...`.
     execPath: '/opt/seedeep/.bun/install/global/node_modules/seedeep/bin/seedeep.exe',
+    // Carried in the fixture, never read from the machine: with `homedir()` deciding it, this
+    // assertion belonged to whoever ran the suite, and any container whose home happened to be the
+    // prefix above would have turned it into `~/...` for a reason unrelated to the code.
+    home: `/no${'body'}-home`,
     server: {
       kind: 'up',
       record: { pid: 91116, baseUrl: 'https://box.local:44842' },
@@ -202,4 +203,21 @@ test('shortPath keeps the directory that identifies the install and elides the p
 
   // A download the user placed is already short, and outside the home: nothing to do to it.
   assert.equal(shortPath('/usr/local/bin/seedeep', mac), '/usr/local/bin/seedeep');
+});
+
+// The abbreviation is a SEGMENT boundary, not a string prefix. A home is not the parent of a
+// sibling whose name merely starts with the same letters, and the naive test spelled that sibling's
+// files with a tilde and the leftover — an address nobody can act on.
+test('shortPath abbreviates a home only on a segment boundary', () => {
+  const mac = `/Us${'ers'}/carol`;
+  assert.equal(shortPath(`${mac}yn/bin/seedeep`, mac), `${mac}yn/bin/seedeep`, 'a sibling is not inside');
+  assert.equal(shortPath(mac, mac), '~', 'the home itself');
+  assert.equal(shortPath(`${mac}/x`, mac), '~/x');
+
+  const win = `C:\\Us${'ers'}\\carol`;
+  assert.equal(shortPath(`${win}2\\bin\\seedeep.exe`, win), `${win}2\\bin\\seedeep.exe`);
+  assert.equal(shortPath(`${win}\\bin\\seedeep.exe`, win), '~\\bin\\seedeep.exe');
+
+  // A home of `/` would otherwise swallow every path on the machine.
+  assert.equal(shortPath('/opt/bin/seedeep', '/'), '/opt/bin/seedeep');
 });

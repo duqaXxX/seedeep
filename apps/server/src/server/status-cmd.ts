@@ -55,6 +55,9 @@ export interface StatusFacts {
   command: CommandState;
   path: PathState;
   port: number;
+  /** The home to abbreviate against. Carried so nothing rendering this reads the environment —
+   * a fixture that did was one container's HOME away from asserting a different string. */
+  home: string;
 }
 
 /**
@@ -139,7 +142,7 @@ function updateLines(u: UpdateStatus, now: number): string[] {
 }
 
 /** The `/seedeep` block: the question that has no other answer short of listing another tool's directory. */
-function commandLines(c: CommandState, path: PathState): string[] {
+function commandLines(c: CommandState, path: PathState, home: string): string[] {
   if (c.kind === 'absent') {
     return ['/seedeep  not installed       `seedeep install-command` writes it'];
   }
@@ -157,7 +160,7 @@ function commandLines(c: CommandState, path: PathState): string[] {
   if (path.kind === 'absent') {
     lines.push('          but `seedeep` is not on PATH under that name, so /seedeep cannot run it');
   } else if (path.kind === 'other') {
-    lines.push(`          careful: \`seedeep\` on PATH is ${shortPath(path.found)}, not this one`);
+    lines.push(`          careful: \`seedeep\` on PATH is ${shortPath(path.found, home)}, not this one`);
   }
   return lines;
 }
@@ -170,13 +173,13 @@ function commandLines(c: CommandState, path: PathState): string[] {
 export function statusReport(facts: StatusFacts, now = Date.now()): string {
   const channel = facts.channel.kind === 'checkout' ? 'checkout' : facts.channel.kind;
   const lines = [
-    `seedeep ${facts.version}  (${channel}, ${shortPath(facts.execPath)})`,
+    `seedeep ${facts.version}  (${channel}, ${shortPath(facts.execPath, facts.home)})`,
     '',
     ...serverLines(facts),
     '',
     ...updateLines(facts.update, now),
     '',
-    ...commandLines(facts.command, facts.path),
+    ...commandLines(facts.command, facts.path, facts.home),
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -227,6 +230,7 @@ export async function runStatus(
       command: await readCommandState(commandFilePath()),
       path: pathState({}),
       port,
+      home: homedir(),
     }),
   );
   return 0;
