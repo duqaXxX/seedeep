@@ -284,9 +284,10 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   files. The pre-push hook prints that list and stops there, WARN-only: deciding
   whether a figure went false is a judgement — did what it *shows* change? —
   not something a file-level map can make for you. `--verify` settles it by
-  **re-cutting the suspects into a temp directory and comparing the pixels**, but it
-  costs minutes, so it belongs to a release rather than to every push. A release is not
-  itself a reason to re-cut: the Settings figures print the server's version, but a
+  **re-cutting the suspects into a temp directory it then deletes, and comparing the
+  pixels** — so it publishes nothing, and it costs minutes. Reach for it when what a
+  figure SHOWS is genuinely in doubt, not on a schedule: a release in particular is not
+  a reason to re-cut, nor to verify. The Settings figures print the server's version, but a
   figure documents the surface it photographs, not the version that was running, and a
   stale number there makes nothing it claims false. If you change a widget that a figure
   shows, say so in the PR — re-cutting needs the recorded bundle, which is not in the
