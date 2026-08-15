@@ -4,6 +4,15 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**CI compiles the tray's Rust, on macOS and Windows both.** It compiled none of it before, on any
+platform: `apps/tray/src-tauri` was checked only because development happens on a Mac and somebody
+ran `cargo test`, and the `#[cfg(windows)]` half was checked by nothing at all until a tag built the
+installer. That is not a testing gap but a COMPILING one — those blocks are never handed to the
+compiler off Windows — and five of them live in `local.rs`, four of which were changed on 2026-08-15
+without anything compiling them. One job, one matrix, the same command on both legs: a matrix whose
+legs do different things is two jobs wearing one name, and the platform given the weaker half is the
+one nobody notices. Linux is absent because the tray has no code there.
+
 **The tray flashed a console window on Windows.** A GUI application has no console, so Windows gives
 one to every console child it spawns and the user sees it appear and vanish. The tray starts three
 processes there and only one passed `CREATE_NO_WINDOW`: the `where.exe` that finds seedeep on the
