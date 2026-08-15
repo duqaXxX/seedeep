@@ -193,9 +193,15 @@ export function pathState(
     execPath?: string;
     fromSource?: boolean;
     realpath?: (p: string) => string;
+    platform?: string;
   } = {},
 ): PathState {
-  const { which = (cmd: string) => Bun.which(cmd), execPath = process.execPath, fromSource = FROM_SOURCE } = deps;
+  const {
+    which = (cmd: string) => Bun.which(cmd),
+    execPath = process.execPath,
+    fromSource = FROM_SOURCE,
+    platform = process.platform,
+  } = deps;
   const realpath =
     deps.realpath ??
     ((p: string) => {
@@ -208,7 +214,45 @@ export function pathState(
   if (fromSource) return { kind: 'from-source' };
   const found = which('seedeep');
   if (!found) return { kind: 'absent' };
-  return realpath(found) === realpath(execPath) ? { kind: 'ok' } : { kind: 'other', found };
+  if (realpath(found) === realpath(execPath)) return { kind: 'ok' };
+  return isNpmWindowsLauncher(found, execPath, platform) ? { kind: 'ok' } : { kind: 'other', found };
+}
+
+/**
+ * True when what is on the PATH is the npm-on-Windows LAUNCHER for `execPath`, not another seedeep.
+ *
+ * Windows has no symlink for `realpath` to follow: npm writes a `.cmd` (and a `.ps1`, and an
+ * extensionless script for Git Bash) into its global bin directory and lets it exec the binary that
+ * lives under that directory's `node_modules`. The comparison above therefore never matched, and
+ * every npm install on Windows was told its own launcher was a different executable — measured
+ * 2026-08-14 on Windows 11: `…\npm\seedeep.cmd` on the PATH against
+ * `…\npm\node_modules\seedeep\bin\seedeep.exe` running, which is one install and not two.
+ *
+ * The `node_modules` segment is required rather than any ancestor, and that is the whole
+ * difference: a bare "the launcher's directory contains this executable" would make a stray
+ * `seedeep.cmd` at a drive root vouch for every binary on the drive — including the downloaded one
+ * in `Downloads` that the warning exists to report. Case-insensitive because the filesystem is.
+ *
+ * The splitting is done by hand rather than with `node:path`, which follows the HOST: its `dirname`
+ * answers `.` for every one of these paths when this runs anywhere but Windows, and a function whose
+ * whole subject is a Windows path cannot depend on where it executes.
+ *
+ * LIMIT: npm only. Bun's global layout on Windows has not been measured — on POSIX it is a symlink
+ * (`~/.bun/bin/seedeep` → `~/.bun/install/global/node_modules/…`), which `realpath` already
+ * resolves, and what it writes on Windows is a guess this refuses to make. A bun install there keeps
+ * the false warning until somebody looks.
+ */
+export function isNpmWindowsLauncher(found: string, execPath: string, platform: string): boolean {
+  if (platform !== 'win32') return false;
+  const win = (p: string) => p.toLowerCase().replace(/\//g, '\\');
+  const shim = win(found);
+  const cut = shim.lastIndexOf('\\');
+  if (cut === -1) return false;
+  const name = shim.slice(cut + 1);
+  const dot = name.lastIndexOf('.');
+  const ext = dot === -1 ? '' : name.slice(dot);
+  if (ext !== '.cmd' && ext !== '.bat' && ext !== '.ps1' && ext !== '') return false;
+  return win(execPath).startsWith(`${shim.slice(0, cut)}\\node_modules\\`);
 }
 
 /**

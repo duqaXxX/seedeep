@@ -121,6 +121,37 @@ test('the PATH is checked against the executable actually running', () => {
   });
 });
 
+// Windows has no symlink for `realpath` to follow: npm writes a `.cmd` beside the package and lets
+// it exec the binary, so the comparison above always failed and EVERY npm install on Windows was
+// told its own launcher was a different executable. Measured on Windows 11, 2026-08-14, with these
+// two exact paths.
+test('the npm launcher on Windows is this executable, not another seedeep', () => {
+  const same = (p: string) => p;
+  const shim = 'C:\\Users\\dev\\AppData\\Roaming\\npm\\seedeep.cmd';
+  const exe = 'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\seedeep\\bin\\seedeep.exe';
+  const at = (found: string, execPath: string, platform: string) =>
+    pathState({ which: () => found, execPath, fromSource: false, realpath: same, platform });
+
+  assert.deepEqual(at(shim, exe, 'win32'), { kind: 'ok' });
+
+  // The case the warning exists for survives: a downloaded binary run from elsewhere, with an npm
+  // install on the PATH, really is two seedeeps.
+  assert.deepEqual(at(shim, 'C:\\Users\\dev\\Downloads\\seedeep-server.exe', 'win32'), {
+    kind: 'other',
+    found: shim,
+  });
+
+  // `node_modules` is required, not merely an ancestor: a launcher at a drive root must not vouch
+  // for every executable on the drive.
+  assert.deepEqual(at('C:\\seedeep.cmd', 'C:\\Users\\dev\\Downloads\\seedeep-server.exe', 'win32'), {
+    kind: 'other',
+    found: 'C:\\seedeep.cmd',
+  });
+
+  // Nothing about this is portable: the same shape on macOS is not a launcher and must still warn.
+  assert.deepEqual(at(shim, exe, 'darwin'), { kind: 'other', found: shim });
+});
+
 // A package manager puts a LINK on the PATH, never the file: measured, `~/.bun/bin/seedeep` points
 // into `~/.bun/install/global/node_modules/…`. Comparing the two spellings warned every npm and bun
 // install that its own binary was "a different executable" — the normal case, and a false alarm.
