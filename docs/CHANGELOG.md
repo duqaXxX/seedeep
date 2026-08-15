@@ -4,6 +4,8 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.26.0 (2026-08-15)
+
 **What the CLI prints came out as mojibake on a Windows console.** A Windows console runs in a
 legacy code page unless something changes it, and seedeep writes UTF-8, so the em dash it separates
 its lines with arrived as `ΓÇö`. Five characters reach a console — `—`, `…`, `·`, `→`, `≥`, measured
