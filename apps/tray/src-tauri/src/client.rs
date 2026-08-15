@@ -1391,11 +1391,9 @@ mod tests {
     async fn a_stored_server_that_is_down_stays_stored() {
         let dir = std::env::temp_dir().join(format!("seedeep-tray-down-{}", std::process::id()));
         let store = connection::store_path(&dir);
-        // A port the OS has just handed back, rather than port 1. The reasoning was "reserved and
-        // privileged, so nothing can be listening" — true, and not the same as "refuses". macOS
-        // refuses on port 1 at once; Windows says nothing and the connection runs into the timeout
-        // instead, which is a different message and a different branch. Binding and dropping proves
-        // the port is closed on the machine actually running this.
+        // A port the OS has just handed back and released. It is CLOSED, which is all this needs;
+        // whether the kernel then refuses or stays silent is the platform's business and not
+        // something to assert on — see the two sentences below.
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = closed.local_addr().unwrap().port();
         drop(closed);
@@ -1414,9 +1412,18 @@ mod tests {
                 // The panel prints this verbatim, so it is asserted as PROSE. The regression it
                 // guards: the innermost cause of a reqwest timeout is the phrase "deadline has
                 // elapsed" (measured on 0.13.4), which the panel used to show for the most likely
-                // remote failure of all — a machine that had gone to sleep.
-                assert!(detail.contains("probably not running"), "{detail}");
+                // remote failure of all — a machine that had gone to sleep. THAT is the assertion,
+                // and it holds whichever way the connection ends.
                 assert!(!detail.contains("deadline"), "{detail}");
+                // Which of the two sentences appears is the kernel's answer, not seedeep's: macOS
+                // REFUSES on a closed port and the connect branch fires, while Windows drops the
+                // packets and the same port runs into the timeout instead — the reason this test
+                // passed on one machine and failed on the next until it stopped asserting an OS's
+                // manners. Both sentences are seedeep's, and neither leaks a library's phrasing.
+                assert!(
+                    detail.contains("probably not running") || detail.contains("may be asleep"),
+                    "{detail}"
+                );
             }
             other => panic!("expected Offline, got {other:?}"),
         }

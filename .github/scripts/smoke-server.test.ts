@@ -39,6 +39,20 @@ Bun.serve({
  * `serve` is what the fake does with anything that is not `--version`, which is exactly the shape
  * the real binary has — so a script that stops calling one of them is caught here.
  */
+/**
+ * A port nothing is listening on, from the OS rather than from a guess.
+ *
+ * Bound and released: the window between here and the fake server binding it is a race in theory,
+ * and a far narrower one than choosing blind among 400 numbers on a machine that may already be
+ * running seedeep.
+ */
+function freePort(): number {
+  const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') });
+  const { port } = probe;
+  probe.stop(true);
+  return port;
+}
+
 function runSmoke(opts: { version: string; expected: string; serves?: boolean; env?: Record<string, string> }): {
   status: number | null;
   output: string;
@@ -60,7 +74,9 @@ ${opts.serves === false ? 'sleep 30' : `exec bun "${serverPath}" "$@"`}
     chmodSync(binPath, 0o755);
 
     // A port per run: these tests may share a machine with a seedeep someone is actually using.
-    const port = String(45100 + Math.floor(Math.random() * 400));
+    // ASKED for, not guessed: picking at random from a 400-wide range collides eventually, and it
+    // did — a CI run went red on `Is port 45440 in use?` with nothing wrong in the change under it.
+    const port = String(freePort());
     const res = spawnSync('bash', [SCRIPT, binPath, opts.expected, port], {
       encoding: 'utf8',
       env: { ...process.env, SMOKE_TIMEOUT_S: '3', ...opts.env },
