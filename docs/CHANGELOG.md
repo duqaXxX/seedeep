@@ -4,6 +4,19 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**`restart` left the old server stopped and no replacement running, on Windows.** The handover
+spawns the successor and exits, and a Windows child stays in its parent's job object: it was
+terminated the moment the parent went, before writing a single line. `detached` is what breaks it
+out, and it is now passed **on Windows only** — on POSIX that flag is `setsid()`, so passing it
+everywhere would take the successor out of the terminal's session and leave a Ctrl-C reaching
+nothing and a closed terminal leaking an orphan on the port. Nothing there needs it; `unref()` plus
+adoption by init already outlives the parent. Measured on Windows 11 arm64, 2026-08-14, on the
+machine where `seedeep start` — which always passed the flag — survived ten starts of ten. Three
+surfaces, not one: `seedeep restart`, the portal's Restart button, and the restart after a
+configuration change. The command line and the flags now come from one exported `selfSpawnPlan`,
+because a test that injects `spawnSelf` can never see how the real one spawns, which is exactly
+where the defect lived.
+
 **Launching the tray on Windows opened a console window that stayed for the life of the app.** The
 line Tauri's own template carries — `windows_subsystem = "windows"` — had never been added, so the
 release binary was linked as a console subsystem application and Windows gave it a terminal.

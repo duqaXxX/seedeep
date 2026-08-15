@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { mergeRoster } from '../src/core/roster.ts';
 import type { SessionRecord } from '../src/core/types.ts';
 import { defaultConfig, type SeedDeepConfig } from '../src/server/config.ts';
-import { isLoopback, parseMarks, startServer } from '../src/server/server.ts';
+import { isLoopback, parseMarks, selfSpawnPlan, startServer } from '../src/server/server.ts';
 import type { Channel } from '../src/server/update-cmd.ts';
 import { VERSION } from '../src/server/version.ts';
 
@@ -1027,6 +1027,44 @@ test('POST /api/restart: responds { ok: true }, spawns self, then calls exit(0)'
   } finally {
     srv.stop();
   }
+});
+
+// The test above injects `spawnSelf`, so it can never see HOW the real one spawns — which is where
+// the defect was. Windows 11 arm64, 2026-08-14: `restart` left the old server stopped and no
+// replacement running, because a non-detached child dies with its parent's job object.
+test('the restart successor is detached on Windows, and on Windows only', () => {
+  const argv = ['/opt/seedeep', 'B:/~BUN/root/main.ts', 'serve', '--no-open', '--port', '9000'];
+  const at = (platform: string) =>
+    selfSpawnPlan({ argv, execPath: '/opt/seedeep', main: 'B:/~BUN/root/main.ts', fromSource: false, platform });
+
+  assert.equal(at('win32').options.detached, true, 'without this the successor dies with its parent');
+  // `setsid()` on POSIX: it would take the successor out of the terminal's session, so Ctrl-C would
+  // no longer reach it. Nothing there needs the flag, so fixing Windows must not change these.
+  assert.equal(at('darwin').options.detached, undefined);
+  assert.equal(at('linux').options.detached, undefined);
+  assert.ok(!('detached' in at('darwin').options), 'absent, not merely false');
+});
+
+test('the restart successor re-execs this binary with the flags it was given', () => {
+  // argv in the compiled binary: the executable, then the bunfs entry path, then what was typed.
+  const compiled = selfSpawnPlan({
+    argv: ['/opt/seedeep', 'B:/~BUN/root/main.ts', 'serve', '--no-open', '--port', '9000'],
+    execPath: '/opt/seedeep',
+    main: 'B:/~BUN/root/main.ts',
+    fromSource: false,
+    platform: 'linux',
+  });
+  assert.deepEqual(compiled.cmd, ['/opt/seedeep', 'serve', '--no-open', '--port', '9000'], 'never the bunfs path');
+
+  // From source the entry path IS an argument the program can be given back, and must be kept.
+  const fromSource = selfSpawnPlan({
+    argv: ['bun', 'main.ts', 'serve', '--port', '9000'],
+    execPath: 'bun',
+    main: 'main.ts',
+    fromSource: true,
+    platform: 'linux',
+  });
+  assert.deepEqual(fromSource.cmd, ['bun', 'main.ts', 'serve', '--port', '9000']);
 });
 
 test('POST /api/restart: requires auth on non-loopback host', async () => {
