@@ -214,6 +214,13 @@ fn is_local(base_url: &str) -> bool {
 /// so it takes an ephemeral one and gives it straight back; no crate is needed to enumerate
 /// interfaces, and nothing is asked of the network.
 fn names_this_machine(host: &str) -> bool {
+    // Rejected before the resolver, because the resolvers disagree about it: on Windows the empty
+    // host RESOLVES — to this machine — while macOS calls it an error, so without this the same
+    // malformed record is co-located on one platform and foreign on the other. Nothing is not a
+    // host anywhere, and the test said so before either resolver was asked.
+    if host.is_empty() {
+        return false;
+    }
     let Ok(addrs) = (host, 0u16).to_socket_addrs() else { return false };
     addrs.into_iter().any(|a| a.ip().is_loopback() || TcpListener::bind((a.ip(), 0)).is_ok())
 }
@@ -976,19 +983,19 @@ mod tests {
         std::process::id()
     }
 
+    // The bases come from `temp_dir()` rather than being written as `/home/dev`, and that is not
+    // cosmetic: `seedeep_home` makes the override ABSOLUTE, and `/tmp/elsewhere` is not an absolute
+    // path on Windows — it has no drive — so a literal turns the identity case into a resolution
+    // against the process's cwd and the assertion is about the machine that ran it.
     #[test]
     fn the_home_is_the_seedeep_directory_unless_the_variable_moves_it() {
-        assert_eq!(seedeep_home(PathBuf::from("/home/dev"), None), PathBuf::from("/home/dev/.seedeep"));
-        assert_eq!(
-            seedeep_home(PathBuf::from("/home/dev"), Some("/tmp/elsewhere".into())),
-            PathBuf::from("/tmp/elsewhere")
-        );
+        let home = std::env::temp_dir().join("seedeep-home");
+        let elsewhere = std::env::temp_dir().join("seedeep-elsewhere");
+        assert_eq!(seedeep_home(home.clone(), None), home.join(".seedeep"));
+        assert_eq!(seedeep_home(home.clone(), Some(elsewhere.clone().into())), elsewhere);
         // A script that exported the name and forgot the value must not point the tray at the
         // process's cwd — the same trap `config_root` documents for the tray's own files.
-        assert_eq!(
-            seedeep_home(PathBuf::from("/home/dev"), Some("".into())),
-            PathBuf::from("/home/dev/.seedeep")
-        );
+        assert_eq!(seedeep_home(home.clone(), Some("".into())), home.join(".seedeep"));
     }
 
     // Co-location is a fact about the address, and the four spellings of this machine all count.
@@ -1197,15 +1204,27 @@ mod tests {
     // `command -v` answers with a path, but an interactive shell is entitled to print its own
     // things first, and for a shell FUNCTION it prints the body instead. Only a file on disk is an
     // answer to where seedeep is.
+    // The file is CREATED rather than borrowed from the system, because `first_executable` asks the
+    // real filesystem and the two platforms have nothing in common to point it at: `/usr/bin/true`
+    // does not exist on Windows, and there a name also has to end in an extension `cmd` can run.
+    // `.exe` satisfies that and means nothing on unix, so one name serves both.
     #[test]
     fn only_a_real_file_counts_as_having_found_it() {
+        let dir = std::env::temp_dir().join(format!("seedeep-which-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let real = dir.join("seedeep.exe");
+        fs::write(&real, b"not really a program").unwrap();
+        let absent = dir.join("no-such-seedeep.exe");
+
         assert_eq!(first_executable(""), None);
         assert_eq!(first_executable("seedeep () {\n\techo hi\n}\n"), None);
-        assert_eq!(first_executable("/no/such/seedeep\n"), None);
+        assert_eq!(first_executable(&format!("{}\n", absent.display())), None, "a path is not a file");
+        // A login shell is entitled to print a motd, and the answer may be the second line.
         assert_eq!(
-            first_executable("Welcome back!\n  /usr/bin/true  \n/usr/bin/false\n"),
-            Some(PathBuf::from("/usr/bin/true"))
+            first_executable(&format!("Welcome back!\n  {}  \n{}\n", real.display(), absent.display())),
+            Some(real.clone())
         );
+        fs::remove_dir_all(&dir).ok();
     }
 
     /// Live: find the real seedeep through the user's own shell, start it, and stop it again.
@@ -1463,14 +1482,16 @@ mod tests {
         let cert = home.join("cert.pem");
         let body = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, LEAF);
         fs::write(&cert, format!("-----BEGIN CERTIFICATE-----\n{body}\n-----END CERTIFICATE-----\n")).unwrap();
-        fs::write(
-            home.join("config.json"),
-            format!(
-                r#"{{"port":44842,"host":"0.0.0.0","auth":{{"token":"a-token"}},"tls":{{"commonName":"host.local","cert":"{}","key":"k"}}}}"#,
-                cert.display()
-            ),
-        )
-        .unwrap();
+        // Built with the JSON encoder rather than formatted into a string: a Windows path is full
+        // of backslashes, `\U` is not a JSON escape, and a hand-written literal produces a file the
+        // parser rejects — so `credentials()` returned nothing and the test blamed the code.
+        let config = serde_json::json!({
+            "port": 44842,
+            "host": "0.0.0.0",
+            "auth": { "token": "a-token" },
+            "tls": { "commonName": "host.local", "cert": cert, "key": "k" },
+        });
+        fs::write(home.join("config.json"), config.to_string()).unwrap();
 
         let known = LocalServer::new(home).credentials().expect("a config the tray can read");
 

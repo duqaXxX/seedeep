@@ -4,6 +4,20 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray's Rust tests run on Windows too, and one of them was reporting a real defect.** Six could
+not pass there at all, and the CI job added a day earlier is what found them. Five were fixtures
+assuming a POSIX machine: `/tmp/...` is not an absolute path on Windows, so a literal turned an
+identity assertion into a resolution against the process's cwd; `/usr/bin/true` is not a file to
+point a lookup at, so the test creates one; a Windows path formatted into a JSON string literal is
+invalid, since `\U` is not an escape, so the config is encoded rather than written by hand; and
+"nothing is listening on port 1" is true everywhere while only macOS REFUSES there, Windows letting
+it run into the timeout instead — the port is now one the OS has just handed back and released.
+
+The sixth was the code. **An empty host RESOLVES on Windows, to this machine**, so
+`names_this_machine("")` answered yes there and no on macOS for the same malformed record. It is
+rejected before either resolver is asked now: nothing is not a host anywhere, which is what the test
+had been saying since before either resolver was consulted.
+
 **CI compiles the tray's Rust, on macOS and Windows both.** It compiled none of it before, on any
 platform: `apps/tray/src-tauri` was checked only because development happens on a Mac and somebody
 ran `cargo test`, and the `#[cfg(windows)]` half was checked by nothing at all until a tag built the

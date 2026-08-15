@@ -763,12 +763,13 @@ mod tests {
     // Under the home, not the home itself: one variable names one world, and the server keeps its
     // own state in the same directory — two apps writing over each other's files is what the
     // subdirectory rules out.
+    // From `temp_dir()` and not a `/tmp/...` literal: `config_root` makes the value ABSOLUTE, and
+    // a path with no drive is not absolute on Windows — the literal would be resolved against the
+    // process's cwd and the assertion would be about the machine that ran it.
     #[test]
     fn the_variable_wins_and_the_tray_gets_its_own_corner() {
-        assert_eq!(
-            config_root(Some("/tmp/dev-state".into()), PathBuf::from("/app/config")),
-            PathBuf::from("/tmp/dev-state/tray")
-        );
+        let dev = std::env::temp_dir().join("seedeep-dev-state");
+        assert_eq!(config_root(Some(dev.clone().into()), PathBuf::from("/app/config")), dev.join("tray"));
     }
 
     // A script that exported the name and forgot the value would otherwise scatter a token file
