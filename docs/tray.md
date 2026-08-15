@@ -372,13 +372,32 @@ the key; `Surface.putIfChanged` draws only on a different key. The forgetting is
 "Connecting…" is drawn unkeyed, so without it a connect that failed back to the same status would be
 skipped and the panel would sit on "Connecting…" for good.
 
-Left-click **toggles** a chromeless window anchored **under the icon's actual rectangle**, which
-the OS reports with the click. A menu bar reorders itself as other apps come and go, so a
-remembered position would drift.
+Left-click **toggles** a chromeless window anchored on **the icon's actual rectangle**, which the
+OS reports with the click. A menu bar reorders itself as other apps come and go, so a remembered
+position would drift.
 
 Centred on the icon, but **clamped to the work area of the monitor the icon is on**. The
 right-hand end of the menu bar is exactly where a tray icon sits, so a panel merely centred on
 it hangs off the edge of the screen.
+
+**Which way it opens is read off the icon, never off the platform.** If the icon's centre falls in
+the lower half of that work area the panel grows **upward**, with its BOTTOM edge flush above the
+icon; otherwise it grows downward from just below it, as it always has. A macOS menu bar is always
+the top strip, so the icon is always in the upper half and the direction there cannot change. A
+Windows taskbar sits on any edge, and on three of the four its icons are in the lower half —
+anchoring below them put the panel's top edge at the bottom of the screen, which left it off-screen
+and, since the room below was then a few pixels, collapsed it to the 90 pt floor with the content
+scrolling inside. One cause, both symptoms, observed on Windows 11 arm64 on 2026-08-14.
+
+Two consequences worth naming, because both were defects in the first attempt at this. The anchored
+edge is the icon's, not the window's: growing downward the top never moves, growing upward the panel
+has to move as well as grow, and the click that opens it applies BOTH the position and the size —
+a panel placed as if it had been clamped while keeping its old height hangs over the icon it opened
+from. And the monitor is looked up from the ICON's point, never the window's: the window may be off
+the screen, which is the state this repairs, and a lookup that found no monitor there would drop the
+direction back to downward and put it there again. `panel_geometry` is pure and carries the tests,
+including the one that holds the macOS behaviour still and the two that hold the inverted range in
+each direction — `clamp` panics on one, and a tray that panics is a tray that disappears.
 
 It also closes when it loses focus. A window with no title bar has no close button, so clicking
 anywhere else *is* the dismissal — the way a menu behaves.
