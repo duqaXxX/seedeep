@@ -161,6 +161,15 @@ export const HEARTBEAT_MS = 15_000;
 export const LIVENESS_MS = 15_000;
 
 /**
+ * How long a restart waits for the listener to close before handing over anyway.
+ *
+ * The point of closing first is that the successor finds the port free; the point of the deadline is
+ * that a close which never settles cannot be what stops a restart happening at all. Whichever ends
+ * first wins, and the loser costs the successor one failed bind it would have had regardless.
+ */
+const HANDOVER_CLOSE_MS = 2_000;
+
+/**
  * How long the notification engine waits after a transcript event before reading the digest.
  *
  * A turn appends many lines in a burst — a thinking block, a text block, then each tool call — and

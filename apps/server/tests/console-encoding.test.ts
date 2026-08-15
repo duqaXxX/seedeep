@@ -14,6 +14,9 @@ function fakeConsole(): ConsoleLike & { said: unknown[] } {
   };
 }
 
+/** Both streams on a terminal — the ordinary interactive case. */
+const BOTH_TTY = { out: true, err: true };
+
 /** Every character a legacy Windows console cannot show, or an empty string. */
 const nonAscii = (s: string) => [...s].filter((c) => c.charCodeAt(0) > 127).join('');
 
@@ -32,7 +35,7 @@ test('asciiFallback: the five measured characters, every occurrence', () => {
 // through these three methods and through nothing else.
 test('useAsciiConsole: log, error and warn are all translated on Windows', () => {
   const fake = fakeConsole();
-  assert.equal(useAsciiConsole(fake, 'win32', true), true);
+  assert.equal(useAsciiConsole(fake, 'win32', BOTH_TTY), true);
   fake.log('seedeep watching — url');
   fake.error('seedeep: pid 7 → 9');
   fake.warn('a … b');
@@ -44,7 +47,7 @@ test('useAsciiConsole: log, error and warn are all translated on Windows', () =>
 test('useAsciiConsole: off Windows it does not even wrap', () => {
   for (const platform of ['darwin', 'linux']) {
     const fake = fakeConsole();
-    assert.equal(useAsciiConsole(fake, platform, true), false, platform);
+    assert.equal(useAsciiConsole(fake, platform, BOTH_TTY), false, platform);
     fake.log('seedeep watching — url');
     assert.deepEqual(fake.said, ['seedeep watching — url'], platform);
   }
@@ -55,15 +58,31 @@ test('useAsciiConsole: off Windows it does not even wrap', () => {
 // a file exactly what it exists to prevent on a terminal.
 test('useAsciiConsole: a redirect is left alone, console or not', () => {
   const fake = fakeConsole();
-  assert.equal(useAsciiConsole(fake, 'win32', false), false);
+  assert.equal(useAsciiConsole(fake, 'win32', { out: false, err: false }), false);
   fake.log('seedeep watching — url');
   assert.deepEqual(fake.said, ['seedeep watching — url']);
+});
+
+// The two streams are redirected independently, so one flag for both is wrong in both directions:
+// `seedeep status > f` left the console's error lines mojibake, `seedeep serve 2> f` degraded a file.
+test('useAsciiConsole: each stream is judged on its own', () => {
+  const out = fakeConsole();
+  assert.equal(useAsciiConsole(out, 'win32', { out: true, err: false }), true);
+  out.log('a — b');
+  out.error('a — b');
+  assert.deepEqual(out.said, ['a - b', 'a — b'], 'stdout wrapped, stderr redirected and left alone');
+
+  const err = fakeConsole();
+  useAsciiConsole(err, 'win32', { out: false, err: true });
+  err.log('a — b');
+  err.warn('a — b');
+  assert.deepEqual(err.said, ['a — b', 'a - b'], 'the mirror case');
 });
 
 // An encoder that rewrites what it did not encode is a corruption. Only strings are translated.
 test('useAsciiConsole: a non-string argument passes through untouched', () => {
   const fake = fakeConsole();
-  useAsciiConsole(fake, 'win32', true);
+  useAsciiConsole(fake, 'win32', BOTH_TTY);
   const obj = { dash: '—' };
   fake.log(obj, 42);
   assert.deepEqual(fake.said, [obj, 42]);
@@ -75,7 +94,7 @@ test('useAsciiConsole: a non-string argument passes through untouched', () => {
 test('the help screen comes out pure ASCII on Windows', () => {
   assert.notEqual(nonAscii(usage()), '', 'the source text must contain some, or this proves nothing');
   const fake = fakeConsole();
-  useAsciiConsole(fake, 'win32', true);
+  useAsciiConsole(fake, 'win32', BOTH_TTY);
   fake.log(usage());
   assert.equal(nonAscii(String(fake.said[0])), '');
 });

@@ -4,6 +4,29 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.27.0 (2026-08-15)
+
+**Eight more corrections, from a review of the commit that answered the last review.** Two were
+regressions it had introduced. Awaiting the listener's close made the handover honest and made it
+fragile: an unhandled rejection inside that callback takes the process down where it stands
+(measured on Bun 1.3.13), so a close that failed would have left a restart with the old server gone
+and NO successor — worse than the race it replaced, which at least always spawned one. It is now
+caught and raced against a deadline, because a close that never settles strands the handover just as
+completely, and this server holds SSE streams open with no idle timeout. The popover's height reset
+sat below two early returns, so on the trust and mismatch screens — the ones Rust re-reports every
+poll — the opening was never seen and the clamped-height ratchet survived exactly where a
+certificate prompt would be scrolling inside it; the opening is read before any guard now, since it
+is a fact about the popover and not about what is on it.
+
+The Windows console gate judged both streams by stdout alone, so `seedeep status > file` left the
+console's own error lines mojibake and `seedeep serve 2> file` degraded a file — it is per stream
+now. A pipe on a Windows console is still not covered, and that is written down as a limit rather
+than left to be discovered. The segment-boundary fix for `status` arrived without the test that
+would have failed before it, and `statusReport` read the ambient home while a fixture asserted a
+path — the home is carried in the facts now, so nothing rendering a status consults the machine. The
+smoke helper did not await its own `stop`, the same omission being fixed one file over. And two
+passages of `docs/tray.md` and the CI header were left describing what had just changed.
+
 **Nine corrections a review of the previous twelve commits found.** Four were real: the restart
 handover called `stop(true)` and spawned on the next statement, but that call answers with a promise
 and its own docs say network activity may outlive it — so the fix billed as "deterministic rather

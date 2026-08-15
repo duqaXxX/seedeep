@@ -1143,20 +1143,21 @@ has given to something else, and picking either would be a signal sent to an unr
 
 Known limits, none of them silent:
 
-- **Windows: the tray was opened once, on arm64 (2026-08-14), and got no further than its popover.**
-That one look found two defects, both fixed: the popover opened off the bottom of the screen, and
-the app had no `windows_subsystem` attribute so launching it left a console window open. The icon's
-legibility, the animation's cost, notifications and the connection screen are all still unanswered,
-and the x64 build has never been run at all.
-
-**Every process the tray starts on Windows passes `CREATE_NO_WINDOW`.** A GUI application has no
-console, so Windows gives one to each console child it spawns and the user sees it flash: two of the
-three spawn sites were missing the flag, which is why it is one shared constant in `local.rs` rather
-than three literals — a fourth site cannot be added without meeting it. `taskkill /F` is a hard stop — the server never runs its
-  shutdown path, so its record is left for the next start's sweep. Marked `// LIMIT:` at both sites.
-  The lookup there also has a rule this platform does not need: `npm i -g` installs three shims and
-  `where.exe` lists the extensionless sh script first, so only a file `cmd` can actually start —
-  `.exe`, `.cmd`, `.bat`, `.com` — counts as having found seedeep.
+- **Windows was opened once**, on arm64 (2026-08-14), and got no further than the popover. That one
+  look found two defects, both since fixed: the popover opened off the bottom of the screen, and the
+  crate had no `windows_subsystem` attribute, so launching it left a console window open. The icon's
+  legibility, the animation's cost, notifications and the connection screen are all still
+  unanswered, and the x64 build has never been run at all.
+- `taskkill /F` is a hard stop — the server never runs its shutdown path, so its record is left for
+  the next start's sweep. Marked `// LIMIT:` at both sites. The lookup there also has a rule this
+  platform does not need: `npm i -g` installs three shims and `where.exe` lists the extensionless sh
+  script first, so only a file `cmd` can actually start — `.exe`, `.cmd`, `.bat`, `.com` — counts as
+  having found seedeep.
+- Every process the tray starts on Windows passes `CREATE_NO_WINDOW`, and that is a rule rather than
+  a detail: a GUI application has no console, so Windows gives one to each console child it spawns
+  and the user sees it flash. Two of the three spawn sites were missing it, which is why it is one
+  shared constant in `local.rs` and not three literals — a fourth site cannot be added without
+  meeting it.
 - A user who sets `SEEDEEP_HOME` in their shell profile gets a server whose records the tray cannot
   see: a GUI app inherits no shell environment, so the tray looks in `~/.seedeep`. Stop is then not
   offered, which is the honest outcome — nothing is stopped by guesswork.

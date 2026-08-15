@@ -279,6 +279,16 @@ function draw(error?: string): void {
 
 /** Take a reading and draw it. The one path that changes what the panel shows. */
 function apply(tick: Tick): void {
+  // The opening is read BEFORE any guard, because it is a fact about the popover and not about
+  // what is on it: the trust prompt and a command in flight both return early below, and every
+  // tick spent on those screens used to leave the edge unseen — so a panel clamped by an earlier
+  // screen reopened clamped, with a certificate prompt scrolling inside it.
+  const opened = tick.open && !wasOpen;
+  wasOpen = tick.open;
+  // The height cache belongs to the window, so it is cleared here whatever surface is up. `fit`
+  // skips a resize matching the last height it ASKED for, and that cache outlives a close — the
+  // popover is hidden, never rebuilt.
+  if (opened) sentHeight = 0;
   // A command the user started owns the screen until it answers — see {@link busy}.
   if (busy) return;
   // A question the user is looking at outlives the clock that would answer it for them. Rust reports
@@ -293,14 +303,10 @@ function apply(tick: Tick): void {
   rows = fold(rows, tick);
   // Asked on the EDGE of the popover opening, never every tick: the answer moves only when a human
   // edits config.json or saves the portal's panel, and one request per click is the whole cost.
-  if (tick.open && !wasOpen) void askRestartPending();
-  // And the height is asked for again, on the same edge. `fit` skips a `resize` whose natural
-  // height matches the last one it ASKED for, and that cache outlives a close — the popover is
-  // hidden, never rebuilt. So a panel clamped once by a short screen kept its clamped height on
-  // every later opening, including on a screen with room, with its list scrolling in the space it
-  // had been given. The open is the moment the geometry can have changed; nothing else knows.
-  if (tick.open && !wasOpen) sentHeight = 0;
-  wasOpen = tick.open;
+  // Left HERE rather than beside the height above, and deliberately: this one is a request to the
+  // server, and the guards it sits under are what keep it from firing over a screen the user is
+  // answering or a command that is still running.
+  if (opened) void askRestartPending();
   // A pending state belongs to the server that reported it. Pointed elsewhere — or at nothing —
   // the tray holds no claim about the new one until it has asked it.
   if (status.kind !== 'connected') restartPending = false;

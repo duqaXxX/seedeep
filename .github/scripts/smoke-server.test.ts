@@ -46,19 +46,23 @@ Bun.serve({
  * and a far narrower one than choosing blind among 400 numbers on a machine that may already be
  * running seedeep.
  */
-function freePort(): number {
+async function freePort(): Promise<number> {
   // Bound the way the fake server binds — no hostname, so every interface — or a port free on
   // loopback and taken on another one would be reported free and then fail to bind.
   const probe = Bun.serve({ port: 0, fetch: () => new Response('') });
   const { port } = probe;
-  probe.stop(true);
+  // AWAITED: `stop` answers with a promise, and a socket still closing is a socket the fake server
+  // cannot bind — the EADDRINUSE this helper exists to prevent, one layer down.
+  await probe.stop(true);
   return port;
 }
 
-function runSmoke(opts: { version: string; expected: string; serves?: boolean; env?: Record<string, string> }): {
-  status: number | null;
-  output: string;
-} {
+async function runSmoke(opts: {
+  version: string;
+  expected: string;
+  serves?: boolean;
+  env?: Record<string, string>;
+}): Promise<{ status: number | null; output: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'seedeep-smoke-'));
   try {
     const serverPath = join(dir, 'fake-server.ts');
@@ -78,7 +82,7 @@ ${opts.serves === false ? 'sleep 30' : `exec bun "${serverPath}" "$@"`}
     // A port per run: these tests may share a machine with a seedeep someone is actually using.
     // ASKED for, not guessed: picking at random from a 400-wide range collides eventually, and it
     // did — a CI run went red on `Is port 45440 in use?` with nothing wrong in the change under it.
-    const port = String(freePort());
+    const port = String(await freePort());
     const res = spawnSync('bash', [SCRIPT, binPath, opts.expected, port], {
       encoding: 'utf8',
       env: { ...process.env, SMOKE_TIMEOUT_S: '3', ...opts.env },
@@ -89,28 +93,28 @@ ${opts.serves === false ? 'sleep 30' : `exec bun "${serverPath}" "$@"`}
   }
 }
 
-test('passes when the binary reports its version, serves the API and carries the GUI', () => {
-  const { status, output } = runSmoke({ version: '9.9.9', expected: '9.9.9' });
+test('passes when the binary reports its version, serves the API and carries the GUI', async () => {
+  const { status, output } = await runSmoke({ version: '9.9.9', expected: '9.9.9' });
   assert.equal(status, 0, output);
   assert.match(output, /smoke: OK/);
 });
 
-test('fails when the binary reports a version other than the one being released', () => {
-  const { status, output } = runSmoke({ version: '9.9.8', expected: '9.9.9' });
+test('fails when the binary reports a version other than the one being released', async () => {
+  const { status, output } = await runSmoke({ version: '9.9.8', expected: '9.9.9' });
   assert.notEqual(status, 0);
   assert.match(output, /--version printed '9\.9\.8'/);
 });
 
-test('fails when the server never answers', () => {
-  const { status, output } = runSmoke({ version: '9.9.9', expected: '9.9.9', serves: false });
+test('fails when the server never answers', async () => {
+  const { status, output } = await runSmoke({ version: '9.9.9', expected: '9.9.9', serves: false });
   assert.notEqual(status, 0);
   assert.match(output, /no answer on/);
 });
 
 // The measured failure this script exists for, reproduced: the API is up and every static path is
 // 404, because nothing imported the GUI's files into the executable.
-test('fails when /api answers but the GUI is not embedded', () => {
-  const { status, output } = runSmoke({
+test('fails when /api answers but the GUI is not embedded', async () => {
+  const { status, output } = await runSmoke({
     version: '9.9.9',
     expected: '9.9.9',
     env: { FAKE_ASSETS: '404' },
@@ -119,8 +123,8 @@ test('fails when /api answers but the GUI is not embedded', () => {
   assert.match(output, /the browser GUI is not inside this executable/);
 });
 
-test('fails when /api/config answers 200 with something that is not the config', () => {
-  const { status, output } = runSmoke({
+test('fails when /api/config answers 200 with something that is not the config', async () => {
+  const { status, output } = await runSmoke({
     version: '9.9.9',
     expected: '9.9.9',
     env: { FAKE_CONFIG_BODY: '<html>a proxy sign-in page</html>' },
