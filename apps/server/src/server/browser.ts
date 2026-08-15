@@ -17,5 +17,5 @@ export function openBrowser(url: string, run: (argv: string[]) => void = default
 
 function defaultRun(argv: string[]): void {
   const [cmd, ...rest] = argv;
-  spawn(cmd!, rest, { stdio: 'ignore', detached: true }).unref();
+  spawn(cmd!, rest, { stdio: 'ignore', detached: true, windowsHide: true }).unref();
 }

@@ -176,7 +176,7 @@ export async function runSelfUpdatePreview(
 export function runToCompletion(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv as [string, ...string[]];
   return new Promise((resolve) => {
-    const child = spawn(cmd, rest, { stdio: 'inherit' });
+    const child = spawn(cmd, rest, { stdio: 'inherit', windowsHide: true });
     // A package manager that is not on PATH is a failed install, not a crash of this process: 127 is
     // what a shell reports for it, and the caller already prints the command that failed.
     child.on('error', () => resolve(127));
@@ -190,7 +190,7 @@ async function askInstalledVersion(): Promise<string | null> {
   // directory, so a path resolved before it ran can name an inode that no longer exists.
   const exe = ownExecPath();
   return new Promise((resolve) => {
-    const child = spawn(exe, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = spawn(exe, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     let out = '';
     child.stdout.on('data', (chunk: Buffer) => {
       out += chunk.toString();
