@@ -4,6 +4,13 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The tray flashed a console window on Windows.** A GUI application has no console, so Windows gives
+one to every console child it spawns and the user sees it appear and vanish. The tray starts three
+processes there and only one passed `CREATE_NO_WINDOW`: the `where.exe` that finds seedeep on the
+PATH, which runs while the tray is starting, and the `taskkill` that stops the server did not.
+Reported on Windows 11, 2026-08-15, as a flash on startup. The flag is now one constant that all
+three use, so a fourth process cannot be added without meeting it.
+
 **A restart handed over the process without handing over the port.** It spawned the successor and
 exited while still holding the socket, so the successor won the race only by taking longer to boot
 than this process took to die. That margin does not exist on Windows: measured on 0.26.0, the

@@ -318,6 +318,14 @@ fn cmd_can_run(path: &Path) -> bool {
         .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "exe" | "cmd" | "bat" | "com"))
 }
 
+/// Windows creation flag that keeps a console application from being given a console.
+///
+/// Every process this module starts on Windows needs it. A GUI application has no console, so
+/// Windows allocates one for any console child it spawns — and the user sees it flash. Two of the
+/// three here were missing it, which is what a flash on tray startup and on stop was.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// The first line of `stdout` that names an executable file, or nothing.
 ///
 /// A line at a time, and the whole line has to be an existing absolute path: an interactive shell
@@ -371,12 +379,17 @@ async fn ask_where_seedeep_is() -> Option<PathBuf> {
 /// would run.
 #[cfg(windows)]
 async fn ask_where_seedeep_is() -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
     let output = tokio::time::timeout(
         LOOKUP_TIMEOUT,
         Command::new("where.exe")
             .arg("seedeep")
             .stdin(Stdio::null())
             .stderr(Stdio::null())
+            // A console application started by a windowless one is given a console of its own, and
+            // the user sees it flash. This lookup runs while the tray is starting, which is exactly
+            // when a flash was reported (Windows 11, 2026-08-15).
+            .creation_flags(CREATE_NO_WINDOW)
             .output(),
     )
     .await
@@ -427,7 +440,6 @@ fn spawn_detached(exe: &Path, args: &[String], log: fs::File) -> std::io::Result
 #[cfg(windows)]
 fn spawn_detached(exe: &Path, args: &[String], log: fs::File) -> std::io::Result<Child> {
     use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let err = log.try_clone()?;
     Command::new("cmd")
         .arg("/C")
@@ -496,8 +508,11 @@ async fn ask_to_stop(pid: u32) -> Result<(), String> {
 // LIMIT: unverified — this branch has never run on a Windows machine, only compiled for one.
 #[cfg(windows)]
 async fn ask_to_stop(pid: u32) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
     let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
+        // Same reason as the lookup above: without it, stopping the server flashes a console.
+        .creation_flags(CREATE_NO_WINDOW)
         .status()
         .await
         .map_err(|e| format!("seedeep could not be stopped: {e}"))?;
