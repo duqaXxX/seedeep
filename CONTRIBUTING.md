@@ -213,11 +213,14 @@ not be accepted.
 
 ## Running it on Windows
 
-The single most useful contribution nobody here can make: **no Windows machine is used in this
-project**, so the tray's installers are built on every tag and have never been opened, and the
-server's `.exe` has been started by CI and never used. If you have Windows, one session settles six claims the code makes
-and the docs currently only reason about. Report what you see in an issue — a "it all worked"
-is as valuable as a defect, because today neither is known.
+The single most useful contribution nobody here can make. One Windows session has happened — a
+Windows 11 **arm64** guest, 2026-08-14 — and it found four defects in an evening: the server was
+installed from npm, started and served, and the tray was installed and its popover opened for the
+first time. Everything below is what that session did **not** settle, which is most of it: it never
+got past the popover, and the **x64** build of either app has still been started by CI and never used
+by a person. If you have Windows, one session settles six claims the code makes and the docs
+currently only reason about. Report what you see in an issue — a "it all worked" is as valuable as
+a defect, because today neither is known.
 
 1. **The installer runs at all**, and what SmartScreen actually says for an unsigned unknown
    publisher — the README quotes Microsoft's documentation, not a screenshot. Its `currentUser`

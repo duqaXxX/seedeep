@@ -171,10 +171,11 @@ the GUI, stops the server, or reports what the current session cost.
 ## Which platforms have actually been run
 
 Everything above was checked by hand on **macOS**, on the machine `seedeep` is
-developed on. **Linux has been used once**, in a VM, on arm64 — the table says what
-that covered. **Windows has not been used at all.** Building for three systems is not
-the same as having used three, and this section is that difference written down
-rather than left for you to find.
+developed on. **Linux has been used once**, in a VM, on arm64. **Windows has been
+used once too**, in a VM, on arm64 — and only so far: the table says exactly how far
+each got, and what each found. Building for three systems is not the same as having
+used three, and this section is that difference written down rather than left for you
+to find.
 
 Since 0.24.0 there is a middle ground worth naming: **started is not used**. Every
 release now runs each server binary on a runner of its own operating system before
@@ -185,15 +186,16 @@ a person on that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **x64 and arm64: started on every release, never used.** CI runs each `.exe` on a Windows runner of its own architecture and checks it serves the GUI; nobody has worked in either | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
-| **Tray** | Used daily on a real menu bar | **Never run.** Both installers, x64 and arm64, are built on every tag and nothing has opened either: a menu-bar app needs a desktop, and CI runners have none | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **arm64: used on Windows 11 in a VM** (2026-08-14) — installed from npm on a native arm64 Node, server started and served its API against a real Claude Code session, `status`, `stop` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Four defects it found — a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, and unreadable punctuation — are fixed and **await a build somebody can run**. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)). **x64: started on every release, never used** — and on a Windows-on-arm machine, where an x64 Node makes npm resolve it, it crashes within seconds of starting; install an arm64 Node so npm resolves the native build | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: started on every release, never used** — version-checked in CI and on Docker, never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
+| **Tray** | Used daily on a real menu bar | **arm64: opened once** (2026-08-14), and it got no further than the popover — which appeared off the bottom of the screen, beside a console window the app had no reason to open. Both are fixed and await a build somebody can run; the icon's legibility, the notifications and the connection screen are still unanswered. **x64: never run** — its installer is built on every tag and nothing has opened it | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
-Concretely: on Windows **you are the first to use it**, and on Linux x64 as well. A defect there
-is expected rather than surprising, and [an issue](../../issues) saying what you saw
-is the most useful thing you can send. If you use Windows,
-[`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists the six things one
-session on that machine would settle — the largest single gap in what this project
-knows about itself.
+Concretely: on **Windows x64**, on **Linux x64**, and on the **tray anywhere but macOS**,
+you are the first to use it. A defect there is expected rather than surprising, and
+[an issue](../../issues) saying what you saw is the most useful thing you can send.
+The one Windows session behind the table above found four defects in an evening, which
+is the honest estimate of what the untouched squares still hold; if you use Windows,
+[`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists what a session on that
+machine would settle next.
 
 ## Design principles
 
