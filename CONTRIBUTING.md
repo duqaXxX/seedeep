@@ -224,10 +224,10 @@ not be accepted.
 The single most useful contribution nobody here can make — on **x64**. Two Windows sessions have
 happened, both on a Windows 11 **arm64** guest (2026-08-14 and 2026-08-15). Between them the server
 was installed from npm and its whole lifecycle driven, the tray was installed and used, six defects
-were found and fixed, and four of the six claims below stopped being guesses — two of them only
-partly, and each says so. What no session on any
-architecture has touched: **notifications**, the **animated icon's cost**, and **every x64 build of
-either app**, which CI starts and nobody has used. Each claim below says where it stands. Report what
+were found and fixed, and five of the six claims below stopped being guesses — one of them only
+partly, and it says so. What no session on any
+architecture has touched: the **animated icon's cost** and **every x64 build of either app**, which
+CI starts and nobody has used. Each claim below says where it stands. Report what
 you see in an issue — an "it all worked" is as valuable as a defect, because today neither is known.
 
 1. **The installer runs at all**, and what SmartScreen actually says for an unsigned unknown
@@ -243,9 +243,9 @@ you see in an issue — an "it all worked" is as valuable as a defect, because t
    *Unanswered on either architecture, and not measurable under emulation.*
 4. **Notifications are delivered**, both switches — the approval one and the finished-turn one.
    Tauri documents that Windows shows a notification only for an *installed* application, which is
-   exactly why the deliverable is an installer rather than a portable `.exe`; that reasoning has
-   never been checked against a banner that actually appeared. *The one claim no Windows session has
-   touched at all — `Send a test notification` in the settings view is the direct route.*
+   exactly why the deliverable is an installer rather than a portable `.exe`. *Answered on arm64:
+   the banners are delivered, so that reasoning has now been seen holding rather than trusted. Never
+   exercised on x64.*
 5. **The popover's geometry.** The panel measures its own content and Rust clamps the height
    against the monitor's work area, and the rounded corners rely on a transparent window. *Answered
    on arm64 for a taskbar at the bottom — the panel opens upward, at full height. The other three

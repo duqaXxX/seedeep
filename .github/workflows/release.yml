@@ -372,6 +372,124 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: .github/scripts/smoke-server.sh "bin/seedeep-server_${VERSION}_${ASSET}" "$VERSION"
 
+      # STARTING IS NOT SURVIVING, and the step above is seconds of work: a process that dies at
+      # t+11s passes it and reaches a stranger. Three starts with a 20-second idle window, each left
+      # completely alone, is the REGRESSION - cheap, and on every platform, because nothing says the
+      # failure mode belongs to the one architecture where it happened to be seen. The full protocol
+      # (ten starts, 40 seconds) lives in `windows`, where there is a measured death to explain and
+      # comparability with the arm64 session to keep.
+      - shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: .github/scripts/idle-survival.sh "bin/seedeep-server_${VERSION}_${ASSET}" 3 20
+
+      # The DETACHED path - `start`, `status`, `restart`, `stop` - which `serve` never touches and
+      # which BRANCHES BY OS: `detached: true` on Windows, its absence (and setsid) everywhere else.
+      # Its only other coverage is `open-cmd.test.ts`, which injects its dependencies and so proves
+      # the logic while never running the process. Every defect this path has had was found by hand
+      # on a VM, including a `restart` that killed the old server and bound nothing.
+      #
+      # `!cancelled()` rather than the default, so a binary that failed the step above is still
+      # driven through the four verbs: two findings in one run beat one finding and a skipped step.
+      - if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: .github/scripts/server-lifecycle.sh "bin/seedeep-server_${VERSION}_${ASSET}"
+
+  # The Windows x64 binary, on a machine that is not emulating it - and on one that is.
+  #
+  # `smoke` proves the download is not dead: seconds of work, and it passes long before the failure
+  # this job exists for. On a Windows 11 arm64 VM the x64 binary was killed `0xC0000005` three times
+  # in eight starts, at about t+11s, silently. The identical source built for arm64 survived ten of
+  # ten there, so the fault was blamed on Prism, Windows-on-ARM's x64 emulator - an attribution made
+  # by analogy and never measured, while x64 is the architecture most Windows users are on.
+  #
+  # ONE binary, `windows-x64`, on TWO runners, which is the whole experiment:
+  #
+  #   windows-latest  - x64 on x64 silicon. If ten starts survive here, the emulator is where the
+  #                     fault lives and the binary is cleared on the hardware it ships for.
+  #   windows-11-arm  - the SAME x64 binary under Prism, which is the VM's condition reproduced on a
+  #                     runner. If the deaths come back here, the experiment is controlled and
+  #                     closed; if they never do, the arm64 measurement was about that machine.
+  #
+  # The Prism leg is an EXPERIMENT and never a gate: its STEPS carry `continue-on-error`, so a death
+  # there is reported and blocks nothing. It is emulating an architecture it was not built for, and
+  # failing a release over that would be failing it over Microsoft's emulator. The native leg is the
+  # opposite - it gates `publish` and `npm` exactly as `smoke` does, because a binary that dies
+  # eleven seconds in is a binary nobody can use.
+  #
+  # On the STEPS and not on the job, for two reasons that both bite. A step whose `continue-on-error`
+  # fired concludes SUCCESS, so the steps after it still run - and the one after it here is the
+  # lifecycle, which would otherwise be skipped in precisely the scenario this job predicts, the
+  # emulated death. And it keeps the gate independent of what a job-level `continue-on-error` means
+  # to a `needs` that lists it, which the workflow syntax reference does not spell out: here the job
+  # simply succeeds on both legs, and only the native leg's steps can ever fail it.
+  #
+  # It also covers what `serve` never touches: the DETACHED path (`start`/`status`/`restart`/`stop`),
+  # whose every defect so far was found by hand on a VM - including a `restart` that killed the old
+  # server and bound nothing, because the port had not been released yet.
+  windows:
+    needs: server
+    strategy:
+      # Both legs report. Which of the two dies is the entire question, and stopping at the first
+      # would answer it for one.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: on x64 silicon
+          - runner: windows-11-arm
+            arch: under Prism emulation
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The same version resolution as `smoke`, for the same reason: a tag names the version it
+      # releases, a manual run has only the manifest.
+      - shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
+        run: |
+          if [ "$IS_TAG" = true ]; then
+            version=${TAG#v}
+          else
+            version=$(grep -m1 '"version"' package.json | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release download "$TAG" --repo "$REPO" --pattern "seedeep-server_${VERSION}_windows-x64.exe" --dir bin
+
+      - if: github.ref_type != 'tag'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: server-binaries
+          path: bin
+
+      # Ten attempts and a 40-second idle window: the numbers the manual arm64 session used, so the
+      # two runs are comparable. Ten because the deaths came at three in eight - a shorter run
+      # cannot tell "healthy" from "unlucky".
+      - name: Ten starts, each left alone (${{ matrix.arch }})
+        shell: bash
+        continue-on-error: ${{ matrix.runner == 'windows-11-arm' }}
+        run: .github/scripts/idle-survival.sh "bin/seedeep-server_${VERSION}_windows-x64.exe" 10 40
+
+      # The emulated leg only: on `windows-latest` this exact binary has already been driven through
+      # the same four verbs by `smoke`, on the same runner. Under Prism it has not, and that is the
+      # environment the port race was found in.
+      - if: matrix.runner == 'windows-11-arm'
+        name: start / status / restart / stop (${{ matrix.arch }})
+        shell: bash
+        continue-on-error: true
+        run: .github/scripts/server-lifecycle.sh "bin/seedeep-server_${VERSION}_windows-x64.exe"
+
   # The npm channel: the same six executables, each wrapped in a package npm resolves by `os`/`cpu`,
   # under one `seedeep` wrapper whose postinstall puts the binary where `bin` already points. Node is
   # needed to INSTALL, never to run. It exists because a binary that arrives through a package
@@ -383,8 +501,9 @@ jobs:
   npm:
     # `smoke` gates this one harder than it gates `publish`: a draft release can be deleted, an npm
     # version cannot (unpublish is restricted after 72 hours). A binary that does not start must
-    # never reach the registry.
-    needs: [server, smoke]
+    # never reach the registry - and neither must one that starts and dies eleven seconds later,
+    # which is `windows`.
+    needs: [server, smoke, windows]
     # A tag AND a switch. Publishing to npm cannot be taken back (unpublish is restricted after 72
     # hours), and the FIRST publish of a package has to be manual anyway - a trusted publisher can
     # only be configured on a package that already exists. So every tag builds these packages and
@@ -474,7 +593,10 @@ jobs:
   publish:
     # `smoke` is here so a release nobody can start stays a draft: this job is the single step that
     # makes a build visible to strangers, and it is the last place the decision can still be undone.
-    needs: [tray, server, smoke]
+    # `windows` for the same reason one step later: a binary that starts and then dies unattended is
+    # one `smoke` signs off and nobody can use. Only its native leg can hold this back - the Prism
+    # leg is `continue-on-error` and reports without gating.
+    needs: [tray, server, smoke, windows]
     # Only a tag has a release to publish. A manual run built the same artifacts and attached them
     # to the workflow run, deliberately touching nothing in the repository.
     if: github.ref_type == 'tag'

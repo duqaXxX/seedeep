@@ -113,7 +113,7 @@ test('the draft job itself always runs; only the step that writes is conditional
 // platform.
 test('the release is published only after both halves built', () => {
   const publish = job('publish');
-  assert.match(publish, /needs: \[tray, server, smoke\]/);
+  assert.match(publish, /needs: \[tray, server, smoke, windows\]/);
   assert.match(publish, /if: github\.ref_type == 'tag'/);
   assert.match(publish, /gh release edit .*--draft=false/);
 });
@@ -122,8 +122,56 @@ test('the release is published only after both halves built', () => {
 // executed. Both exits from the pipeline wait for it — the release page and the registry — and npm
 // is the one that cannot be taken back.
 test('nothing reaches a stranger until the binaries have been RUN', () => {
-  assert.match(job('publish'), /needs: \[tray, server, smoke\]/);
-  assert.match(job('npm'), /needs: \[server, smoke\]/);
+  assert.match(job('publish'), /needs: \[tray, server, smoke, windows\]/);
+  assert.match(job('npm'), /needs: \[server, smoke, windows\]/);
+});
+
+// The experiment `windows` exists for only works if it is ONE binary on TWO machines: the x64 build
+// on x64 silicon, and the same file under Prism. A leg that quietly switched to the arm64 asset
+// would still be green and would prove nothing about the death it was written to explain.
+test('the windows job runs the x64 binary on both runners', () => {
+  const windows = job('windows');
+  const runners = [...windows.matchAll(/runner: (\S+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(runners, ['windows-11-arm', 'windows-latest']);
+  const assets = [...windows.matchAll(/seedeep-server_\$\{VERSION\}_(\S+?)"/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(assets)], ['windows-x64.exe'], 'both legs run the SAME x64 binary');
+  assert.match(windows, /idle-survival\.sh .* 10 40/, 'ten starts, 40s idle — the arm64 protocol');
+  assert.match(windows, /server-lifecycle\.sh/);
+});
+
+// Starting was never the claim worth making: a binary that passes the smoke check and then dies
+// unattended reached the release page on every platform alike. So both scripts run on all six
+// targets, with the CHEAP protocol — the expensive one answers a measured death and belongs to the
+// one job that has one.
+test('every target is survived and driven, not merely started', () => {
+  const smoke = job('smoke');
+  assert.match(
+    smoke,
+    /idle-survival\.sh "bin\/seedeep-server_\$\{VERSION\}_\$\{ASSET\}" 3 20/,
+    'three starts, 20s idle — the regression, not the experiment',
+  );
+  assert.match(smoke, /server-lifecycle\.sh "bin\/seedeep-server_\$\{VERSION\}_\$\{ASSET\}"/);
+});
+
+// Emulating an architecture the binary was not built for is an experiment, not a promise: a death
+// under Prism must report and never hold back a release. On the STEPS and never on the job — a step
+// whose `continue-on-error` fired concludes success, so the lifecycle after it still runs in exactly
+// the scenario this job predicts, and the gate stops depending on what a job-level
+// `continue-on-error` means to a `needs` that lists it.
+test('only the emulated leg is allowed to fail, and only its steps say so', () => {
+  const windows = job('windows');
+  assert.doesNotMatch(
+    windows.split('steps:')[0] ?? '',
+    /continue-on-error/,
+    'on the JOB it would ungate the native leg too, and skip the lifecycle after a death',
+  );
+  assert.match(windows, /continue-on-error: \$\{\{ matrix\.runner == 'windows-11-arm' \}\}/);
+});
+
+// The step after a failure is where the second finding lives: a binary that dies on its own is worth
+// driving through the four verbs anyway, in the same run.
+test('a failed survival step does not skip the lifecycle that follows it', () => {
+  assert.match(job('smoke'), /- if: \$\{\{ !cancelled\(\) \}\}\n\s+shell: bash\n\s+env:[\s\S]*?server-lifecycle\.sh/);
 });
 
 // A target that is built and not smoke-tested is exactly the hole this closes, and it reopens
@@ -161,11 +209,20 @@ test('every Windows platform the server ships has a tray installer of its own', 
 // One shell on five platforms. v0.6.0 uploaded no Windows installer because `"$TAG"` in PowerShell
 // is an unassigned variable that expands to nothing, and `windows-latest` defaults to PowerShell:
 // a `run:` here without `shell: bash` is that bug waiting to happen again.
-test('every command the smoke job runs is bash, Windows included', () => {
-  const smoke = job('smoke');
-  const steps = smoke.split(/\n {6}- /).filter((s) => /(^|\n)\s*run:/.test(s));
-  assert.equal(steps.length, 3, 'the version, the download on a tag, the script');
-  for (const step of steps) assert.match(step, /shell: bash/, `a step runs outside bash:\n${step}`);
+test('every command the Windows-bearing jobs run is bash, Windows included', () => {
+  // `windows` runs on nothing BUT Windows, so the rule matters there even more than in `smoke`.
+  for (const [name, expected] of [
+    ['smoke', 5],
+    ['windows', 4],
+  ] as const) {
+    const steps = job(name)
+      .split(/\n {6}- /)
+      .filter((s) => /(^|\n)\s*run:/.test(s));
+    assert.equal(steps.length, expected, `${name}: the version, the tag download, and the scripts`);
+    for (const step of steps) {
+      assert.match(step, /shell: bash/, `${name}: a step runs outside bash:\n${step}`);
+    }
+  }
 });
 
 // The rule is about the DOWNLOAD PAGE: two macOS files sharing one prefix say nothing about which

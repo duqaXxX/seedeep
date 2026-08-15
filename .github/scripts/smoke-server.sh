@@ -41,9 +41,22 @@ TIMEOUT_S=${SMOKE_TIMEOUT_S:-60}
 
 BASE="http://127.0.0.1:$PORT"
 WORK=$(mktemp -d)
-export SEEDEEP_HOME="$WORK/seedeep"
-export CLAUDE_CONFIG_DIR="$WORK/claude"
-mkdir -p "$CLAUDE_CONFIG_DIR/projects"
+mkdir -p "$WORK/seedeep" "$WORK/claude/projects"
+# The Windows form on Windows, or the executable resolves this MSYS path against the current drive
+# and writes its state into `C:\tmp\…` instead - isolation that silently is not one, and on a laptop
+# that is somebody's machine rather than a throwaway runner. MSYS converts only a fixed set of
+# variables on the way out (`PATH`, `HOME`, `TMP`, `TEMP`), and neither of these is in it.
+case "${OSTYPE:-}" in
+  msys* | cygwin*)
+    SEEDEEP_HOME=$(cygpath -w "$WORK/seedeep")
+    CLAUDE_CONFIG_DIR=$(cygpath -w "$WORK/claude")
+    ;;
+  *)
+    SEEDEEP_HOME="$WORK/seedeep"
+    CLAUDE_CONFIG_DIR="$WORK/claude"
+    ;;
+esac
+export SEEDEEP_HOME CLAUDE_CONFIG_DIR
 
 PID=""
 cleanup() {

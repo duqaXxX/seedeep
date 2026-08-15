@@ -155,6 +155,32 @@ the binary comes from the release itself, which also proves the upload happened 
 installer was built and never uploaded — and on a manual run it comes from the run's artifact, so
 the whole matrix is provable without cutting a release.
 
+**Starting is not surviving, and neither is being started in the foreground.** The check above is
+seconds of work, so a binary that dies at t+11s passes it; and `serve` is not how anybody runs
+seedeep. So each of the six legs goes on to run two more scripts against the same asset:
+`.github/scripts/idle-survival.sh` with three starts and a 20-second idle window — each start left
+completely alone, because a request in flight makes an innocent bystander of itself — and
+`.github/scripts/server-lifecycle.sh`, which drives `start` → `status` → `restart` → `stop` and
+asserts that the restart changed the pid and that something answers afterwards. That last pair is a
+regression test for a `restart` that killed the old server and bound nothing, the port not having
+been released yet. The detached path is worth its own coverage because it **branches by OS**
+(`detached: true` on Windows, its absence everywhere else) and its only other test injects its
+dependencies, proving the logic while never running the process.
+
+**The Windows x64 binary also gets its own job, for a measured death.** On a Windows 11 arm64 VM the
+x64 binary was killed `0xC0000005` three times in eight starts, at about t+11s, with nothing on
+stdout or stderr — while the same source built for arm64 survived ten of ten there. That put the
+blame on Prism, Windows-on-ARM's x64 emulator, by analogy rather than by measurement. `release.yml`'s
+`windows` job settles it by running ONE binary (`windows-x64`) on TWO runners: `windows-latest`,
+which is x64 on x64 silicon, and `windows-11-arm`, which is the same binary under Prism and so
+reproduces the VM's condition. Both legs run the same survival script at the FULL protocol — ten
+starts, 40 seconds of idle each — which is the manual arm64 session's protocol, so the two
+measurements are comparable; three-in-eight cannot be told from bad luck at three attempts. The
+lifecycle runs only on the emulated leg, the native one having already been driven through those
+four verbs by `smoke` on the same runner. **The Prism leg is `continue-on-error`**:
+it is an experiment, and failing a release over Microsoft's emulator would be failing it over
+something seedeep does not ship. The native leg gates `publish` and `npm` exactly as `smoke` does.
+
 #### The npm channel
 
 The same six executables also ship as npm packages, which is what `npm i -g seedeep` installs.
