@@ -4,14 +4,40 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Every binary is now RUN, not merely started — and the crash nobody had measured gets a controlled
+experiment.** All six legs of `smoke` go on to run two new scripts against the asset they just
+started: `idle-survival.sh` with three starts and a 20-second idle window (the cheap regression — a
+binary that passes the smoke check and dies ten seconds later used to reach the release page on every
+platform alike), and `server-lifecycle.sh`, the first thing in CI to exercise the detached path. That
+path branches by OS — `detached: true` on Windows, its absence everywhere else — and its only other
+coverage injects its dependencies, so it proved the logic and never the process.
+
+The Windows x64 binary also gets a job of its own, because there the failure is measured rather than
+hypothetical. `smoke` takes seconds, so it passes long before a process that dies unattended has
+died: on a Windows 11 arm64 VM the x64 binary was killed `0xC0000005` three times in
+eight starts, at about t+11s, silently, while the same source built for arm64 survived ten of ten.
+That blamed Prism by analogy. `release.yml` has a `windows` job that runs ONE binary
+(`windows-x64`) on TWO runners — `windows-latest`, which is x64 on x64 silicon, and
+`windows-11-arm`, which reproduces the VM's emulated condition — so the attribution is confirmed or
+destroyed rather than assumed. There the survival script runs at its FULL protocol — ten starts, 40
+seconds of idle each, the numbers the manual arm64 session used, so the two are comparable and
+three-in-eight cannot be mistaken for bad luck — and it reports the COUNT rather than stopping at the
+first death. The lifecycle runs only on the emulated leg, the native one having already been driven
+through those four verbs by `smoke` on the same runner. The Prism leg is
+`continue-on-error`, because failing a release over Microsoft's emulator would be failing it over
+something seedeep does not ship; the native leg gates `publish` and `npm` exactly as `smoke` does.
+Both scripts are tested by their failure paths against fakes that break one thing each, including a
+`restart` that kills the old server and leaves no replacement running.
+
 **Windows on arm64 stopped being a platform the docs only reasoned about.** A second session there
-(2026-08-15, on 0.27.1) installed the tray and drove both halves, so four of the six claims
+(2026-08-15, on 0.27.1) installed the tray and drove both halves, so five of the six claims
 `CONTRIBUTING.md` asks a Windows contributor to settle are now answered: the installer runs, the icon
 reads at notification-area size, the popover opens upward at full height against a taskbar at the
-bottom, and trust-on-first-use works. The README, `docs/install.md` and `docs/tray.md` said the fixes
-those sessions produced "await a build somebody can run" and that the tray "got no further than the
-popover" — both false since 0.27.1 shipped. **Notifications are the one claim nothing on any Windows
-has exercised**, and every x64 build of either app is still started by CI and used by nobody.
+bottom, trust-on-first-use works, and notifications are delivered. The README, `docs/install.md` and
+`docs/tray.md` said the fixes those sessions produced "await a build somebody can run" and that the
+tray "got no further than the popover" — both false since 0.27.1 shipped. What is left on that
+platform is SmartScreen's exact wording, and every x64 build of either app is still started by CI and
+used by nobody.
 
 The arm64 tray leg is measured now rather than assumed: it has run on every tag from 0.26.0, takes
 about 7 minutes — the shortest of the three — and its artifact is a `PE32 executable (GUI) Intel

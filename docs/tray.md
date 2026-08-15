@@ -1150,10 +1150,10 @@ Known limits, none of them silent:
   `CREATE_NO_WINDOW`. The second session found one more — a panel button that swallowed about one
   click in ten, the live view being replaced under the press — and answered the rest: the installer
   runs, the icon reads at notification-area size, the popover opens upward at full
-  height against a taskbar at the bottom, trust-on-first-use and the connection screen work, and
-  every button responds. **Notifications remain the one thing nothing has
-  exercised**, along with the animation's cost, a taskbar on the other three edges, and the entire
-  x64 build, whose installer has never been opened.
+  height against a taskbar at the bottom, trust-on-first-use and the connection screen work,
+  notifications are delivered, and every button responds. What remains unexercised there is the
+  animation's cost, a taskbar on the other three edges, and the entire x64 build, whose installer has
+  never been opened.
 - `taskkill /F` is a hard stop — the server never runs its shutdown path, so its record is left for
   the next start's sweep. Marked `// LIMIT:` at both sites. The lookup there also has a rule this
   platform does not need: `npm i -g` installs three shims and `where.exe` lists the extensionless sh
