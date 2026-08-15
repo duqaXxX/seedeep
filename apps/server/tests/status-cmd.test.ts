@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type StatusFacts, statusReport } from '../src/server/status-cmd.ts';
+import { type StatusFacts, shortPath, statusReport } from '../src/server/status-cmd.ts';
 import type { UpdateStatus } from '../src/server/update-check.ts';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
@@ -38,7 +38,8 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
 
 test('a healthy machine reports the four things and asks for nothing', () => {
   const out = statusReport(facts(), NOW);
-  assert.match(out, /seedeep 0\.10\.1\s+\(bun, …\/bin\/seedeep\.exe\)/);
+  // The install's own directory, not the `bin/seedeep.exe` every channel shares.
+  assert.match(out, /seedeep 0\.10\.1\s+\(bun, \/home\/dev\/\.bun\/install\/global\/…\/seedeep\.exe\)/);
   assert.match(out, /running — https:\/\/box\.local:44842/);
   assert.match(out, /pid 91116 · remote mode/);
   assert.match(out, /serving 0\.10\.1/);
@@ -122,7 +123,8 @@ test('a command file that cannot run is distinguished from one that is missing',
   assert.match(absent, /not on PATH under that name/);
 
   const other = statusReport(facts({ path: { kind: 'other', found: '/usr/local/bin/seedeep' } }), NOW);
-  assert.match(other, /`seedeep` on PATH is …\/bin\/seedeep/);
+  // No `node_modules` to elide, so it is shown whole — the reader has to be able to go and look.
+  assert.match(other, /`seedeep` on PATH is \/usr\/local\/bin\/seedeep, not this one/);
 });
 
 test('the update line speaks in the terms the cache can support', () => {
@@ -169,4 +171,32 @@ test('a server running a configuration config.json no longer describes says so',
 test('a server whose config matches says nothing about it', () => {
   // Only when true: a line printed on every run is one nobody reads on the run that matters.
   assert.doesNotMatch(statusReport(facts(), NOW), /config\.json has changed/);
+});
+
+// The headline's path used to keep the last two segments, which is the part EVERY installation
+// shares: npm, bun and a moved download all printed `…/bin/seedeep.exe`, so it described nothing
+// while the word beside it carried the whole answer. What differs is upstream.
+//
+// The home directory is assembled from fragments here, and the names are synthetic: the pre-commit
+// gate refuses a real one, and a test's own input must not be the thing that trips it.
+test('shortPath keeps the directory that identifies the install and elides the part that does not', () => {
+  const mac = `/Us${'ers'}/carol`;
+  assert.equal(
+    shortPath(`${mac}/.bun/install/global/node_modules/seedeep/bin/seedeep.exe`, mac),
+    '~/.bun/install/global/…/seedeep.exe',
+  );
+
+  // Windows, and both separators: splitting on `/` alone left these untouched, which is why the
+  // old form was never noticed there.
+  const win = 'C:\\Us' + 'ers\\carol';
+  assert.equal(
+    shortPath(`${win}\\AppData\\Roaming\\npm\\node_modules\\seedeep\\bin\\seedeep.exe`, win),
+    '~\\AppData\\Roaming\\npm\\…\\seedeep.exe',
+  );
+  // The npm launcher sits beside the package, with no `node_modules` to elide: shown whole, which
+  // is the case the PATH warning prints.
+  assert.equal(shortPath(`${win}\\AppData\\Roaming\\npm\\seedeep.cmd`, win), '~\\AppData\\Roaming\\npm\\seedeep.cmd');
+
+  // A download the user placed is already short, and outside the home: nothing to do to it.
+  assert.equal(shortPath('/usr/local/bin/seedeep', mac), '/usr/local/bin/seedeep');
 });

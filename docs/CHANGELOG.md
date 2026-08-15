@@ -4,6 +4,15 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**`status` shortened its path to the half that says nothing.** The headline names which executable
+is running, and it kept the last two segments — which is exactly what every installation shares:
+npm, bun and a moved download all printed `…/bin/seedeep.exe`, so the path described nothing and the
+channel word beside it carried the whole answer. What differs is upstream. The elided part is now
+the invariant one, everything from `node_modules` to the file name, so the line reads
+`~/.bun/install/global/…/seedeep.exe`; a path with no such segment is a download the user placed and
+is shown whole. The home directory becomes `~`. Both separators are handled, which they were not:
+splitting on `/` alone left every Windows path untouched, and `status` prints those too.
+
 ## 0.26.0 (2026-08-15)
 
 **What the CLI prints came out as mojibake on a Windows console.** A Windows console runs in a

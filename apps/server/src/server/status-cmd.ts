@@ -17,6 +17,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import type { SeedDeepConfig } from './config.ts';
 import { commandFilePath, type Ownership, ownershipOf, type PathState, pathState } from './install-command.ts';
 import { portOf } from './open-cmd.ts';
@@ -56,10 +57,27 @@ export interface StatusFacts {
   port: number;
 }
 
-/** `1.2.3` → `1.2.3`, but a path is shortened to its last two parts — a full one is noise here. */
-function shortPath(p: string): string {
-  const parts = p.split('/');
-  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : p;
+/**
+ * A path short enough for a status line, keeping the part that says WHICH installation it is.
+ *
+ * It used to keep the last two segments, which is exactly the part every installation shares:
+ * `…/bin/seedeep.exe` is what npm, bun and a moved download all print, so the line was the same
+ * whatever it was describing and the word beside it (`npm`, `bun`) carried all the information.
+ * What differs is upstream — `.bun/install/global` against `AppData/Roaming/npm` — and that was the
+ * half being cut.
+ *
+ * So the ELIDED part is the invariant one: everything from `node_modules` to the file name, which
+ * both package managers spell identically. A path without that segment is a download the user
+ * placed, already short, and is left whole. The home directory becomes `~` because it is noise on
+ * the machine reading it, and because it is what every other CLI does.
+ *
+ * Both separators, deliberately: `status` prints Windows paths too, and splitting on `/` alone left
+ * them untouched — the reason this was never noticed there.
+ */
+export function shortPath(p: string, home = homedir()): string {
+  const tilde = home && p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+  const cut = /^(.*?)([/\\])node_modules[/\\].*[/\\]([^/\\]+)$/.exec(tilde);
+  return cut ? `${cut[1]}${cut[2]}…${cut[2]}${cut[3]}` : tilde;
 }
 
 /** How long ago `iso` was, in the coarsest unit that is still true. */
