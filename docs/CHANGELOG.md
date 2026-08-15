@@ -4,6 +4,20 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Windows on arm64 stopped being a platform the docs only reasoned about.** A second session there
+(2026-08-15, on 0.27.1) installed the tray and drove both halves, so four of the six claims
+`CONTRIBUTING.md` asks a Windows contributor to settle are now answered: the installer runs, the icon
+reads at notification-area size, the popover opens upward at full height against a taskbar at the
+bottom, and trust-on-first-use works. The README, `docs/install.md` and `docs/tray.md` said the fixes
+those sessions produced "await a build somebody can run" and that the tray "got no further than the
+popover" — both false since 0.27.1 shipped. **Notifications are the one claim nothing on any Windows
+has exercised**, and every x64 build of either app is still started by CI and used by nobody.
+
+The arm64 tray leg is measured now rather than assumed: it has run on every tag from 0.26.0, takes
+about 7 minutes — the shortest of the three — and its artifact is a `PE32 executable (GUI) Intel
+80386 … Nullsoft Installer self-extracting archive`, which is Tauri's documented "the installer is
+x86, the app inside is native" seen rather than trusted.
+
 ## 0.27.2 (2026-08-15)
 
 **A portal refresh flashed console windows on Windows, and only after a restart.** Same mechanism as

@@ -4,10 +4,11 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows arm64 build has been used once**, in a VM (2026-08-14), which found four
-> defects in an evening; the **x64** build is started by CI on a runner of its own
-> architecture and has never been used in front of a person. The Linux arm64 build was
-> used on Ubuntu 24 in a VM (2026-08-14); its x64 build has been started, never used.
+> **The Windows arm64 build has been used twice**, in a VM (2026-08-14 and 2026-08-15),
+> which found six defects between them, all since fixed; the **x64** build is started by
+> CI on a runner of its own architecture and has never been used in front of a person.
+> The Linux arm64 build was used on Ubuntu 24 in a VM (2026-08-14); its x64 build has
+> been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
 > says exactly what each of those covers.
 

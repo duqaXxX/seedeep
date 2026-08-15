@@ -221,39 +221,44 @@ not be accepted.
 
 ## Running it on Windows
 
-The single most useful contribution nobody here can make. One Windows session has happened — a
-Windows 11 **arm64** guest, 2026-08-14 — and it found four defects in an evening: the server was
-installed from npm, started and served, and the tray was installed and its popover opened for the
-first time. Everything below is what that session did **not** settle, which is most of it: it never
-got past the popover, and the **x64** build of either app has still been started by CI and never used
-by a person. If you have Windows, one session settles six claims the code makes and the docs
-currently only reason about. Report what you see in an issue — a "it all worked" is as valuable as
-a defect, because today neither is known.
+The single most useful contribution nobody here can make — on **x64**. Two Windows sessions have
+happened, both on a Windows 11 **arm64** guest (2026-08-14 and 2026-08-15). Between them the server
+was installed from npm and its whole lifecycle driven, the tray was installed and used, six defects
+were found and fixed, and four of the six claims below stopped being guesses — two of them only
+partly, and each says so. What no session on any
+architecture has touched: **notifications**, the **animated icon's cost**, and **every x64 build of
+either app**, which CI starts and nobody has used. Each claim below says where it stands. Report what
+you see in an issue — an "it all worked" is as valuable as a defect, because today neither is known.
 
 1. **The installer runs at all**, and what SmartScreen actually says for an unsigned unknown
    publisher — the README quotes Microsoft's documentation, not a screenshot. Its `currentUser`
-   install mode should need no Administrator rights; confirm that too.
+   install mode should need no Administrator rights; confirm that too. *The installer runs on arm64;
+   SmartScreen's actual wording has still not been recorded.*
 2. **The tray icon appears in the notification area and is legible.** The mark is drawn in Rust
    against a measurement that is macOS's — that platform scales the buffer to 18 pt by *height* —
    and Windows sizes tray icons its own way, so the 27×26 buffer may come out small, squashed or
-   blurred. This is the likeliest visual defect.
+   blurred. This was the likeliest visual defect, and *on arm64 it is not one — the icon reads.*
 3. **The working icon spins acceptably**: 24 frames at 12 fps through `set_icon`. On macOS that
    costs 7.3% of one core; underneath, Windows is a different API and the cost is unknown.
+   *Unanswered on either architecture, and not measurable under emulation.*
 4. **Notifications are delivered**, both switches — the approval one and the finished-turn one.
    Tauri documents that Windows shows a notification only for an *installed* application, which is
    exactly why the deliverable is an installer rather than a portable `.exe`; that reasoning has
-   never been checked against a banner that actually appeared.
+   never been checked against a banner that actually appeared. *The one claim no Windows session has
+   touched at all — `Send a test notification` in the settings view is the direct route.*
 5. **The popover's geometry.** The panel measures its own content and Rust clamps the height
-   against the monitor's work area, and the rounded corners rely on a transparent window. Neither
-   has been seen on a desktop whose taskbar can sit on any edge.
+   against the monitor's work area, and the rounded corners rely on a transparent window. *Answered
+   on arm64 for a taskbar at the bottom — the panel opens upward, at full height. The other three
+   edges have still not been tried.*
 6. **Trust on first use and the connection screen**, against a `seedeep` server reached over HTTPS
-   on another machine, including the fingerprint comparison.
+   on another machine, including the fingerprint comparison. *Answered on arm64.*
 
-All six apply on **Windows on arm64** as well — a Snapdragon laptop, or a Windows 11 ARM guest on an
-Apple Silicon Mac. That machine gets its own server binary and its own tray installer, built by the
-same tag on a native arm64 runner; the installer NSIS produces is x86 under emulation by Tauri's
-design, and the app inside it is native. Say which of the two you were on: an answer from one says
-nothing certain about the other.
+Every answer above came from **Windows on arm64** — a Windows 11 ARM guest on an Apple Silicon Mac;
+a Snapdragon laptop is the other way there. That machine gets its own server binary and its own
+tray installer, built by the same tag on a native arm64 runner; the installer NSIS produces is x86
+under emulation by Tauri's design, and the app inside it is native. Say which of the two you were
+on: an answer from one says nothing certain about the other, which is why every claim above is
+scored per architecture rather than per platform.
 
 Where the answers go: `docs/tray.md` holds the macOS measurements in a table under *What is signed,
 and what that costs*, and Windows belongs in the same shape — what was observed, and on which
@@ -284,9 +289,10 @@ Windows build. Something broken is its own issue, not a footnote to this one.
   files. The pre-push hook prints that list and stops there, WARN-only: deciding
   whether a figure went false is a judgement — did what it *shows* change? —
   not something a file-level map can make for you. `--verify` settles it by
-  **re-cutting the suspects into a temp directory and comparing the pixels**, but it
-  costs minutes, so it belongs to a release rather than to every push. A release is not
-  itself a reason to re-cut: the Settings figures print the server's version, but a
+  **re-cutting the suspects into a temp directory it then deletes, and comparing the
+  pixels** — so it publishes nothing, and it costs minutes. Reach for it when what a
+  figure SHOWS is genuinely in doubt, not on a schedule: a release in particular is not
+  a reason to re-cut, nor to verify. The Settings figures print the server's version, but a
   figure documents the surface it photographs, not the version that was running, and a
   stale number there makes nothing it claims false. If you change a widget that a figure
   shows, say so in the PR — re-cutting needs the recorded bundle, which is not in the
