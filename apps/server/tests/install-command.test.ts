@@ -141,8 +141,18 @@ test('the npm launcher on Windows is this executable, not another seedeep', () =
     found: shim,
   });
 
-  // `node_modules` is required, not merely an ancestor: a launcher at a drive root must not vouch
-  // for every executable on the drive.
+  // The package's OWN directory is required. A looser `node_modules\` prefix would accept another
+  // package's binary, and at a drive root it degenerates to `c:\node_modules\`.
+  assert.deepEqual(at(shim, 'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\other\\bin\\seedeep.exe', 'win32'), {
+    kind: 'other',
+    found: shim,
+  });
+  assert.deepEqual(at('C:\\seedeep.cmd', 'C:\\node_modules\\anything\\seedeep.exe', 'win32'), {
+    kind: 'other',
+    found: 'C:\\seedeep.cmd',
+  });
+
+  // A launcher at a drive root must not vouch for an executable elsewhere on the drive either.
   assert.deepEqual(at('C:\\seedeep.cmd', 'C:\\Users\\dev\\Downloads\\seedeep-server.exe', 'win32'), {
     kind: 'other',
     found: 'C:\\seedeep.cmd',

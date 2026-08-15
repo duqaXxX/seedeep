@@ -26,6 +26,10 @@
  * `SetConsoleOutputCP` through FFI in a cross-compiled binary, and nothing here could verify it.
  */
 
+// LIMIT: seedeep's OWN typography only. The data it prints verbatim — commit subjects, card titles,
+// project paths, file names — can carry anything, and an accented directory or a curly apostrophe
+// still garbles on a legacy code page. Covering that needs the console's code page set to UTF-8
+// (`SetConsoleOutputCP` through FFI), which is declined above, not a longer table.
 /** What a legacy Windows console cannot show, and what it is spelled as instead. */
 const ASCII: ReadonlyArray<readonly [string, string]> = [
   ['—', '-'],
