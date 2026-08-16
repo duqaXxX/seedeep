@@ -181,15 +181,42 @@ test('only the emulated leg is allowed to fail, and only its steps say so', () =
 // skipped.
 test('the release gates rehearse on the pull request that bumps the version', () => {
   const triggers = WORKFLOW.slice(0, WORKFLOW.indexOf('\njobs:'));
-  const paths = /pull_request:\n\s+paths: \[(.+)\]/.exec(triggers)?.[1] ?? '';
+  // NO `paths:` on the trigger. A workflow a path filter keeps from starting reports nothing, and a
+  // required check that is never reported sits at Pending and blocks the pull request forever. The
+  // filter lives in `changes`, where a skip still reports success.
+  assert.doesNotMatch(triggers, /pull_request:\n\s+paths:/);
   // The version's own file, and the machinery that gates it — the v0.28.0 defect was in a script,
   // and a script change merged after the bump's run would otherwise reach the tag unrehearsed.
-  for (const p of ['package.json', 'release.yml', '.github/scripts']) {
-    assert.ok(paths.includes(p), `the rehearsal does not fire on ${p}: ${paths}`);
+  const changes = job('changes');
+  // The literal strings as the job's own grep spells them, escapes included — a `.includes` here
+  // rather than a regex, so this test is not a second place where the escaping can be got wrong.
+  for (const p of ['package\\.json', 'release\\.yml', '\\.github/scripts/']) {
+    assert.ok(changes.includes(p), `the rehearsal does not fire on ${p}`);
   }
+  // Never conditional on the event: a job that skips takes everything that needs it down with it,
+  // so a `changes` skipped on a tag would skip the whole release.
+  assert.doesNotMatch(changes.split('steps:')[0] ?? '', /if:/);
   // A pull request run must be cancellable and a tag run must NOT: cancelling a tag halfway through
-  // `gh release upload` leaves a half-populated draft.
+  // an upload leaves a half-populated draft.
   assert.match(triggers, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+});
+
+// The check the ruleset requires, and the reason it can exist at all: the matrix legs carry their
+// matrix in their names, so requiring them directly would break the day a target is added. This one
+// has a fixed name and answers one question.
+test('one stable check speaks for the whole rehearsal', () => {
+  const rehearsal = job('rehearsal');
+  const head = rehearsal.split('steps:')[0] ?? '';
+  assert.match(head, /name: Release rehearsal/, 'the ruleset requires this string');
+  // `always()`, or a skipped/inherited-failure job reports nothing — which a required check cannot
+  // tell apart from "still running".
+  assert.match(head, /if: always\(\) && github\.event_name == 'pull_request'/);
+  for (const dep of ['changes', 'server', 'smoke', 'windows']) {
+    assert.match(head, new RegExp(`needs: \\[[^\\]]*\\b${dep}\\b`), `${dep} is not covered by it`);
+  }
+  // Both verdicts, and only these two: `skipped` has to pass (a pull request touching nothing
+  // relevant skips the lot) while `cancelled` must not be mistaken for one.
+  assert.match(rehearsal, /"failure" or \.value\.result == "cancelled"/);
 });
 
 // The rehearsal builds the server and not the tray. `ci.yml` already compiles the tray's Rust on

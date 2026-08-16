@@ -41,8 +41,13 @@ on:
   # a pull request builds, smokes, survives and drives the executables while touching neither the
   # repository nor a registry. It is the same rehearsal `workflow_dispatch` offers, made automatic -
   # a rehearsal that depends on somebody remembering to run it is the one that was skipped.
+  # NO `paths:` here, and that is deliberate rather than an omission - the filter moved into the
+  # `changes` job below. A workflow that a path filter keeps from starting reports NOTHING, and a
+  # required check that is never reported sits at *Pending* and blocks the pull request forever
+  # (GitHub, *Troubleshooting required status checks*). A job skipped by its own `if:` reports
+  # SUCCESS instead. So the only way the rehearsal can be a required check without holding every
+  # unrelated pull request hostage is for the workflow to always start and decide inside itself.
   pull_request:
-    paths: ['package.json', '.github/workflows/release.yml', '.github/scripts/**']
 
 # A tag run must never be cancelled - it can be halfway through `gh release upload`, and a
 # half-populated draft is worse than a slow one. A pull request run is the opposite: `paths` are
@@ -63,7 +68,50 @@ jobs:
   # treats a SKIPPED dependency as a reason to skip, so a draft job that vanished on a manual run
   # would take both build jobs with it - and a manual run has to keep building, that is what it is
   # for. So the job always runs and only its one writing step is conditional.
+  # Does this pull request need the rehearsal? The filter a `paths:` used to apply, moved where a
+  # skip still REPORTS - see the trigger above for why that difference decides everything.
+  #
+  # It runs on every event, not only on pull requests, and answers `true` for the rest: a job listed
+  # in another job's `needs` takes its dependants down with it when it is skipped, so a `changes`
+  # that skipped on a tag would skip the entire release.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rehearse: ${{ steps.decide.outputs.rehearse }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The whole history, because the comparison is against the base branch's tip and a shallow
+          # clone has no common ancestor to compare with.
+          fetch-depth: 0
+      # Through the environment, never interpolated into the command: the reason the draft job
+      # gives for a ref name applies to a sha just the same.
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "rehearse=true" >> "$GITHUB_OUTPUT"
+            echo "not a pull request — the full workflow runs"
+            exit 0
+          fi
+          # `package.json` is where a release bumps the version, and it is the only place the version
+          # lives. The workflow and the scripts because the v0.28.0 defect was IN a gate script: a
+          # change to the machinery merged after a bump's run would otherwise reach the tag having
+          # been rehearsed by nothing.
+          changed=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(package\.json|\.github/workflows/release\.yml|\.github/scripts/)'; then
+            echo "rehearse=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rehearse=false" >> "$GITHUB_OUTPUT"
+          fi
+
   draft:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       # Idempotent on purpose: re-running a tag's workflow must not fail on the release that the
@@ -286,7 +334,11 @@ jobs:
   # what `bun build --compile --target=…` buys and the tray cannot have (its matrix exists because
   # Tauri needs each platform's own SDK).
   server:
-    needs: draft
+    needs: [draft, changes]
+    # The one place the rehearsal's filter is applied. `smoke` and `windows` need this job, so a skip
+    # here carries them with it — and the tray has its own condition, since it is not rehearsed at
+    # all.
+    if: needs.changes.outputs.rehearse == 'true'
     runs-on: ubuntu-latest
     # Restated for the reason the tray's block gives: a job-level block replaces the workflow's.
     permissions:
@@ -528,6 +580,34 @@ jobs:
         shell: bash
         continue-on-error: true
         run: .github/scripts/server-lifecycle.sh "bin/seedeep-server_${VERSION}_windows-x64.exe"
+
+  # THE required check, and the only one from this workflow that should ever be in the ruleset.
+  #
+  # The matrix legs cannot be required directly: their names carry the matrix (`smoke (macos-15-intel,
+  # macos-x64)`), so the ruleset would break the day a target is added or renamed. This job's name is
+  # fixed, and it says one thing — did the rehearsal hold.
+  #
+  # `always()` because a job that is skipped or that inherits a failure would otherwise not report at
+  # all, which for a required check is indistinguishable from "still running". It reads the results
+  # itself instead: `success` and `skipped` both pass (a pull request that touches nothing relevant
+  # skips the lot, and that is a pass), `failure` and `cancelled` do not.
+  rehearsal:
+    name: Release rehearsal
+    if: always() && github.event_name == 'pull_request'
+    needs: [changes, server, smoke, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        shell: bash
+        run: |
+          echo "$RESULTS"
+          bad=$(printf '%s' "$RESULTS" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | "\(.key)=\(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "rehearsal: FAIL — $bad" >&2
+            exit 1
+          fi
+          echo "rehearsal: OK — nothing the release depends on failed"
 
   # The npm channel: the same six executables, each wrapped in a package npm resolves by `os`/`cpu`,
   # under one `seedeep` wrapper whose postinstall puts the binary where `bin` already points. Node is
