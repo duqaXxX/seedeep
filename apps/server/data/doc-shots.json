@@ -10,7 +10,8 @@
       "selector": ".sublivecard",
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
-        "apps/server/public/css/live-monitor.css"
+        "apps/server/public/css/live-monitor.css",
+        "apps/server/src/core/session-tree.ts"
       ],
       "waitFor": ".subrow.act .scbar"
     },
@@ -21,7 +22,8 @@
       "selector": ".card:has(.wtitle:text-is(\"Context\"))",
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
-        "apps/server/public/css/context-dial.css"
+        "apps/server/public/css/context-dial.css",
+        "apps/server/src/core/session-tree.ts"
       ],
       "waitFor": ".dial"
     },
@@ -45,7 +47,8 @@
       "invalidatedBy": [
         "apps/server/src/client/graph.ts",
         "apps/server/public/css/layout.css",
-        "apps/server/public/css/context-dial.css"
+        "apps/server/public/css/context-dial.css",
+        "apps/server/src/core/session-tree.ts"
       ],
       "waitFor": ".card:has(.wtitle:has-text(\"Session\")) .num"
     },

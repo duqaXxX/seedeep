@@ -117,6 +117,9 @@ function resolveVolByModel(volByModel, fallback) {
   }
   return [...merged.entries()].map(([model, tokens]) => ({ model, tokens })).sort((x, y) => y.tokens - x.tokens);
 }
+function reportsWindow(e) {
+  return Boolean(e.model) || e.fill > 0;
+}
 function createSessionTree(opts) {
   const windowFor2 = opts.windowFor;
   let mainModel = opts.mainModel ?? null;
@@ -254,29 +257,33 @@ function createSessionTree(opts) {
       } else if (e.model)
         sessionError = null;
       if (owner === null) {
-        mainFill = e.fill;
-        breakdown.input = e.delta.input;
-        breakdown.cacheRead = e.delta.cacheRead;
-        breakdown.cacheCreation = e.delta.cacheCreation;
+        if (reportsWindow(e)) {
+          mainFill = e.fill;
+          breakdown.input = e.delta.input;
+          breakdown.cacheRead = e.delta.cacheRead;
+          breakdown.cacheCreation = e.delta.cacheCreation;
+        }
         if (e.model) {
           mainModel = e.model;
           if (!mainModels.includes(e.model))
             mainModels.push(e.model);
         }
         if (currentTurn) {
-          currentTurn.fillEnd = e.fill;
-          currentTurn.breakdown = {
-            input: e.delta.input,
-            cacheRead: e.delta.cacheRead,
-            cacheCreation: e.delta.cacheCreation
-          };
+          if (reportsWindow(e)) {
+            currentTurn.fillEnd = e.fill;
+            currentTurn.breakdown = {
+              input: e.delta.input,
+              cacheRead: e.delta.cacheRead,
+              cacheCreation: e.delta.cacheCreation
+            };
+          }
           if (e.model)
             currentTurn.models.add(e.model);
           if (e.effort)
             currentTurn.efforts.add(e.effort);
         }
         const key = e.callId ?? `seq:${e.seq}`;
-        usageNewCall = !appliedUsageKeys.has(key);
+        usageNewCall = !appliedUsageKeys.has(key) && !e.noCall;
         if (usageNewCall) {
           appliedUsageKeys.add(key);
           apiCalls++;
@@ -307,11 +314,12 @@ function createSessionTree(opts) {
         }
       } else {
         const a = agentFor(owner);
-        a.fill = e.fill;
+        if (reportsWindow(e))
+          a.fill = e.fill;
         if (e.effort)
           a.efforts.add(e.effort);
         const key = e.callId ?? `seq:${e.seq}`;
-        usageNewCall = !a.appliedVolumeKeys.has(key);
+        usageNewCall = !a.appliedVolumeKeys.has(key) && !e.noCall;
         if (usageNewCall) {
           a.appliedVolumeKeys.add(key);
           a.volIn += e.delta.input;
@@ -349,6 +357,7 @@ function createSessionTree(opts) {
           command: e.command ?? null,
           startedAt: e.timestamp || null,
           state: "live",
+          cutoff: false,
           durationMs: null,
           messageCount: null,
           apiCalls: 0,
@@ -382,8 +391,11 @@ function createSessionTree(opts) {
         currentTurn.state = "done";
       }
     } else if (e.type === "turn-interrupted") {
-      if (owner === null && currentTurn)
+      if (owner === null && currentTurn && (!e.cutoff || currentTurn.apiCalls > 0)) {
+        if (e.cutoff && currentTurn.state !== "interrupted")
+          currentTurn.cutoff = true;
         currentTurn.state = "interrupted";
+      }
     } else if (e.type === "turn-result") {
       if (owner === null && currentTurn) {
         currentTurn.result = e.outputFull;
@@ -799,6 +811,7 @@ function createSessionTree(opts) {
         kind: kindOf(t, agentsByTurn.has(t.index)),
         startedAt: t.startedAt,
         state,
+        cutoff: t.cutoff,
         durationMs: t.durationMs,
         messageCount: t.messageCount,
         apiCalls: t.apiCalls,
@@ -2454,6 +2467,9 @@ var EVENT_TYPES = Object.keys(LISTENED);
 
 // apps/server/src/client/replay.ts
 var REPLAY_STALE_MS = 30000;
+var RETRY_MS = 3000;
+var MAX_RETRY_MS = 30000;
+var MAX_STALE_REOPENS = 3;
 function startReplay(sessionId, handler, deps) {
   const covered = new Map;
   const liveMax = new Map;
@@ -2463,8 +2479,33 @@ function startReplay(sessionId, handler, deps) {
   let inFlight = true;
   let stopped = false;
   let resyncPending = false;
+  let sawEnd = false;
+  let retryTimer = null;
+  const baseRetryMs = deps.retryMs ?? RETRY_MS;
+  let nextRetryMs = baseRetryMs;
+  let progressed = false;
+  let staleReopens = 0;
+  let historyComplete = false;
+  const frontier = new Map;
+  const readSeen = new Map;
   let floor = new Map;
-  let skip = new Map;
+  const applied = new Map;
+  function bump(map, key, seq, n = 1) {
+    let byLine = map.get(key);
+    if (!byLine)
+      map.set(key, byLine = new Map);
+    const next = (byLine.get(seq) ?? 0) + n;
+    byLine.set(seq, next);
+    return next;
+  }
+  function holdApplied(key, seq, n) {
+    if (n <= 0)
+      return;
+    let byLine = applied.get(key);
+    if (!byLine)
+      applied.set(key, byLine = new Map);
+    byLine.set(seq, Math.max(byLine.get(seq) ?? 0, n));
+  }
   const buffer = [];
   let unsubscribe = null;
   let es = null;
@@ -2474,7 +2515,10 @@ function startReplay(sessionId, handler, deps) {
   let lastFrameAt = now();
   const keyOf = (e) => e.agentId ?? "";
   function whole(key) {
-    const c = covered.get(key), l = liveMax.get(key);
+    const c = covered.get(key);
+    if (!historyComplete)
+      return c;
+    const l = liveMax.get(key);
     const lw = l === undefined ? undefined : l - 1;
     if (c === undefined)
       return lw;
@@ -2489,12 +2533,17 @@ function startReplay(sessionId, handler, deps) {
         const f = floor.get(key);
         if (f !== undefined && e.seq <= f)
           return;
-        const s = skip.get(key);
-        if (s !== undefined && s.n > 0 && e.seq === s.seq) {
-          s.n--;
+        if (bump(readSeen, key, e.seq) <= (applied.get(key)?.get(e.seq) ?? 0))
           return;
+        bump(applied, key, e.seq);
+        const at = frontier.get(key);
+        if (at === undefined || e.seq > at) {
+          if (at !== undefined && at > (covered.get(key) ?? -1)) {
+            covered.set(key, at);
+            progressed = true;
+          }
+          frontier.set(key, e.seq);
         }
-        covered.set(key, Math.max(covered.get(key) ?? -1, e.seq));
       } else {
         const c = covered.get(key);
         if (c !== undefined && e.seq <= c)
@@ -2508,6 +2557,8 @@ function startReplay(sessionId, handler, deps) {
           liveMax.set(key, e.seq);
           liveSeen.set(key, 1);
         }
+        if (!historyComplete)
+          bump(applied, key, e.seq);
       }
     }
     handler(e);
@@ -2524,6 +2575,10 @@ function startReplay(sessionId, handler, deps) {
   function open(from) {
     buffering = true;
     inFlight = true;
+    sawEnd = false;
+    progressed = false;
+    frontier.clear();
+    readSeen.clear();
     lastFrameAt = now();
     const src = new deps.EventSourceImpl(urlFor(sessionId, from));
     es = src;
@@ -2541,8 +2596,20 @@ function startReplay(sessionId, handler, deps) {
         deliver(e, "replay");
       });
     }
-    src.addEventListener("replay-end", () => finish());
-    src.addEventListener("error", () => finish());
+    src.addEventListener("replay-end", () => {
+      if (es !== src)
+        return;
+      sawEnd = true;
+      for (const [key, seq] of frontier)
+        covered.set(key, Math.max(covered.get(key) ?? -1, seq));
+      applied.clear();
+      finish();
+    });
+    src.addEventListener("error", () => {
+      if (es !== src)
+        return;
+      finish();
+    });
   }
   function watchSilence() {
     if (stopped || !inFlight)
@@ -2555,33 +2622,76 @@ function startReplay(sessionId, handler, deps) {
     if (!inFlight)
       return;
     inFlight = false;
+    es?.close();
+    es = null;
+    if (sawEnd)
+      historyComplete = true;
+    if (!stopped && resyncPending) {
+      resyncPending = false;
+      askedFromOutside();
+      if (sawEnd)
+        handOff();
+      doResync();
+      return;
+    }
+    if (!sawEnd && !stopped) {
+      staleReopens = progressed ? 0 : staleReopens + 1;
+      if (staleReopens < MAX_STALE_REOPENS) {
+        scheduleRetry();
+        return;
+      }
+    }
+    handOff();
+    if (stopped)
+      return;
+    nextRetryMs = baseRetryMs;
+  }
+  function handOff() {
     buffering = false;
     for (const e of buffer)
       deliver(e, "live");
     buffer.length = 0;
-    es?.close();
-    es = null;
     if (!handedOff) {
       handedOff = true;
       deps.onLive?.();
     }
-    if (resyncPending && !stopped) {
-      resyncPending = false;
+  }
+  function askedFromOutside() {
+    nextRetryMs = baseRetryMs;
+    staleReopens = 0;
+  }
+  function scheduleRetry() {
+    if (stopped || retryTimer !== null)
+      return;
+    const wait = nextRetryMs;
+    nextRetryMs = Math.min(nextRetryMs * 2, MAX_RETRY_MS);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (stopped || inFlight)
+        return;
+      if (deps.stillExists && !deps.stillExists()) {
+        handOff();
+        return;
+      }
       doResync();
-    }
+    }, wait);
+    retryTimer.unref?.();
   }
   function doResync() {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
     floor = new Map;
-    skip = new Map;
     const pairs = [];
-    for (const key of new Set([...covered.keys(), ...liveMax.keys()])) {
+    for (const key of new Set([...covered.keys(), ...liveMax.keys(), ...applied.keys()])) {
       const w = whole(key);
       if (w === undefined)
         continue;
       floor.set(key, w);
       const l = liveMax.get(key);
-      if (l !== undefined && l > w)
-        skip.set(key, { seq: l, n: liveSeen.get(key) ?? 0 });
+      if (historyComplete && l !== undefined && l > w)
+        holdApplied(key, l, liveSeen.get(key) ?? 0);
       if (w >= 0)
         pairs.push(`${key}:${w}`);
     }
@@ -2594,13 +2704,21 @@ function startReplay(sessionId, handler, deps) {
     stop() {
       stopped = true;
       clearInterval(watchdog);
-      finish();
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (inFlight)
+        finish();
+      else
+        handOff();
       if (unsubscribe)
         unsubscribe();
     },
     resync() {
       if (stopped)
         return;
+      askedFromOutside();
       if (inFlight) {
         resyncPending = true;
         return;
@@ -3483,11 +3601,11 @@ var HEARTBEAT_EVENT = "heartbeat";
 
 // apps/server/src/client/stream.ts
 var CLOSED = 2;
-var RETRY_MS = 3000;
+var RETRY_MS2 = 3000;
 var STALE_MS = 45000;
 function createStream(opts) {
   const url = opts.url ?? "/api/stream";
-  const retryMs = opts.retryMs ?? RETRY_MS;
+  const retryMs = opts.retryMs ?? RETRY_MS2;
   const staleMs = opts.staleMs ?? STALE_MS;
   const checkMs = opts.checkMs ?? Math.max(1, Math.round(staleMs / 3));
   const now = opts.now ?? (() => Date.now());
@@ -4714,7 +4832,8 @@ function createSpanStore() {
       const idx = ctx.turnIndex;
       if (idx != null) {
         const turn = turns.get(idx);
-        if (turn) {
+        const worked = turn?.spans.some((s) => s.type === "api") === true;
+        if (turn && (!e.cutoff || worked)) {
           turn.state = "interrupted";
           mutated = true;
         }
@@ -4874,7 +4993,7 @@ function verdictFrom(turn, ev, ctx) {
       cost: kTok(turn.cacheTotals.created)
     });
   }
-  if (turn.state === "interrupted" && ctx.prevInterrupted) {
+  if (turn.state === "interrupted" && !turn.cutoff && ctx.prevInterrupted) {
     findings.push({
       kind: "esc",
       severity: "warn",
@@ -4932,7 +5051,7 @@ function contexts(snap, evidence) {
   let checkedBefore = false;
   for (let i = 0;i < work.length; i++) {
     out.set(work[i].index, {
-      prevInterrupted: work[i - 1]?.state === "interrupted",
+      prevInterrupted: work[i - 1]?.state === "interrupted" && !work[i - 1]?.cutoff,
       next: work[i + 1] ?? null,
       checkedBefore
     });
@@ -10085,7 +10204,8 @@ function openTab(record, { activate = true } = {}) {
   const stopReplay = startReplay(sessionId, (e) => treeState.apply(e), {
     stream,
     EventSourceImpl: AuthEventSource,
-    onLive
+    onLive,
+    stillExists: () => roster.readings() === 0 || roster.current().some((r) => r.sessionId === sessionId)
   });
   openTabs.set(sessionId, { view, panel, stopReplay, ended: !open, label: tabLabel(record) });
   known.add(sessionId);

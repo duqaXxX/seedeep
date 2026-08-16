@@ -498,9 +498,9 @@ The parser flattens the raw log into a small set of events consumers care about:
 | `compaction`      | `compactMetadata` / `isCompactSummary`                     | a compaction (context deflate)   |
 | `user-turn`       | a user line that is `origin.kind: 'human'`, **or** carries `<command-name>`, **or** is the plain text of a command (see below) | the user sent something — opens a timeline entry; `prompt` is the text (a command's `<command-args>`, or its arguments), `command` the slash command that carried it, `promptId` the invocation the line belongs to |
 | `command`         | the same three shapes as `user-turn`                       | a slash command was used         |
-| `turn-narration`  | an assistant `text` block on a line whose `stop_reason` is anything but `end_turn`; main session only | mid-turn narration — the model saying what it is about to do: `text` (anonymized, capped at 2000) and `callId` (`message.id`), which is also the call whose tools form the Trace's round. A subagent's narration has no consumer and is dropped |
+| `turn-narration`  | an assistant `text` block on a line whose `stop_reason` is anything but `end_turn`; main session only; never the auto-continue receipt (see `turn-interrupted`), whose text no model wrote | mid-turn narration — the model saying what it is about to do: `text` (anonymized, capped at 2000) and `callId` (`message.id`), which is also the call whose tools form the Trace's round. A subagent's narration has no consumer and is dropped |
 | `turn-result`     | an assistant `text` block on a line whose `stop_reason` is `end_turn` | the turn's final answer — `outputFull` (anonymized, capped at 20k) and `outLen`. The same shape on a CHILD line becomes `subagent-output` instead |
-| `turn-interrupted` | `interruptedMessageId` on the next user line after an Esc | the previous turn was interrupted. Emitted BEFORE that line's `user-turn`, so the reducer closes the old turn before opening the new one |
+| `turn-interrupted` | `interruptedMessageId` on the next user line after an Esc, **or** Claude Code's auto-continue receipt — a `<synthetic>` assistant line that is not an API error, which it writes when it re-enters a session whose last round never finished | the previous turn was interrupted. After an Esc it is emitted BEFORE that line's `user-turn`, so the reducer closes the old turn before opening the new one. The receipt is recognised by its TEXT, not by the `<synthetic>` marker: the marker says only that no model wrote the line, while "this round is over" is read off the one wording measured to mean it — a future notice Claude Code writes the same way would otherwise close a turn that is still working. It is the ONLY record that a killed round is over — the `turn_duration` that would have closed it was owed by a process that died, and a transcript only appends — so without it the turn stays `live` for good, running a clock nobody is working under and counting it into the session's total. It carries `cutoff`, and a cutoff closes only a round that made a call: an Esc says the user stopped something, while a killed session says only that nothing more is coming, so a bare `/model` is left to the 0-call → done presentation rather than promoted to an interrupted work turn. `cutoff` rides on to `TurnNode`, because the distinction outlives the event: a cut round IS interrupted, but it is not an **Esc**, and every surface that reads an interruption as the user's CORRECTION — the retrospective's "abandoned to Esc", the verdict's "second correction in a row" — must exclude it. A crash is not a correction |
 | `turn-end`        | a `system` line with `subtype: 'turn_duration'`; main session only | the turn finished — `durationMs` and `messageCount`, both nullable. Claude Code's own measure, not one seedeep derives |
 | `agent-launch`    | `<forked-skill-launch>` on a `system`/`local_command` line  | a forked skill (`/code-review`) started a background agent — `launchedAgentId`, `skillName`, `description`. It is NOT a `tool_use`: this line is the only record that the agent exists, when it started and which turn asked for it |
 | `file-change`     | a `file-history-delta` line (`trackingPath`)               | Claude Code backed up one file it changed — its own /rewind ledger. It records ONLY what CC's own file-writing tools wrote: a file written by `python3`, by `cat >>` or by the build produces no delta at all, and WHICH session made a shell write is recorded nowhere on disk. So the Changed files card does not count this event — its number comes from the session's own commits via `GET /api/files` (`docs/session-output.md`), reproducible with `git show --stat`. The ledger's one remaining job is the session scratchpad, which lives outside the repo where git cannot see it: `isScratchPath` (`apps/server/src/core/text.ts`) classifies on the `~scratch` token `anon` produces, so a path is anonymized BEFORE it is tested. `trackingPath` has TWO shapes — absolute, or relative to the session's cwd, in which case `backup.realParentDir` names the directory — and `ledgerPath` resolves both. The reducer still attributes each delta to the open turn; the baseline `file-history-snapshot` stays ignored |
@@ -592,6 +592,14 @@ prompt of ONE API call, so the reducer keeps its tokens in two shapes:
 
 - `main.breakdown` / `turn.breakdown` — the **last call**, absolute. It answers
   "what is the window made of right now", so it (and only it) drives the Context bar.
+  The last call that reached a MODEL, which is not every `usage` line: Claude Code
+  stamps `<synthetic>` on lines that called none — the "No response requested." it
+  writes when a killed session is resumed, and API-error lines — and gives them a
+  `usage` block all the same, structurally a call's and all zeros. Taken as last-call
+  state it reports an empty window, so the reducer refuses a line that names no model
+  AND reports no tokens (`reportsWindow`). Both conditions: a real call can arrive
+  without a model on the line, and can never read zero, having at least its system
+  prompt. The SUMS below are outside that guard — an all-zero line adds nothing to them.
 - `main.cacheTotals` + `main.inputTotal` + `main.outputTotal` (and the per-turn
   equivalents) — **summed over every call in the scope**. They answer "how many tokens
   did this billing category cost", and they drive the **Session** card's ledger.
@@ -650,6 +658,14 @@ event as `callId`, with the `seq` as fallback for `<synthetic>` lines that have 
 each call by its block count. The same guard also absorbs the stream's high-water re-send after a reconnect
 (`stream.ts` guards with `seq <`), which a SUM — unlike everything set-shaped in the
 reducer — would otherwise double-count.
+**And not every `usage` line is a call at all.** Claude Code's auto-continue receipt carries a full
+usage block, all zeros, having reached no model. The parser marks it `noCall`, and the reducer
+withholds `newCall` from it — not merely the counter, because `newCall` is the ONE signal that says
+a fresh call happened and three surfaces read it: the header's count, the feed's row and the Trace's
+`api` span (with `callMs`, a latency that would be measured to a line that never called anything).
+Excluding it from the counter alone left the three disagreeing on screen. A FAILED call is not the
+same thing and raises all three — it reached the API. The two are told apart by `isApiErrorMessage`,
+never by the model: both are `<synthetic>`, and both report zero tokens.
 
 Every file-tailed event also carries a **`seq`**: a per-file line number assigned
 by whoever reads the lines (the watcher for the live tail, the replay reader for
@@ -1150,6 +1166,43 @@ And the connection rules:
   session's history is thousands of events and painting through that flood rebuilds the whole bento
   per coalesced tick. The loader cannot hang — `startReplay` fires the handoff exactly once, on
   `replay-end`, on a dead connection, or on `stop()`.
+- **A read that was CUT reopens itself**, after a wait that doubles up to 30s, until one reaches
+  `replay-end` — the only frame that says the history is all here. The loss a cut causes is not
+  spread evenly: the server sends the parent transcript whole and only then each child, so a cut in
+  the child phase costs every subagent and no main-session line. The reopen asks only past what each
+  file holds **whole** — a line is several events sharing one `seq`, so the line a read died on is
+  never claimed — and requests whole any file the tab has never seen, which is what makes the
+  children arrive complete. A tab whose session has ENDED needs this most: nothing else would ever
+  ask again.
+- **Nothing the tab already holds is delivered twice.** A re-read is sent a line from its top, so
+  the tab counts how many of that line's events it holds and skips exactly that many — the same
+  offset-into-a-line the live path keeps, on the side that had none. It matters because the
+  consumers are not idempotent, which is what the reducer's own idempotence hides: the feed appends
+  a second row and re-points its index (so the first row never gets its duration), the Trace opens a
+  duplicate span stuck on `running`, and the toast rail — armed at the handoff — announces a tool
+  that ran minutes ago. The record is of what is HELD, not a budget spent as it is used: a read that
+  skips a line still holds it, and the read after that must skip it again.
+- **Until the history is complete, the live feed is HELD, not applied.** Two reasons, and the second
+  is the one that bites: a line from the file's tail applied before the middle would put the newest
+  turn ahead of every turn that precedes it, and the resume mark reads the live frontier as proof
+  that everything below it is held — so a tab holding lines 0–2 and a stray line 500 would resume
+  from 499 and lose the middle for good, then reach `replay-end` and call itself complete. The
+  reader keeps the loader a while longer, which is the truth. The handoff (`onLive`) waits for a read
+  that COMPLETES; `stop()` releases it too — including between two attempts, when no read is in
+  flight at all — since a closing tab has no later read to wait for.
+- **The reopen gives up on futility, never on a count.** A read that advances resets the counter, so
+  a slow or flaky path is never penalised however many rounds it takes; three consecutive reopens
+  that gain no ground end it, because that read is not coming back — a server-side throw on one
+  line, a proxy cutting at a fixed byte count, a child file that will not open. It also gives up
+  when the roster says the session is GONE: a deleted session answers 404 forever, and an
+  `EventSource` cannot read a status, so it fires the same contentless `error` a dropped path does.
+  Either way it hands off what the tab holds — keeping the loader up for a history that is never
+  coming is the same freeze this replaced, reached from the other side. A tab that gave up keeps a
+  history with a hole in it, so the live frontier stays untrusted for good (see the previous rule):
+  a later resync asks from what was actually read. Giving up is a verdict on the attempts, never on
+  the tab: an ask from OUTSIDE — the live stream recovering, the session being resumed — is new
+  information and starts its own budget, backoff and futility count both. Carrying the spent one
+  made that recovery path a dead letter, abandoning the ask on its first cut with no retry at all.
 - **A live roster.** The roster is re-fetched on a light timer: a newly-born session appears in
   the dropdown (never stealing focus by auto-opening a tab), and a session that ends re-labels its
   tab, closes its live subscription and freezes the view on the last state.

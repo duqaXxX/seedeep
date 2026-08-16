@@ -128,7 +128,12 @@ const typedAfterEsc = (uuid: string, text: string, interrupted: string) =>
 // A synthetic assistant line as Claude Code writes it when a turn produced NO model response
 // (an auto-continue "No response requested.", or an API error): message.model is '<synthetic>'
 // and the usage block is all zeros. It carries no turn_duration and no Esc marker.
-const synthetic = (uuid: string, _text: string) =>
+// Faithful to the real line, `content` INCLUDED: it carries a text block, which is what made it
+// the session's INTENT. The helper used to drop the text it was handed, so every test built on it
+// exercised a line the parser could never take for a narration — the fixture agreed with the code
+// instead of with the file, and no test could discover the panel was quoting Claude Code's own
+// bookkeeping back at the reader.
+const synthetic = (uuid: string, text: string) =>
   JSON.stringify({
     type: 'assistant',
     uuid,
@@ -136,8 +141,34 @@ const synthetic = (uuid: string, _text: string) =>
     isApiErrorMessage: false,
     message: {
       role: 'assistant',
+      id: 'msg-' + uuid,
       model: '<synthetic>',
       stop_reason: 'stop_sequence',
+      stop_sequence: '',
+      content: [{ type: 'text', text }],
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    },
+  });
+/**
+ * The OTHER `<synthetic>` line: a call that reached the API and FAILED. Same model placeholder and
+ * the same all-zero usage block as the receipt above — `isApiErrorMessage` is the only thing that
+ * separates them, which is why every rule about one has to name that flag and never the model.
+ * Zero because that is what they carry: measured 2026-08-16 over 866 transcripts (528 sessions and
+ * their children), all 21 synthetic lines of either kind reported no tokens.
+ */
+const apiErrorLine = (uuid: string, status: number | null, text: string) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    timestamp: '2026-07-14T10:00:05.000Z',
+    isApiErrorMessage: true,
+    ...(status !== null ? { apiErrorStatus: status } : {}),
+    message: {
+      role: 'assistant',
+      id: 'msg_' + uuid,
+      model: '<synthetic>',
+      stop_reason: 'stop_sequence',
+      content: [{ type: 'text', text }],
       usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
     },
   });
@@ -191,6 +222,191 @@ test('golden transcript: a turn cut off (synthetic, no turn_duration) is interru
   assert.equal(turns.filter((t) => t.state === 'live').length, 1, 'never two live turns');
   // <synthetic> never enters the model list, so the chip reads the real model, not "<synthetic>".
   assert.deepEqual(snap.main.models, ['claude-opus-4-8']);
+});
+
+test('golden transcript: the auto-continue receipt closes the cut turn, and is neither a call nor a word', () => {
+  // Claude Code was killed mid-round, so no `turn_duration` was ever written and none ever will
+  // be: the transcript only appends. On the next start it injects "Continue from where you left
+  // off." and answers "No response requested." — the only record that the round is over. Read as
+  // an ordinary assistant line it did three wrong things at once: the turn stayed `live` (a clock
+  // ticking on a turn nobody was working on, counted into the session total), its text became the
+  // INTENT panel, and its all-zero usage block was counted as an API call.
+  const snap = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    synthetic('s1', 'No response requested.'),
+  ]);
+  const turn = snap.turnList.at(-1)!;
+  assert.equal(turn.state, 'interrupted', 'the cut round is closed where it was cut');
+  assert.equal(snap.turnList.filter((t) => t.state === 'live').length, 0, 'nothing is left running');
+  assert.equal(snap.apiCalls, 1, 'one real call — the receipt reached no model');
+  assert.equal(turn.apiCalls, 1, 'and the turn counts the same one');
+  assert.equal(turn.lastNarration, null, 'no model said this, so it is not the session intent');
+});
+
+test('golden transcript: the receipt raises no API call on ANY surface, not just the counter', () => {
+  // `newCall` is the one signal that says "a fresh API call happened": the header counts it, the
+  // feed draws a row from it and the Trace opens an `api` span on it. Excluding the receipt from
+  // the counter alone left the three disagreeing — the header saying 1 call over a feed showing
+  // two, the second with a latency measured from the prompt to a line that never called anything.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  const calls: Array<{ ms: number | null | undefined }> = [];
+  tree.onEvent((e, c) => {
+    store.apply(e, c);
+    if (e.type === 'usage' && c?.newCall) calls.push({ ms: c.callMs });
+  });
+  let seq = 0;
+  for (const l of [typed('u1', 'go'), assistant('a1', 5000), synthetic('s1', 'No response requested.')])
+    for (const ev of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(ev);
+
+  assert.equal(calls.length, 1, 'one call announced to the listeners — the real one');
+  const apiSpans = store
+    .snapshot()
+    .turns.flatMap((t) => t.spans)
+    .filter((s) => s.type === 'api');
+  assert.equal(apiSpans.length, 1, 'and one api span in the Trace, so the surfaces agree');
+  assert.equal(tree.snapshot().apiCalls, 1, 'and the header agrees with both');
+});
+
+test('golden transcript: a cut-off round is interrupted, but it is NOT an Esc', () => {
+  // Both end a round before it finished, so both are `interrupted` — what differs is who ended it.
+  // Everything that reads an interruption as the user's CORRECTION has to ask: the retrospective
+  // says "abandoned to Esc" and the verdict says "second correction in a row", and a session that
+  // died corrected nothing. Read off the state alone, a crash was filed as the user's own doing.
+  const cut = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    synthetic('s1', 'No response requested.'),
+  ]);
+  // An Esc marks the PREVIOUS round, on the user line that follows it — so the one under test is
+  // the first, not the one that Esc opened.
+  const byHand = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    typedAfterEsc('u2', 'no, wait', 'a1'),
+  ]);
+  assert.equal(cut.turnList.at(-1)!.state, 'interrupted', 'a cut-off round did not finish');
+  assert.equal(cut.turnList.at(-1)!.cutoff, true, 'and it was the session dying that ended it');
+  assert.equal(byHand.turnList[0]!.state, 'interrupted', 'an Esc ends a round too');
+  assert.equal(byHand.turnList[0]!.cutoff, false, 'but that one WAS the user');
+});
+
+test('golden transcript: the Trace and the timeline agree about a local command a crash found open', () => {
+  // The reducer deliberately leaves a round that called nothing alone, so `kindOf` keeps filing it
+  // as a local command. The Trace was marking `interrupted` on ANY turn-interrupted, so the same
+  // `/model` read "interrupted" in one surface and "local command" in the other.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  tree.onEvent((e, c) => store.apply(e, c));
+  let seq = 0;
+  for (const l of [
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    turnDuration('d1'),
+    slash('u2', 'model', 'opus'),
+    synthetic('s1', 'No response requested.'),
+  ])
+    for (const e of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+
+  const last = tree.snapshot().turnList.at(-1)!;
+  assert.equal(last.kind, 'local', 'the timeline calls it a local command');
+  const traced = store.snapshot().turns.find((t) => t.index === last.index);
+  assert.notEqual(traced?.state, 'interrupted', 'and the Trace must not call it interrupted');
+});
+
+test('golden transcript: a round the user stopped stays an Esc even when a cutoff closes it again', () => {
+  // The user presses Esc, and the session is killed before they type again — so the Esc marker and
+  // the receipt land on the SAME round. It was still the user who stopped it: letting the receipt
+  // stamp `cutoff` there took the round out of the Esc accounting altogether, which is the opposite
+  // of what the comment beside that line claims.
+  const escMarker = JSON.stringify({
+    type: 'user',
+    uuid: 'x1',
+    timestamp: '2026-07-14T10:00:06.000Z',
+    isMeta: true, // marks the round interrupted without opening a new one
+    interruptedMessageId: 'a1',
+    message: { role: 'user', content: '[Request interrupted by user]' },
+  });
+  const snap = timelineOf([
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    escMarker,
+    synthetic('s1', 'No response requested.'),
+  ]);
+  const turn = snap.turnList.at(-1)!;
+  assert.equal(turn.state, 'interrupted');
+  assert.equal(turn.cutoff, false, 'the user stopped this round; the crash only found it already stopped');
+});
+
+test('golden transcript: the receipt does not promote a local command to an interrupted work turn', () => {
+  // `kindOf` files a command with no calls as `local` only while its state is not `interrupted` —
+  // so closing a killed session's LAST entry unconditionally turned a `/model` into a work turn
+  // that was interrupted, which is two lies about an entry that never called anything. The
+  // supersede path already had the rule (a turn that made no call is left to the 0-call → done
+  // presentation); the receipt now answers to the same one. An Esc is untouched: the user
+  // interrupted something, whether or not it had billed a token yet.
+  const snap = timelineOf([
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    turnDuration('d1'),
+    slash('u2', 'model', 'opus'),
+    synthetic('s1', 'No response requested.'),
+  ]);
+  const last = snap.turnList.at(-1)!;
+  assert.equal(last.command, 'model', 'the entry under test is the local command');
+  assert.equal(last.kind, 'local', 'a built-in that called nothing is still a local command');
+  assert.notEqual(last.state, 'interrupted', 'and nothing about it was interrupted');
+});
+
+test('golden transcript: an unknown synthetic notice is not a call, but does not close the turn', () => {
+  // `<synthetic>` means one thing by construction — Claude Code produced this line without calling
+  // a model — so `noCall` and the narration suppression follow from the marker alone. "This round
+  // is over" does NOT: that is read off the ONE text measured to mean it. A future non-error
+  // synthetic notice (a schema that ships a release every ~1.9 days) must not silently close a
+  // live turn, which would report a session as idle while it works.
+  const snap = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    synthetic('s1', 'Some notice Claude Code did not write before.'),
+  ]);
+  const turn = snap.turnList.at(-1)!;
+  assert.equal(turn.state, 'live', 'an unrecognised notice says nothing about whether the round ended');
+  assert.equal(snap.apiCalls, 1, 'it still reached no model, so it is still not a call');
+  assert.equal(turn.lastNarration, null, 'and no model wrote it, so it is still not the intent');
+});
+
+test('golden transcript: an API-error line still counts as a call, and still speaks', () => {
+  // The other `<synthetic>` line, and the reason `isApiErrorMessage` is the discriminator rather
+  // than the model: a failed call DID reach the API, and its text is what the user was shown.
+  const snap = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    apiErrorLine('e1', 529, 'API Error: 529 Overloaded'),
+  ]);
+  assert.equal(snap.apiCalls, 2, 'a call that failed is still a call');
+  assert.equal(snap.turnList.at(-1)!.state, 'live', 'and an error can be retried — the turn is not closed');
+  assert.equal(snap.error?.status, '529', 'it is surfaced as the session error, which is its own state');
+});
+
+test('golden transcript: a synthetic line reports no window, and must not become the window', () => {
+  // The same line as the test above, read for what it does to the CONTEXT card rather than to the
+  // turn. Claude Code stamps `<synthetic>` on a line that reached NO model — an auto-continue after
+  // a resume, an API error — and still gives it a usage block, structurally a call's and all zeros.
+  // `mainFill` is last-write-wins, so that zero became "the window right now": the card read
+  // 0 / 1.0M · 0% for as long as the session went without a real call, which on a session resumed
+  // and left idle is until the user types again. The denominator survived (the model chip is
+  // guarded); only the numerator was lost, which is what made it read as an empty context rather
+  // than as a missing one.
+  const snap = timelineOf([
+    typed('u1', 'first request'),
+    assistant('a1', 5000),
+    synthetic('s1', 'No response requested.'),
+  ]);
+  assert.equal(snap.main.fill, 5000, 'the window stays what the last REAL call reported');
+  assert.equal(snap.main.breakdown.cacheRead, 4990, 'and so does its composition');
+  assert.equal(snap.main.pct, Math.round((5000 / snap.main.window) * 100), 'the dial agrees with the fill');
+  assert.equal(snap.turnList.at(-1)!.fillEnd, 5000, 'the turn ends where its last real call left it');
 });
 
 test('golden transcript: every line the user sent becomes a timeline entry, typed for kind', () => {
@@ -1040,6 +1256,88 @@ test('golden transcript: an API-error call folds into the agent model, no duplic
     [{ model: 'claude-sonnet-4-6', tokens: real + err }],
     'and the session bar shows the one merged model',
   );
+});
+
+test('golden transcript: a synthetic line in a CHILD leaves that subagent context bar alone', () => {
+  // The subagent-side mirror of the main-session rule: `a.fill` is last-write-wins too, so a child
+  // transcript ending on an all-zero synthetic line showed the subagent at 0% — a row claiming a
+  // context bar it never had. Same guard, same reason, and it has to be tested on its own branch:
+  // the two owners are separate code paths in the reducer.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  let seq = 0;
+  const main = [
+    typed('u1', 'go'),
+    toolUse('a2', 'toolu_09', 'Agent', { prompt: 'work', subagent_type: 'general-purpose', model: 'sonnet' }),
+  ];
+  for (const l of main) for (const e of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+  const childCtx = { sessionId: 's1', root: 'cli' as const, agentId: 'ag9' };
+  const realCall = JSON.stringify({
+    type: 'assistant',
+    uuid: 'c1',
+    timestamp: '2026-07-14T10:00:05.000Z',
+    message: {
+      role: 'assistant',
+      id: 'm1',
+      model: 'claude-sonnet-4-6',
+      usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 0 },
+    },
+  });
+  for (const l of [realCall, synthetic('c2', 'No response requested.')])
+    for (const e of parseLine(l, { ...childCtx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+  // Without it the child is not joined to its spawn and the list holds two rows — the spawn's,
+  // whose fill is 0 for a reason that has nothing to do with this test.
+  tree.apply({
+    type: 'subagent-meta',
+    sessionId: 's1',
+    root: 'cli',
+    timestamp: '',
+    seq: seq++,
+    agentId: 'ag9',
+    toolUseId: 'toolu_09',
+    agentType: 'general-purpose',
+    spawnDepth: 1,
+    model: 'claude-sonnet-4-6',
+  } as NormalizedEvent);
+
+  const snap9 = tree.snapshot();
+  assert.equal(snap9.subagents.length, 1, 'the child is joined to its spawn, so there is one row to read');
+  const sub = snap9.subagents[0]!;
+  assert.equal(sub.fill, 90_010, 'the child window stays what its last REAL call reported');
+  assert.ok(sub.pct > 0, 'so its context bar is not drawn empty');
+});
+
+test('golden transcript: a receipt in a CHILD raises no API call on the child lane either', () => {
+  // The exclusion lives on `newCall`, and `newCall` is computed on BOTH owners — the main branch
+  // and the subagent branch are separate code. Fixing only the main one left a child's receipt
+  // still drawing a Trace span and a feed row on the child lane, with a latency measured to a line
+  // that never called anything: the same three surfaces disagreeing, one lane over.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  const announced: string[] = [];
+  tree.onEvent((e, c) => {
+    store.apply(e, c);
+    if (e.type === 'usage' && c?.newCall) announced.push(e.agentId ?? 'main');
+  });
+  let seq = 0;
+  for (const l of [typed('u1', 'go'), toolUse('a2', 'toolu_10', 'Agent', { prompt: 'work', subagent_type: 'x' })])
+    for (const e of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+  const childCtx = { sessionId: 's1', root: 'cli' as const, agentId: 'ag10' };
+  const realCall = JSON.stringify({
+    type: 'assistant',
+    uuid: 'k1',
+    timestamp: '2026-07-14T10:00:05.000Z',
+    message: {
+      role: 'assistant',
+      id: 'm1',
+      model: 'claude-sonnet-4-6',
+      usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900, cache_creation_input_tokens: 0 },
+    },
+  });
+  for (const l of [realCall, synthetic('k2', 'No response requested.')])
+    for (const e of parseLine(l, { ...childCtx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+
+  // The spawn line carries no usage of its own, so the child's single real call is the only one.
+  assert.deepEqual(announced, ['ag10'], 'the child made one call; its receipt made none');
 });
 
 test('golden transcript: a subagent with no per-call usage puts its estimated volume on its own model', () => {
@@ -2599,24 +2897,6 @@ const toolResultError = (uuid: string, toolUseId: string, text: string, denialKi
       content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: true, content: text }],
     },
   });
-/** An API-error line as CC writes it: assistant, isApiErrorMessage, synthetic model, a usage block. */
-const apiErrorLine = (uuid: string, status: number | null, text: string) =>
-  JSON.stringify({
-    type: 'assistant',
-    uuid,
-    timestamp: '2026-07-14T10:00:05.000Z',
-    isApiErrorMessage: true,
-    ...(status !== null ? { apiErrorStatus: status } : {}),
-    message: {
-      role: 'assistant',
-      id: 'msg_' + uuid,
-      model: '<synthetic>',
-      stop_reason: 'stop_sequence',
-      content: [{ type: 'text', text }],
-      usage: { input_tokens: 4, output_tokens: 0, cache_read_input_tokens: 100, cache_creation_input_tokens: 0 },
-    },
-  });
-
 test('golden: a failed tool is flagged, a user refusal is NOT', () => {
   const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
   const store = createSpanStore();
@@ -2874,7 +3154,7 @@ test('golden verdict: an api-error opener does not turn the session BOOT into a 
   // Driven from raw jsonl because the fact lives in the reducer, not in any node the verdict sees.
   const withOpener = timelineOf([
     typed('u1', 'go'),
-    synthetic('a0', 'API error'),
+    apiErrorLine('a0', 529, 'API Error: 529 Overloaded'),
     call('a1', 5_000, 175_000),
     turnDuration('d1'),
   ]);
@@ -2921,6 +3201,36 @@ test('golden verdict: two interruptions in a row → warn esc on the SECOND, fro
   const second = computeVerdict(esc[1]!, snap);
   assert.equal(second.severity, 'warn');
   assert.equal(second.findings[0]!.kind, 'esc');
+});
+
+test('golden verdict: a session that DIED after an Esc is not a second correction', () => {
+  // The pair the finding is about is two corrections in a row, and only a person corrects. This
+  // shape — the user stops a round, then the session is killed mid-round and reopened — read as
+  // two interruptions and told the user off for a crash. It has to hold in both roles: the cut
+  // round is not the second of a pair, and it cannot be the FIRST of one either.
+  const snap = timelineOf([
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    typedAfterEsc('u2', 'no, like this', 'a1'),
+    assistant('a2', 5100),
+    synthetic('s1', 'No response requested.'), // the session was killed here
+    typed('u3', 'riprendi'),
+    assistant('a3', 5200),
+    turnDuration('d3'),
+  ]);
+  const interrupted = snap.turnList.filter((t) => t.state === 'interrupted');
+  assert.equal(interrupted.length, 2, 'both rounds ended before finishing');
+  assert.deepEqual(
+    interrupted.map((t) => t.cutoff),
+    [false, true],
+    'the first was the user, the second was the session dying',
+  );
+  assert.equal(computeVerdict(interrupted[1]!, snap).severity, 'good', 'a crash is not a correction');
+  assert.equal(
+    computeVerdict(snap.turnList.at(-1)!, snap).findings.filter((f) => f.kind === 'esc').length,
+    0,
+    'and it cannot make the next turn look like the second of a pair either',
+  );
 });
 
 test('golden verdict: an ordinary turn → good (no false positives)', () => {

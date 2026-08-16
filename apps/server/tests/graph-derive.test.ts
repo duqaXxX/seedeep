@@ -27,6 +27,7 @@ function turn(over: Partial<TurnNode> = {}): TurnNode {
     kind: 'work',
     startedAt: null,
     state: 'done',
+    cutoff: false,
     durationMs: 1000,
     messageCount: 2,
     apiCalls: 3,

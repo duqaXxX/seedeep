@@ -472,6 +472,7 @@ function makeTurn(index: number, opts: Partial<TurnNode> = {}): TurnNode {
     kind: opts.kind ?? 'work',
     command: opts.command ?? null,
     state: opts.state ?? 'done',
+    cutoff: opts.cutoff ?? false,
     durationMs: 60000,
     messageCount: 3,
     apiCalls: 5,

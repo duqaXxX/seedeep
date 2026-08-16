@@ -52,6 +52,59 @@ Everything released before `0.20.0` — including the pre-publication developmen
   and the Windows first-launch warnings in `docs/install.md` describe the way through without
   quoting each dialog verbatim.
 
+### Fixed
+
+- **A round cut off by a killed session now closes where it was cut.** Claude Code writes no
+  `turn_duration` for a round whose process died, and a transcript only appends, so that record
+  will never exist: the turn stayed `live` for good, running a clock nobody was working under and
+  counting it into the session's total — over an hour of "work" on a session that had been idle
+  since the kill. On re-entry Claude Code injects "Continue from where you left off." and answers
+  "No response requested.", and that receipt is the only record the round is over; it now closes
+  the turn, exactly as an Esc does. Its text is no longer taken for the model's stated intent (the
+  INTENT panel quoted it back at the reader for as long as the session stayed idle), and its
+  all-zero usage block raises no API call on any surface — not the header's count, not the feed's
+  row, not the Trace's span, which had been left disagreeing with each other. A round that called
+  nothing is left alone: closing a bare `/model` would have promoted it to an interrupted work turn.
+  A call that FAILED is not the same thing and is still counted, still speaks, and still leaves its
+  turn open to a retry. A cut-off round is `interrupted` like one stopped with Esc — both ended
+  before finishing — but it is no longer counted AS an Esc: the retrospective's "abandoned to Esc"
+  and the verdict's "interrupted again — second correction in a row" are claims about how the user
+  works, and a session that died corrected nothing. The aggregate cache version is bumped with it,
+  since both the turn's presence and its Esc flag are values a cached summary already holds.
+- **A replay that was cut now finishes its own history instead of leaving the tab short in
+  silence.** The server sends the parent transcript whole and only then each subagent child, so a
+  connection cut anywhere in the child phase delivered all of the main session and none of the
+  subagents: rows with no duration and no volume, no subagent activity in the feed, and a session
+  token total short by everything the children spent — with nothing on screen saying the history
+  was partial. Recovery existed but had to come from outside (a live-stream reconnect, or the
+  session being resumed), and a tab whose session had ended was offered neither, so the gap lasted
+  for the life of the page. A read that ends any way other than `replay-end` now reopens itself
+  after a wait that doubles up to 30s, asking only past what each file it holds is complete on —
+  never past the line it died on, since a line is several events and the read can stop between two
+  of them. Until the history is complete the live feed is held rather than applied: applied, it
+  would put the newest turn ahead of every turn preceding it, and its frontier would be read as
+  proof the tab holds everything below it — so a tab holding three lines and a stray tail line
+  resumed past the whole middle and then called itself complete. The reopen gives up only when the
+  roster says the session no longer exists (a deleted session answers 404 forever, and an
+  `EventSource` cannot read a status) or when three consecutive attempts gain no ground — futility,
+  never a count, so a slow or flaky path is never penalised however many rounds it takes. Either
+  way it releases what it holds rather than keeping the loader up for a history that is never
+  coming, and a tab that gave up keeps its live frontier untrusted so a later resync cannot ask
+  past the middle it never read. An ask from outside — the live stream recovering, the session
+  being resumed — starts its own budget rather than inheriting the spent one. Nothing the tab
+  already holds is applied twice: a re-read arrives from the top of a line, and the tab skips
+  exactly the events it holds of it. The reducer would have survived the duplicates; the feed, the
+  Trace and the toast rail would not — a second row whose first never gets its duration, a span
+  stuck on `running`, and a toast for a tool that ran minutes ago.
+- **The Context card no longer empties itself on a line that never called a model.** Claude Code
+  stamps `<synthetic>` on lines that reached none — the "No response requested." it writes when a
+  killed session is resumed, and API-error lines — and gives them a `usage` block all the same,
+  structurally a call's and all zeros. The reducer took it as the window's newest state, so the
+  card read `0 / 1.0M · 0%` with the model chip and the denominator intact, until the next real
+  call arrived; on a session resumed and then left idle, that is until the user types again. A
+  subagent's own context bar had the same hole on its own branch. Both now refuse a usage line
+  that names no model AND reports no tokens.
+
 ## 0.28.1 (2026-08-16)
 
 ### Fixed
