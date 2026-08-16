@@ -23,6 +23,36 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  # THE REHEARSAL, on the pull request that bumps the version - because a tag is irreversible. The
+  # `release tags` ruleset forbids moving or deleting one, so a gate that first runs AFTER the tag
+  # spends a version number every time it catches something. That is exactly what v0.28.0 was: the
+  # gate worked, held the release in a draft and let nobody download a thing, and the number was
+  # burnt anyway by an assertion the scripts had wrong. Building and driving the binaries on the
+  # bump's own pull request moves the discovery to before the irreversible step.
+  #
+  # `package.json` because that is the file a release bumps, and the one place the version lives; it
+  # also fires on a dependency change, which is not waste - a dependency is precisely what breaks a
+  # compile `bun test` cannot see. And the GATE MACHINERY ITSELF, because the v0.28.0 incident lived
+  # in `server-lifecycle.sh`: without those paths a change to the gates merged after the bump's run
+  # and before the tag is pushed would never be rehearsed at all, and would land straight on the
+  # irreversible step.
+  #
+  # NOTHING here publishes: every writing step and both attestations are `if: ref_type == 'tag'`, so
+  # a pull request builds, smokes, survives and drives the executables while touching neither the
+  # repository nor a registry. It is the same rehearsal `workflow_dispatch` offers, made automatic -
+  # a rehearsal that depends on somebody remembering to run it is the one that was skipped.
+  pull_request:
+    paths: ['package.json', '.github/workflows/release.yml', '.github/scripts/**']
+
+# A tag run must never be cancelled - it can be halfway through `gh release upload`, and a
+# half-populated draft is worse than a slow one. A pull request run is the opposite: `paths` are
+# matched against the WHOLE diff, so once `package.json` is in it every later push to that branch
+# starts another full matrix - nine jobs, three Tauri builds, and two legs that each sit through ten
+# 40-second idle windows. Four pushes to a bump pull request would otherwise queue four of those at
+# once, two of them on `windows-11-arm`.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The draft is created here and the assets are uploaded by each build job.
 permissions:
@@ -97,6 +127,15 @@ jobs:
 
   tray:
     needs: draft
+    # NOT on the rehearsal. Two reasons that point the same way. It adds nothing a pull request does
+    # not already have: `ci.yml` compiles the tray's Rust on macOS AND Windows and runs `cargo test`
+    # there, so what the rehearsal would add is the Tauri BUNDLER, and the gates being rehearsed are
+    # the server's. And it is the larger half of the untrusted code this workflow builds - three
+    # Cargo dependency trees and a `build.rs` per runner - which on a pull request would execute
+    # while the job holds the write-scoped token that only a tag used to produce. Skipping it here
+    # cuts the rehearsal's cost and its blast radius at once, and costs a release nothing: a tag
+    # still builds all three installers, and `publish` still waits for them.
+    if: github.event_name != 'pull_request'
     strategy:
       # Every leg is reported even when one fails: a release with half its installers is a thing to
       # know about in full, not one failure at a time.

@@ -18,7 +18,10 @@
 #   3. `restart` exits 0, the recorded pid CHANGES, and the server answers again. That last pair is
 #      the port race: a `restart` that killed the old server and failed to bind would leave the pid
 #      unchanged, or nothing answering, and both are caught here.
-#   4. `stop` exits 0, the record is gone, and nothing answers any more.
+#   4. `stop` exits 0 and nothing answers any more. What happens to the RECORD is platform-specific
+#      and asserted both ways: on POSIX it is gone, because SIGTERM lets the server take it back; on
+#      Windows there is no SIGTERM, so it must still be there and the NEXT start must sweep it — a
+#      documented limit, and one whose disappearance would be worth knowing about too.
 #
 # Liveness is read from the run-state records (`$SEEDEEP_HOME/servers/<pid>.json`) rather than from
 # what the commands print, for the same reason `status` is only checked for its exit code: the
@@ -130,13 +133,49 @@ echo "lifecycle: restarted — pid $first_pid replaced by $second_pid, still ans
   cat "$WORK/stop.log" >&2
   fail "\`stop\` did not exit 0"
 }
-waited=0
-until [ "$(recorded_pids | grep -c . || true)" = 0 ]; do
-  waited=$((waited + 1))
-  [ "$waited" -lt "$TIMEOUT_S" ] || fail "\`stop\` exited 0 but a run-state record is still there"
-  sleep 1
-done
+# The record going away is asserted only where the product takes it back. `stop` sends SIGTERM and
+# the server's handler removes its own record — but Windows has no SIGTERM, so the runtime terminates
+# the process, the shutdown path never runs, and the file is left for the next start's sweep.
+# `stop-cmd.ts` marks that `// LIMIT:`, and `docs/tray.md` documents the same for `taskkill /F`.
+# Asserting it there was asserting a behaviour seedeep says it does not have, and it is what failed
+# the v0.28.0 release run on both Windows legs while the product was behaving exactly as documented.
+#
+# On Windows the contract is NOT "nothing is knowable" — it is that the record OUTLIVES the process
+# and the NEXT start's sweep clears it (`announce`, which exists so a recycled pid cannot inherit
+# somebody else's record). So the assertion is inverted rather than dropped, and both directions of
+# regression stay visible: a Bun that began delivering SIGTERM would leave those `// LIMIT:` comments
+# stale with nothing to notice, and a broken sweep would pile records up forever on the one platform
+# where the sweep is the only thing that cleans them.
+
+# What must hold everywhere first, and the only part of `stop` a person can observe: nothing answers
+# any more. A stale record is bookkeeping; a server still serving after `stop` is a defect.
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/config" || true)" = 200 ] &&
   fail "\`stop\` exited 0 but the server still answers on $BASE/api/config"
+
+case "${OSTYPE:-}" in
+  msys* | cygwin*)
+    stale=$(recorded_pids | grep -c . || true)
+    [ "$stale" = 1 ] ||
+      fail "on Windows \`stop\` should leave exactly one stale record for the next sweep, found $stale"
+    "$BIN" start --port "$PORT" >"$WORK/start2.log" 2>&1 || {
+      cat "$WORK/start2.log" >&2
+      fail "the \`start\` after a \`stop\` did not exit 0"
+    }
+    answers || fail "the \`start\` after a \`stop\` exited 0 but nothing answers"
+    swept=$(recorded_pids | grep -c . || true)
+    [ "$swept" = 1 ] ||
+      fail "the next \`start\` did not sweep the stale record — $swept records, expected 1"
+    echo "lifecycle: the record outlived \`stop\` (no SIGTERM on Windows) and the next \`start\` swept it"
+    "$BIN" stop --port "$PORT" >>"$WORK/stop.log" 2>&1 || fail "the second \`stop\` did not exit 0"
+    ;;
+  *)
+    waited=0
+    until [ "$(recorded_pids | grep -c . || true)" = 0 ]; do
+      waited=$((waited + 1))
+      [ "$waited" -lt "$TIMEOUT_S" ] || fail "\`stop\` exited 0 but a run-state record is still there"
+      sleep 1
+    done
+    ;;
+esac
 
 echo "lifecycle: OK — start, status, restart and stop all behaved on $BIN"

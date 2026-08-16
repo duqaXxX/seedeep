@@ -4,6 +4,30 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The release gates now rehearse on the pull request that bumps the version, and the Windows
+assertion they got wrong is fixed.** v0.28.0 was tagged, built, and never published: `stop` was
+asserted to remove the server's run-state record, which is true on POSIX and false on Windows —
+there is no SIGTERM there, so the runtime terminates the process, the shutdown path never runs and
+the file waits for the next start's sweep. `stop-cmd.ts` marks it `// LIMIT:` and `docs/tray.md`
+documents the same for `taskkill /F`; the script was asserting a behaviour seedeep says it does not
+have. It now checks the record on POSIX only, and everywhere checks the part a person can observe:
+after `stop`, nothing answers.
+
+The gate behaved correctly throughout — the release stayed a draft, npm was untouched, nobody could
+download anything — but a tag cannot be moved or deleted, so a version number was spent on a
+defective test. `release.yml` therefore also runs on a pull request touching `package.json`: the
+full build and every gate, publishing nothing (all writing steps and both attestations remain
+`if: ref_type == 'tag'`). The tag keeps its own run as a second net, and for the one thing a
+rehearsal cannot prove — there the assets are downloaded from the release, which is how a build that
+was never uploaded gets caught.
+
+**What the burnt run did measure, and it is the answer the job was built for.** One binary
+(`windows-x64`), two runners: **10/10 survived on x64 silicon**, **7/10 under Prism** — deaths at
+t+12s, t+11s, t+11s, `exit 139`, no request ever sent. Three in ten under emulation against the
+three in eight measured by hand on the VM, same timing signature. The `0xC0000005` attribution to
+Prism is confirmed and the x64 binary is cleared on the hardware it ships for. `restart` was
+confirmed on both, and the detached lifecycle ran green on all four POSIX targets.
+
 ## 0.28.0 (2026-08-16)
 
 **Every binary is now RUN, not merely started — and the crash nobody had measured gets a controlled

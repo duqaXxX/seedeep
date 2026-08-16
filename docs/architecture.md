@@ -155,6 +155,23 @@ the binary comes from the release itself, which also proves the upload happened 
 installer was built and never uploaded — and on a manual run it comes from the run's artifact, so
 the whole matrix is provable without cutting a release.
 
+**The gates rehearse before the tag, because a tag cannot be taken back.** The `release tags`
+ruleset forbids moving or deleting one, so a gate that first runs *after* the tag spends a version
+number every time it catches something — v0.28.0 was exactly that: the gate worked, the release
+stayed a draft, nobody could download anything, and the number was burnt anyway. So `release.yml`
+also runs on a **pull request that touches `package.json`**, which is the file a release bumps and
+the only place the version lives. That run builds every executable and puts them through the same
+gates, and publishes nothing: every writing step and both attestations are `if: ref_type == 'tag'`.
+`workflow_dispatch` offers the same rehearsal on demand — this makes it automatic, since the version
+that depended on somebody remembering to run it is the one that got skipped. **The rehearsal builds
+the server and not the tray**: `ci.yml` already compiles the tray's Rust on macOS and Windows and
+runs its tests, so a pull request would only gain the Tauri bundler while paying three Cargo
+dependency trees — and that is also the larger half of the untrusted code this workflow builds, which
+on a pull request executes in a job holding a token only a tag used to produce. A tag still builds
+all three installers, and `publish` still waits for them. The gate on the tag
+stays, as a second net and for the one thing a rehearsal cannot prove: there the assets are
+downloaded *from the release*, which is how a build that was never uploaded gets caught.
+
 **Starting is not surviving, and neither is being started in the foreground.** The check above is
 seconds of work, so a binary that dies at t+11s passes it; and `serve` is not how anybody runs
 seedeep. So each of the six legs goes on to run two more scripts against the same asset:
