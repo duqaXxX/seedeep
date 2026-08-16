@@ -127,6 +127,15 @@ jobs:
 
   tray:
     needs: draft
+    # NOT on the rehearsal. Two reasons that point the same way. It adds nothing a pull request does
+    # not already have: `ci.yml` compiles the tray's Rust on macOS AND Windows and runs `cargo test`
+    # there, so what the rehearsal would add is the Tauri BUNDLER, and the gates being rehearsed are
+    # the server's. And it is the larger half of the untrusted code this workflow builds - three
+    # Cargo dependency trees and a `build.rs` per runner - which on a pull request would execute
+    # while the job holds the write-scoped token that only a tag used to produce. Skipping it here
+    # cuts the rehearsal's cost and its blast radius at once, and costs a release nothing: a tag
+    # still builds all three installers, and `publish` still waits for them.
+    if: github.event_name != 'pull_request'
     strategy:
       # Every leg is reported even when one fails: a release with half its installers is a thing to
       # know about in full, not one failure at a time.

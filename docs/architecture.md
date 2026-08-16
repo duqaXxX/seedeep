@@ -163,7 +163,12 @@ also runs on a **pull request that touches `package.json`**, which is the file a
 the only place the version lives. That run builds every executable and puts them through the same
 gates, and publishes nothing: every writing step and both attestations are `if: ref_type == 'tag'`.
 `workflow_dispatch` offers the same rehearsal on demand — this makes it automatic, since the version
-that depended on somebody remembering to run it is the one that got skipped. The gate on the tag
+that depended on somebody remembering to run it is the one that got skipped. **The rehearsal builds
+the server and not the tray**: `ci.yml` already compiles the tray's Rust on macOS and Windows and
+runs its tests, so a pull request would only gain the Tauri bundler while paying three Cargo
+dependency trees — and that is also the larger half of the untrusted code this workflow builds, which
+on a pull request executes in a job holding a token only a tag used to produce. A tag still builds
+all three installers, and `publish` still waits for them. The gate on the tag
 stays, as a second net and for the one thing a rehearsal cannot prove: there the assets are
 downloaded *from the release*, which is how a build that was never uploaded gets caught.
 

@@ -192,6 +192,17 @@ test('the release gates rehearse on the pull request that bumps the version', ()
   assert.match(triggers, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
 });
 
+// The rehearsal builds the server and not the tray. `ci.yml` already compiles the tray's Rust on
+// macOS and Windows and runs its tests there, so a pull request would only gain the Tauri bundler —
+// while paying three Cargo dependency trees and a `build.rs` per runner, all of it untrusted code
+// executing in a job that carries a write-scoped token. The gates being rehearsed are the server's.
+test('the tray is built for a tag, never for the rehearsal', () => {
+  const tray = job('tray');
+  assert.match(tray.split('strategy:')[0] ?? '', /if: github\.event_name != 'pull_request'/);
+  // And it stays a dependency of publish, so a tag cannot ship a release page missing its installers.
+  assert.match(job('publish'), /needs: \[tray, /);
+});
+
 // A rehearsal must stay a rehearsal: an attestation records, in a PUBLIC transparency log, that a
 // file was built from a commit — doing that for a build nobody ships publishes provenance for an
 // artifact that never existed. Walked per step rather than matched as one regex, for the reason the
