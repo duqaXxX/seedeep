@@ -168,6 +168,22 @@ test('only the emulated leg is allowed to fail, and only its steps say so', () =
   assert.match(windows, /continue-on-error: \$\{\{ matrix\.runner == 'windows-11-arm' \}\}/);
 });
 
+// A tag cannot be moved or deleted, so a gate that first runs AFTER the tag spends a version number
+// every time it catches something — v0.28.0 was exactly that: the gate held the release in a draft,
+// nobody could download anything, and the number was burnt anyway. The rehearsal has to be
+// automatic, because the one that depended on remembering a manual dispatch is the one that was
+// skipped.
+test('the release gates rehearse on the pull request that bumps the version', () => {
+  const triggers = WORKFLOW.slice(0, WORKFLOW.indexOf('\njobs:'));
+  assert.match(triggers, /pull_request:\n\s+paths: \['package\.json'\]/);
+  // And the rehearsal must stay a rehearsal: an attestation on a build nobody ships would put a
+  // provenance record in a public transparency log for an artifact that never existed.
+  const attestations = [
+    ...WORKFLOW.matchAll(/- if: github\.ref_type == 'tag'\n\s+uses: actions\/attest-build-provenance/g),
+  ];
+  assert.equal(attestations.length, 2, 'both attestations stay tag-only');
+});
+
 // The step after a failure is where the second finding lives: a binary that dies on its own is worth
 // driving through the four verbs anyway, in the same run.
 test('a failed survival step does not skip the lifecycle that follows it', () => {

@@ -23,6 +23,23 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  # THE REHEARSAL, on the pull request that bumps the version - because a tag is irreversible. The
+  # `release tags` ruleset forbids moving or deleting one, so a gate that first runs AFTER the tag
+  # spends a version number every time it catches something. That is exactly what v0.28.0 was: the
+  # gate worked, held the release in a draft and let nobody download a thing, and the number was
+  # burnt anyway by an assertion the scripts had wrong. Building and driving the binaries on the
+  # bump's own pull request moves the discovery to before the irreversible step.
+  #
+  # `paths: package.json` because that is the file a release bumps, and it is the one place the
+  # version lives. It also fires on a dependency change, which is not waste - a dependency is
+  # precisely what breaks a compile that `bun test` cannot see.
+  #
+  # NOTHING here publishes: every writing step and both attestations are `if: ref_type == 'tag'`, so
+  # a pull request builds, smokes, survives and drives the executables while touching neither the
+  # repository nor a registry. It is the same rehearsal `workflow_dispatch` offers, made automatic -
+  # a rehearsal that depends on somebody remembering to run it is the one that was skipped.
+  pull_request:
+    paths: ['package.json']
 
 # The draft is created here and the assets are uploaded by each build job.
 permissions:

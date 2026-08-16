@@ -18,7 +18,9 @@
 #   3. `restart` exits 0, the recorded pid CHANGES, and the server answers again. That last pair is
 #      the port race: a `restart` that killed the old server and failed to bind would leave the pid
 #      unchanged, or nothing answering, and both are caught here.
-#   4. `stop` exits 0, the record is gone, and nothing answers any more.
+#   4. `stop` exits 0 and nothing answers any more. The record going away is asserted on POSIX only:
+#      Windows has no SIGTERM, so the server never runs the shutdown path that takes its own record
+#      back and the file waits for the next start's sweep — a documented limit, not a defect.
 #
 # Liveness is read from the run-state records (`$SEEDEEP_HOME/servers/<pid>.json`) rather than from
 # what the commands print, for the same reason `status` is only checked for its exit code: the
@@ -130,12 +132,28 @@ echo "lifecycle: restarted — pid $first_pid replaced by $second_pid, still ans
   cat "$WORK/stop.log" >&2
   fail "\`stop\` did not exit 0"
 }
-waited=0
-until [ "$(recorded_pids | grep -c . || true)" = 0 ]; do
-  waited=$((waited + 1))
-  [ "$waited" -lt "$TIMEOUT_S" ] || fail "\`stop\` exited 0 but a run-state record is still there"
-  sleep 1
-done
+# The record going away is asserted only where the product takes it back. `stop` sends SIGTERM and
+# the server's handler removes its own record — but Windows has no SIGTERM, so the runtime terminates
+# the process, the shutdown path never runs, and the file is left for the next start's sweep.
+# `stop-cmd.ts` marks that `// LIMIT:`, and `docs/tray.md` documents the same for `taskkill /F`.
+# Asserting it there was asserting a behaviour seedeep says it does not have, and it is what failed
+# the v0.28.0 release run on both Windows legs while the product was behaving exactly as documented.
+case "${OSTYPE:-}" in
+  msys* | cygwin*)
+    echo "lifecycle: the run-state record is not checked after \`stop\` — no SIGTERM on Windows, so it outlives the process by design"
+    ;;
+  *)
+    waited=0
+    until [ "$(recorded_pids | grep -c . || true)" = 0 ]; do
+      waited=$((waited + 1))
+      [ "$waited" -lt "$TIMEOUT_S" ] || fail "\`stop\` exited 0 but a run-state record is still there"
+      sleep 1
+    done
+    ;;
+esac
+
+# What must hold on every platform, and the only part of `stop` a person can observe: nothing
+# answers any more. A stale record is bookkeeping; a server still serving after `stop` is a defect.
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/config" || true)" = 200 ] &&
   fail "\`stop\` exited 0 but the server still answers on $BASE/api/config"
 
