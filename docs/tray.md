@@ -16,7 +16,7 @@ Downloading and installing it, the first-launch warnings, and removing it again 
 
 ## Where it lives
 
-```
+```text
 apps/tray/
 ├── ui/                    the popover's HTML/CSS/TS — bundled by Bun into ui/dist/
 │   ├── panel.ts           the entry point: render what Rust reports, send back what a user does
@@ -65,9 +65,8 @@ bundle reports.
 
 **The mark is a lens with no handle** — a thick ring of glass with a trace inside it: three spans
 stepping to the right, the shape the Trace tab draws. It is **drawn, not shipped as image files**
-(`src/icon.rs`): exported assets would be one file per state per size, re-cut by hand whenever the
-mark changes, and no test can say anything about a PNG. The geometry and the reasoning behind every
-constant in it live in that file, next to the code that has to obey them.
+(`src/icon.rs`), because no test can say anything about a PNG. The geometry and the reasoning behind
+every constant live in that file, next to the code that has to obey them.
 
 **The icon is never absent.** An icon that disappears is indistinguishable from an app that
 crashed, so there is no state in which nothing is drawn — including "cannot reach the server",
@@ -90,17 +89,16 @@ client's one standing risk, and that state is the one that says so.
 **Working is the only state that moves, and the stillness of the others is half the message.** A
 turning gap means *something is running, there is nothing for you to do*; amber means *it is your
 turn*. So an approval STOPS the motion: with three sessions working and one stopped on you, the icon
-is amber and still, and the fact that the other two are working is in the panel, which shows every
-session in its band. Waiting outranks working — the icon says the thing you can act on.
+is amber and still, and that the other two are working is in the panel. Waiting outranks working —
+the icon says the thing you can act on.
 
-**Broken outranks all of it.** A session stopped on an approval is healthy and resumes the instant
-it is answered; one whose API call failed has stopped and will not restart by itself. So the red is
-a STATE, not an event: it is set by a call flagged `isApiErrorMessage` and cleared only by the next
-call that reaches a model, never by time. The rule is not the tray's — `is_working` and `needs_you`
-are copies of the server's predicates, while this one is derived once by the reducer and carried in
-the digest's `error` field, so the icon, the panel and the portal's tab strip cannot disagree about
-whether a session is broken. A payload without the field reads as healthy — an older server must not
-paint every session red.
+**Broken outranks all of it**, because a session stopped on an approval resumes the instant it is
+answered while one whose API call failed will not restart by itself. The red is a STATE, not an
+event: set by a call flagged `isApiErrorMessage` and cleared only by the next call that reaches a
+model, never by time. `is_working` and `needs_you` are copies of the server's predicates, while this
+one is derived once by the reducer and carried in the digest's `error` field, so the icon, the panel
+and the portal's tab strip cannot disagree about whether a session is broken. A payload without the
+field reads as healthy — an older server must not paint every session red.
 
 **The turn is 24 frames at 12 fps, one pass every two seconds.** A spinner is read out of the corner
 of the eye, so it is judged on whether the motion is smooth, and the frame COUNT is what buys that
@@ -113,36 +111,34 @@ frame that matters is the one painted LAST.
 Three rules behind that table:
 
 - **The states differ by SHAPE, not only by colour** — struck through, empty glass, a turning gap,
-  heavier bars, plain. Colour alone would fail a colour-blind user and would vanish entirely under a
-  macOS template image. **The one exception is working-vs-waiting**, blue against amber: the pair
-  that survives the common colour-vision deficiencies best. Waiting-vs-broken is the weakest shape
-  difference the icon carries and that is a decision rather than an oversight — what separates them
-  is that waiting draws its bars thicker, and the test that guards it asserts the SHAPE and ignores
-  the colour, demanding the difference be a large fraction of the ink rather than merely non-zero.
-- **The badge says THAT more than one is waiting, never how many.** At 18 pt a digit is three pixels
-  wide, and the only way to give a numeral room is to shrink the mark until the primary signal is
-  what suffers. The exact count is one click away in the panel — which is where the tray sends you
-  for anything it cannot say at a glance.
+  heavier bars, plain — since colour alone would fail a colour-blind user and would vanish entirely
+  under a macOS template image. **The one exception is working-vs-waiting**, blue against amber: the
+  pair that survives the common colour-vision deficiencies best. Waiting-vs-broken is the weakest
+  shape difference the icon carries, and the test that guards it asserts the SHAPE and ignores the
+  colour, demanding the difference be a large fraction of the ink rather than merely non-zero.
+- **The badge says THAT more than one is waiting, never how many.** The only way to give a numeral
+  room at this size is to shrink the mark until the primary signal is what suffers, and the exact
+  count is one click away in the panel — where the tray sends you for anything it cannot say at a
+  glance.
 - **The mark is the same size in every state.** The badge RIDES the glass at the upper right, inside
-  the circle rather than beside it, so it costs the mark no size at all. A mark that resizes as it
-  changes meaning reads as a glitch, so a test asserts the height is identical across every state.
+  the circle rather than beside it, so it costs the mark no size at all; a mark that resizes as it
+  changes meaning reads as a glitch, and a test asserts the height is identical across every state.
 
 ### The development mark
 
 A tray built from a checkout carries **a small dot on the glass, lower LEFT**, in every state. It
 says which build you are looking at, and nothing about the sessions. It rides the glass from the
-INSIDE — diagonally opposite the badge and deliberately **smaller** than it, so at 18 pt the two are
-told apart by size as well as by place: the badge means *more than one session is waiting* and
-changes while you watch, this one never changes at all.
+INSIDE — diagonally opposite the badge and deliberately **smaller** than it, so the two are told
+apart by size as well as by place: the badge changes while you watch, this one never changes at all.
 
 **The signal is `tauri::is_dev()`**, which is `!cfg!(feature = "custom-protocol")` — a feature
-`tauri build` turns on and `tauri dev` does not. So it is a fact about how the binary was produced,
+`tauri build` turns on and `tauri dev` does not, so it is a fact about how the binary was produced,
 decided at compile time and free at runtime. Deliberately NOT `SEEDEEP_HOME`: a user is entitled to
 move their state without their tray calling itself a development build.
 
 The portal has the same mark for the same reason, on its own signal
-([`configuration.md`](configuration.md#which-build-is-answering)) — the two seedeeps on a machine watch
-the *same* sessions, so nothing in the content ever tells them apart.
+([`configuration.md`](configuration.md#which-build-is-answering)) — the two seedeeps on a machine
+watch the *same* sessions, so nothing in the content ever tells them apart.
 
 ## The popover
 
@@ -156,11 +152,10 @@ not ship through: the macOS deliverable is a DMG.
 
 **A tick never redraws a screen that has not changed** (`ui/surface.ts`). Every surface except the
 bands IS its status — nothing on a connection screen moves on the server's clock — so rebuilding one
-each second is not merely wasted work: it destroys what the DOM is holding for the user, and it cost
-the tray its URL field, where every keystroke was followed within a second by a fresh `<input>`.
-`Surface.put` draws unconditionally and forgets the key; `Surface.putIfChanged` draws only on a
-different key. The forgetting is load-bearing: "Connecting…" is drawn unkeyed, so without it a
-connect that failed back to the same status would be skipped and the panel would sit on
+each second is not merely wasted work: it destroys what the DOM is holding for the user, a half-typed
+URL included. `Surface.put` draws unconditionally and forgets the key; `Surface.putIfChanged` draws
+only on a different key. The forgetting is load-bearing: "Connecting…" is drawn unkeyed, so without
+it a connect that failed back to the same status would be skipped and the panel would sit on
 "Connecting…" for good.
 
 Left-click **toggles** a chromeless window anchored on **the icon's actual rectangle**, which the
@@ -179,9 +174,9 @@ sit in the lower half, where anchoring below it puts the panel off-screen and co
 Two consequences worth naming. The anchored edge is the icon's, not the window's: growing downward
 the top never moves, while growing upward the panel has to move as well as grow. And the monitor is
 looked up from the ICON's point, never the window's — the window may be off the screen, which is the
-state this repairs. `panel_geometry` is pure and carries the tests, including the one that holds the
-macOS behaviour still and the two that hold the inverted range in each direction: `clamp` panics on
-one, and a tray that panics is a tray that disappears.
+state this repairs. `panel_geometry` is pure and carries the tests, including the two that hold the
+inverted range in each direction: `clamp` panics on one, and a tray that panics is a tray that
+disappears.
 
 It also closes when it loses focus. A window with no title bar has no close button, so clicking
 anywhere else *is* the dismissal — the way a menu behaves. **Both dismissals end the app's
@@ -203,12 +198,10 @@ it. After every render the panel measures its own natural height and hands it to
 (`main.rs`), which clamps it and answers with what it applied:
 
 - Measuring needs the height **freed for one synchronous block** (`.panel--measure`). The panel is a
-  flex column whose list fills whatever room it is given, so with the window's height in force it
-  can only ever measure the window. Nothing is painted between the two writes, so the class is
-  invisible.
-- The measurement is the **rect, never `scrollHeight`**. That one answers in whole pixels, rounding a
-  fractional surface down — so the window was handed a number smaller than its content and clipped
-  the last row by a fraction of a pixel, every time.
+  flex column whose list fills whatever room it is given, so with the window's height in force it can
+  only ever measure the window. Nothing is painted between the two writes, so the class is invisible.
+- The measurement is the **rect, never `scrollHeight`**, which answers in whole pixels and rounds a
+  fractional surface down — a number smaller than the content clips the last row.
 - The clamp is a **pure function** (`panel_height`, unit-tested) because neither of its failure modes
   can be seen from an SSH shell: a window taller than the screen puts the bottom of the list out of
   reach — a popover cannot be dragged — and a window of zero height cannot be clicked to recover.
@@ -227,17 +220,16 @@ transcript, because the tray has no reducer — what it derives is presentation:
 is in, and how long it has been there.
 
 **Only interactive sessions, and the filter is not in the panel.** A headless run (`entrypoint`
-`sdk-cli`/`sdk-py`) is not a session anybody is sitting at: as a row it is one nobody can act on, and
-as an icon it says somebody is working when nobody is. The rule is the browser picker's
-(`client/sessions.ts`, `isAutomated`) and it is applied **where the digest enters the tray**
-(`client.rs`, `only_interactive`), not per surface — so the rows, the icon and the notifications all
-read the same list. An entrypoint the tray does not recognise, and a missing one, are **kept**: the
-two failure modes are not symmetric — one extra row is ignored, while a session hidden because a
-newer Claude Code renamed its entrypoint is one the tray silently stops watching. A payload that is
-not a list passes through untouched, so a schema change still lands in *Unreachable* rather than in
-"the machine is idle". The browser portal is unchanged: it keeps its Human/Automated tabs.
+`sdk-cli`/`sdk-py`) is not a session anybody is sitting at. The rule is the browser picker's
+(`client/sessions.ts`, `isAutomated`), applied **where the digest enters the tray** (`client.rs`,
+`only_interactive`), so the rows, the icon and the notifications read one list. An unrecognised
+entrypoint, and a missing one, are **kept** — a newer Claude Code renaming one must not make the tray
+silently stop watching — and a payload that is not a list passes through untouched, landing in
+*Unreachable* rather than in "the machine is idle".
 
-**Four bands, in one order** (`ui/bands.ts`), urgency descending:
+**Four bands, in one order** (`ui/bands.ts`), urgency descending. A working row and an idle row are
+the same shape, so a session does not change form under the eye when it stops; what differs is which
+parts have anything to say.
 
 | Band | What a session shows |
 | -- | -- |
@@ -246,110 +238,60 @@ not a list passes through untouched, so a schema change still lands in *Unreacha
 | **Working** | project · subject, the turn's prompt quoted, **NOW** — the one thing to say about the turn — **how many background commands it has launched** and any **still running**, **how many subagents it has launched**, the agents at work, and the context block, which carries model · effort |
 | **Idle** | the same, minus what a settled session does not have: project · subject · how long it has been quiet, **NOW**, **how many background commands it launched** and any **still running**, **how many subagents it launched**, and the context block |
 
-`turn.state` carries the same liveness the panel draws (`turnIsWorking`): the LAST turn of a session
-whose process reports `busy` (never `shell` — that names a turn already over) is `live` even while
-its transcript says nothing, because Claude Code writes a thinking block only when it closes.
-`interrupted` is never overwritten.
-
-**NOW is one rule, computed once, drawn by both surfaces.** `turn.now` in the digest is
-`nowLine`'s answer (`core/activity-line.ts`) — the SAME function the browser's NOW panel calls, on
-the same inputs. Its precedence: a block on the user first, then what the turn has DONE since it
-last spoke, then the agent's own words — and, when a running turn has none of that, `working`. It
-reports which voice is speaking, and the row draws accordingly:
+**NOW is one rule, computed once, drawn by both surfaces.** `turn.now` in the digest is `nowLine`'s
+answer (`core/activity-line.ts`), the SAME function the browser's NOW panel calls on the same inputs:
+a block on the user first, then what the turn has DONE since it last spoke, then the agent's own
+words — and, when a running turn has none of that, `working`. It reports which voice is speaking:
 
 | `kind` | Label | Whose voice |
 | -- | -- | -- |
-| `waiting` | `waiting for you` | seedeep — the session is stopped on you (the *Needs you* band draws its own richer row instead, see below) |
+| `waiting` | `waiting for you` | seedeep — the session is stopped on you (the *Needs you* band draws its own richer row instead) |
 | `activity` | `now` | seedeep counting: *Read 12 files, ran 3 shell commands* |
 | `intent` | `now` on a live turn, `intent` on one that was stopped | the agent's, mid-turn |
 | `output` | `output` | the agent's, its final answer |
-| `working` | `now` | seedeep — the turn is running with nothing of its own to quote: *`/code-review` is running in the background*, *`/code-review` returned — working on the result*, *Answering — no tools used, nothing said yet*, or *Started — no output yet* |
+| `working` | `now` | seedeep — the turn is running with nothing of its own to quote: *`/code-review` is running in the background*, *Answering — no tools used, nothing said yet*, or *Started — no output yet* |
 
-The agent's words are italic and seedeep's counting is not — the portal's `.nowtext.plain`
-distinction, kept here. Everything is labelled because the line above is already a quote (the
-prompt): two italic paragraphs with nothing between them read as one. The server sends the text
-**markdown-stripped and cut to 200 characters, in that order** — the tray has no renderer and no
-modal, so a raw `**` would reach the user as two asterisks.
+The agent's words are italic and seedeep's counting is not; both are labelled, because the line above
+is already a quote. The server sends the text **markdown-stripped and cut to 200 characters, in that
+order** — the tray has no renderer, so a raw `**` would reach the user as two asterisks.
 
-**The word holds NOW for as long as it takes to READ it**, then the count takes over — floored at
-3 s and capped by the two-line clamp. The hold is counted from the moment the server SAW the word
-(`live-trees.ts` stamps it), never from the line's own timestamp: Claude Code stamps a text block
-when it starts generating it and flushes the line seconds later, so a hold counted from the stamp is
-half spent before there is anything to show.
+**A word holds NOW for as long as it takes to READ it**, floored at 3 s and capped by the two-line
+clamp, and then the count takes over. The hold runs from the moment the server SAW the word
+(`live-trees.ts` stamps it), never from the line's own timestamp, and **only a word that ARRIVES
+while the server is watching has a sighting** — one first seen more than 60 s later earns no hold, so
+a row the tray has just discovered shows what the turn has DONE instead of replaying an old line.
 
-**Only a word that ARRIVES while the server is watching has a sighting.** What the seed reads off the
-file does not: it is already on disk and has already been on screen. Without that rule every restart
-of the server hands the row back to a narration the reader had finished with. A word with no sighting
-earns no hold, so the row shows what the turn has DONE — which is also why a session the tray has
-only just discovered shows its work rather than replaying an old line as news. A word first seen more
-than 60 s after it was written is treated the same way.
+The rest of a row, in the order it is drawn:
 
-**Model · effort ride on the CONTEXT line**: `Context 232.5k / 1.0M · Opus 5 · high · 23%` fits one
-line at the panel's 392 px. The pair belongs there for a reason beyond the space — the window in the
-denominator is the model's, so the model is what the figure is measured against. The context block is
-labelled and spells the figure out in the portal's own wording and units, so the two surfaces state
-one fact one way; a bare `34%` never said what it measured. What the portal's card also shows and
-this does not is the SPLIT of the fill — at 392 px a three-colour bar is a monochrome bar plus a
-legend.
-
-**The *Needs you* band keeps its own row.** NOW reports the block (`kind: 'waiting'`) and that band
-does not draw it: it shows the request VERBATIM, with the command on its own line in monospace,
-because it is the one band whose purpose is to let the user answer without going to the terminal —
-and *"a tool is waiting"* does not tell them whether to say yes.
-
-A working row and an idle row are the same shape, so a session does not change form under the eye
-when it stops; what differs is which parts have anything to say. An idle session usually has no
-activity line, which is why "where it stopped" is normally the agent's own words — and where the turn
-did work after its last word, the row reads that count instead. Effort is worth showing: Claude Code
-has written it on the assistant line's root since 2.1.212. An empty list means *the transcript does
-not say*, which is never rendered as a dash.
-
-**A background command gets a line of its own, in three of the four bands.** `● Start the dev server   4m 12s` —
-monospace because it is a command, an **accent** dot because in this panel that colour means one
-thing (at work: the Working row's own border is accent, so is the agent's `◇`, so is the context
-bar), and the age on the right because between its launch and its notification that is the only
-thing about it that changes. What tells a command from an agent is the SHAPE, `●` against `◇`; amber
-is spent on ***Needs you*** in three other places, and one hue cannot mean both *something is
-running* and *you are blocked* on a surface read at the edge of vision. It has no model and no
-context of its own, so it carries none of what an agent's line does. It is named by what the launch
-called it (Claude Code's own `description`), which is also the name Claude Code quotes back when the
-command ends — one command must not have two names on two surfaces.
-
-It is drawn in the *Working* and *Idle* bands — the second is the case it exists for, a row that has
-stopped talking and is still waiting on something it started — and on the ***Needs you*** row too,
-the only line that band's deliberately spare layout has gained: it can change the answer, since
-someone about to refuse a command *because the server must already be up* is reading the line that
-says whether it is. **Not** on the *Broken* row, which is about the model call that ended the
-session: a shell command is not what that row is answering.
-
-What ends such a line is the command's **notification** and nothing else, so a line can outlive the
-command it names for as long as the session lives. The alternative is a timeout, which would be a
-number invented by seedeep declaring finished something nothing declared finished.
-
-**A command that has ENDED gets no line at all — it gets counted.** `Commands  4 launched`, above the
-running ones, in the same shape and the same two bands as the subagent total. What that command did,
-what it exited with and how long it ran is the portal's, one click away on the row. The count is what
-makes the silence honest — without it, a session that ran four commands and was told about all four
-would show nothing at all.
-
-**`Subagents 12 launched` — on *Working* and on *Idle*.** The agent lines above it are what is at
-work THIS SECOND, so a session that fanned out twelve reviewers and got them all back showed nothing
-at all, and an idle row — the state a session spends most of its life in — could never mention them.
-`launched` is the session's whole history and survives the return. The word is not decoration: on
-*Working* this line sits directly above the running agents, and a bare `12` over three rows reads as
-*12 running*. A session that never spawned one gets no line at all.
-
-The count is the server's (`subagents.launched`), never a length of the list beside it, and it obeys
-two rules: a **Workflow run contributes its MEMBERS** — answering `1` for a fan-out of a hundred
-would be false — and a **launch with no trace of itself is not counted** (`hasStarted`,
-[`architecture.md`](architecture.md)), while one that reached a terminal state is counted whatever it
-left behind. A **Workflow run takes one line** however many agents it is running, the browser's Graph
-rule applied here for the same reason: a hundred member rows would be the whole panel.
-
-**A row's state is a mark down its left edge, never a tinted fill.** One language for the whole
-panel, three states: amber for a session stopped on you, accent for one at work, nothing for one at
-rest. Idle is left unmarked and deliberately **not** dimmed: `opacity` already means `ended` here,
-and one signal cannot carry two meanings.
+- **The context line carries model · effort**: `Context 232.5k / 1.0M · Opus 5 · high · 23%`, spelled
+  out in the portal's own wording and units, where a bare `34%` never said what it measured.
+- **The *Needs you* band keeps its own row.** NOW reports the block (`kind: 'waiting'`) and that band
+  draws the request instead: it is the one band whose purpose is to let the user answer without going
+  to the terminal, and *"a tool is waiting"* does not tell them whether to say yes.
+- **A background command gets a line of its own**, `● Start the dev server   4m 12s` — monospace
+  because it is a command, an **accent** dot because in this panel that colour means *at work*, and
+  the age on the right because between its launch and its notification that is the only thing about
+  it that changes. What tells a command from an agent is the SHAPE, `●` against `◇`, amber being
+  spent on ***Needs you***. It is named by what the launch called it (Claude Code's own
+  `description`), the same name Claude Code quotes back when the command ends.
+- **In three of the four bands**: *Working*; *Idle*, the case it exists for, a row that has stopped
+  talking and is still waiting on something it started; and the ***Needs you*** row, where it can
+  change the answer, since someone about to refuse a command *because the server must already be up*
+  is reading the line that says whether it is. **Not** on *Broken*, which is about the model call that
+  ended the session. What ends such a line is the command's **notification** and nothing else, so it
+  can outlive the command it names for as long as the session lives.
+- **A command that has ENDED gets no line at all — it gets counted.** `Commands  4 launched`, above
+  the running ones, in the same shape and the same two bands as the subagent total; what it did and
+  what it exited with is the portal's, one click away on the row.
+- **`Subagents 12 launched` — on *Working* and on *Idle*.** The lines above it are what is at work
+  THIS SECOND, so `launched`, the session's whole history, is what lets an idle row mention subagents
+  at all; a session that never spawned one gets no line. The count is the server's
+  (`subagents.launched`), never a length of the list beside it: a **Workflow run contributes its
+  MEMBERS** and takes **one line** however many agents it runs, and a **launch with no trace of
+  itself is not counted** (`hasStarted`, [`architecture.md`](architecture.md)).
+- **A row's state is a mark down its left edge, never a tinted fill**: amber for a session stopped on
+  you, accent for one at work, nothing for one at rest. Idle is deliberately **not** dimmed, since
+  `opacity` already means `ended` here.
 
 Rules that are not preferences:
 
@@ -358,136 +300,86 @@ Rules that are not preferences:
   makes a click land on the session the user was looking at rather than on the one that took its
   place.
 - **No session is collapsed to nothing.** Every row in every band names its project.
-- **No cap.** Every live session is drawn and the bands scroll. A cap sized on one machine's logs
-  would hide sessions rather than bound a payload; the cost is bounded by the poll instead.
+- **No cap.** Every live session is drawn and the bands scroll; the cost is bounded by the poll.
 - **An empty band is not drawn.** Three headings over one row would spend a 560 px popover on labels.
+- **A session that ends while the panel is open stays**, dimmed and marked `ended`, until the panel
+  closes — the server drops it from the digest immediately, and the client is the side that knows
+  somebody is looking at it. It keeps its own last entry, so it keeps its band: moving it to *Idle*
+  on the way out would be the list moving. Its durations freeze at the instant the tray noticed,
+  because "stopped 6m 20s ago" about a process that no longer exists asserts what it cannot know.
+- **"While the panel is open" is Rust's answer, not the webview's**, and it rides on every reading as
+  `open`; the webview keeps running while the window is hidden, so a rule built on a `blur` event
+  would keep a session that ended overnight on screen for the next person to open the popover.
+  **While nobody is looking the panel is a mirror:** neither the retention nor the stable order means
+  anything then, and both start fresh on the next open (`fold` in `bands.ts`).
 
-**A session that ends while the panel is open stays**, dimmed and marked `ended`, until the panel
-closes — the server drops it from the digest immediately, and the client is the side that knows
-somebody is looking at it. It keeps its own last entry, so it also keeps its band: moving it to
-*Idle* on the way out would be the list moving. Its durations freeze at the instant the tray noticed:
-"stopped 6m 20s ago" about a process that no longer exists is the panel asserting what it cannot know.
-
-**"While the panel is open" is Rust's answer, not the webview's**, and it rides on every reading as
-`open`. The webview has no reliable one of its own — it keeps running while the window is hidden — so
-a rule built on a `blur` event would have kept a session that ended overnight on screen, marked
-`ended`, for the next person to open the popover. **While nobody is looking the panel is a mirror:**
-neither the retention nor the stable order means anything then, and both start fresh from the
-server's list on the next open (`fold` in `bands.ts`).
+**A server not honouring its own configuration** gets a line above the bands: *"This server started
+before config.json was last changed."* It is the server's own verdict (`restart_pending` on
+`/api/config`) and never the tray's, since the flags a process was started with are not readable from
+another one, and a server too old to carry the field reads as nothing pending. It is neither a band
+nor an icon state — both are about sessions, this is about the process — and it is asked **once per
+popover opening**, the value moving only when a human edits that file.
 
 ### Into the portal
 
 **Clicking a session opens it in the browser portal**, at `<portal>/?session=<id>`, which the portal
 reads to open and activate that session's tab ([`architecture.md`](architecture.md)). The tray never
 replicates the portal and never approves. The URL is built and opened in Rust, because it carries the
-token and Rust is the only side that holds one.
-
-**The portal ITSELF is one click away too**, at `<portal>/?token=…` — no session named, the home the
-browser would land on. It is reachable from two places, and both call the same command:
-
-- **The footer's address**, on every connected screen, the bands and the settings alike. It is here
-  and not only in the empty state because an affordance offered while nothing is running and
-  withdrawn the moment a session starts is the harder thing to explain, and because the address was
-  already on that line, inert, naming exactly the thing a click opens. It is not link-coloured: the
-  quietest row in the panel does not become the loudest. The hover underline is what answers *is this
-  a button*.
-- **A button in the empty state**, *Open seedeep in the browser*. The one screen with room for an
-  invitation and nothing else to do on it. Outlined, not the connect screen's filled Start — nothing
-  is wrong here and nothing is being decided.
-
-A query is only written when it has something to carry: a loopback server with no token opens at the
+token. **The portal ITSELF is one click away too**, at `<portal>/?token=…`, from two places calling
+that same command: the footer's address on every connected screen, and a button in the empty state.
+A query is only written when it has something to carry — a loopback server with no token opens at the
 bare `<portal>/`, never `<portal>/?`.
 
-### What a broken band is, exactly
+### What each band is, exactly
 
-The digest's `error` being non-null, and nothing else. The tray holds **no copy of this rule** — it
-is the one band that reads an answer instead of re-deriving it, because the fact only exists
-downstream of the parser and the tray has no reducer. The server sets it on any call flagged
-`isApiErrorMessage` and clears it on the next call that reaches a model; `error.agentId` names a
-subagent whose call failed, which the row says out loud because a fan-out that lost a worker and a
-session that stopped call for different reactions.
+- **Broken is the digest's `error` being non-null, and nothing else** — the one band that reads an
+  answer instead of re-deriving it, because the fact exists only downstream of the parser. The server
+  sets it on any call flagged `isApiErrorMessage` and clears it on the next call that reaches a
+  model; `error.agentId` names a subagent whose call failed, which the row says out loud because a
+  fan-out that lost a worker and a session that stopped call for different reactions. It is read
+  **first**, above the wait, so a red icon never sends you to a panel where that session sits under
+  *Idle*.
+- **Needs you is not `status === 'waiting'`.** Claude Code writes that for **every** open dialog, the
+  model picker included, so the raw status would file "the user opened a menu" under *Needs you*. The
+  rule is the server's own (`client/sessions.ts`, `pendingInput`): the two labels `permission prompt`
+  and `input needed`, and **an unrecognised label is deliberately not a wait** — a band that cries
+  wolf is ignored on the day it is right.
+- **Working is not `status === 'busy'` either.** Claude Code writes **`shell`** while a command the
+  session launched in the background is still running and the turn itself is over, so the value
+  travels raw and `isWorking` (`core/types.ts`) is the rule: the icon stays lit for as long as the
+  command runs, and the "Finished" notification fires when the command really ends. A value nobody
+  has seen yet still becomes `null`, and a session with no status is filed under *Idle* on purpose,
+  because a band is a claim.
 
-It is read **first**, above the wait, and the panel's order is the icon's for a reason: a red icon
-that sent you to a panel where the broken session was filed under *Idle* would be the two surfaces
-disagreeing about what just happened.
-
-### What a waiting band is, exactly
-
-Not `status === 'waiting'`. Claude Code writes that for **every** open dialog, the model picker
-included, so the raw status would file "the user opened a menu" under *Needs you* and turn the icon
-amber with it. The rule is the server's own (`client/sessions.ts`, `pendingInput`): the two labels
-`permission prompt` and `input needed`, and **an unrecognised label is deliberately not a wait** —
-a band that cries wolf is ignored on the day it is right.
-
-That rule exists in **three** copies — the server's, the panel's (`bands.ts`), and Rust's
+The last two exist in **three** copies — the server's, the panel's (`bands.ts`) and Rust's
 (`poll.rs`, for the icon's count) — because the tray links no seedeep code and Rust cannot ask a
-webview. Each copy is pinned to the server's by a test that enumerates every label Claude Code
-writes. Adding a fourth reader means adding the fourth test.
-
-### What a working band is, exactly
-
-Not `status === 'busy'` either. Claude Code writes **`shell`** while a command the session launched
-in the background is still running and the turn itself is over. seedeep did not know the word: the
-server's status chain dropped anything unrecognised to `null`, and a session with no status is filed
-under *Idle* on purpose (a band is a claim) — so a session with work still running read as idle and
-jumped back to *Working* when it finished. The value now travels raw and `isWorking`
-(`core/types.ts`) is the rule, in the same three copies and pinned by the same kind of test.
-
-Two consequences worth stating: the icon stays lit for as long as the command runs, and the
-**"Finished" notification no longer fires at the end of the turn** — it fires when the command
-really ends, which is the moment the session becomes the user's again.
-
-A value nobody has seen yet still becomes `null`. The vocabulary is Claude Code's and has already
-grown once; the cost of that caution is one release reading a new state as "no claim", against the
-cost of guessing it wrong.
+webview. Each is pinned to the server's by a test enumerating every label Claude Code writes; a
+fourth reader means a fourth test.
 
 ### The poll
 
 **1 s while the panel is open, 5 s while it is closed** (`OPEN` and `CLOSED` in `poll.rs`), and the
-loop lives in **Rust**, not in the panel. Two reasons, and the second is the one that decides it: the
-icon has to be right *before* anyone opens the panel, and a hidden window's timers are throttled by
-the platform. So the clock runs whether or not a window exists, sets the icon from every reading, and
-pushes the same reading to the panel when one is listening — one reading, so the rows and the icon
-can never disagree.
-
-Every read after the first is a **conditional GET**: the server tags every response
-(`sendCacheable`), so an unchanged digest costs a 304 and no body. The discovery's own request cannot
-be conditional — it has to see a digest to know it is talking to a seedeep.
-
-One reading is one payload — `{ status, entries, open }` — produced in exactly one place
-(`Poller::tick`), so the `tick` command and the pushed event cannot be different shapes of the same
-fact. The icon, the rows and the notification all come off that same reading in the same iteration of
-the loop.
-
-### A server not honouring its own configuration
-
-Above the bands, when the connected server is bound to a port, host or certificate name
-`config.json` no longer asks for: *"This server started before config.json was last changed."* It is
-the server's own verdict (`restart_pending` on `/api/config`) and never the tray's — the answer
-depends on the flags and the environment that process was started with, which are not readable from
-another process, let alone from another machine. A server too old to carry the field reads as
-nothing pending, because the tray states what it was told and never what it inferred.
-
-**Not a band, and not an icon state.** A band is a session and the icon summarises sessions; this is
-a property of the process, and giving it either would have said "a session needs you" about
-something no session is doing.
-
-It is asked **once per popover opening** — on the edge, not on the poll. The value moves only when a
-human edits that file or saves the portal's panel, so the click that opens the popover is both the
-moment it can have changed and the moment it is read.
+loop lives in **Rust**, not in the panel: the icon has to be right *before* anyone opens the panel,
+and a hidden window's timers are throttled by the platform. The clock runs whether or not a window
+exists, sets the icon from every reading, and pushes the same reading to the panel when one is
+listening — one reading, so the rows and the icon can never disagree. That payload is
+`{ status, entries, open }`, produced in exactly one place (`Poller::tick`). Every read after the
+first is a **conditional GET** (`sendCacheable`), so an unchanged digest costs a 304 and no body,
+while the discovery's own request cannot be conditional — it has to see a digest to know it is
+talking to a seedeep.
 
 ## Reaching the server
 
 Everything the tray knows arrives through one Rust module and one endpoint. **The webview never
 fetches**, and that is not a style choice: Tauri's JS HTTP API can only *disable* certificate
-verification (`acceptInvalidCerts`), never pin — and disabling it would void the reason the server
-has TLS at all. So `src/client.rs` owns the client, `src/pin.rs` owns the verifier, and the panel
-reaches all of it through commands: `tick` for a reading, `look_again` to re-run discovery, `connect`
-and `trust` for the two answers only a user can give, `open_session` and `open_portal` to hand a
-session or the portal to the browser, `server_version` / `restart_pending` / `update_view` /
-`start_server` / `stop_server` for what the settings surface shows and does, and `test_notification`
-for the one check that has to leave the app. No command reads or writes a notification switch: those
-are the server's, and the panel that sets them is the portal's ([Notifications](#notifications)).
+verification (`acceptInvalidCerts`), never pin, and disabling it would void the reason the server has
+TLS at all. So `src/client.rs` owns the client, `src/pin.rs` owns the verifier, and the panel reaches
+all of it through commands: `tick` for a reading, `look_again` to re-run discovery, `connect` and
+`trust` for the two answers only a user can give, `open_session` and `open_portal` to hand a session
+or the portal to the browser, `server_version` / `restart_pending` / `update_view` / `start_server` /
+`stop_server` for what the settings surface shows and does, and `test_notification` for the one check
+that has to leave the app. No command reads or writes a notification switch: those are the server's,
+set from the portal ([Notifications](#notifications)).
 
 ### The three cases, and the one that is not obvious
 
@@ -501,27 +393,25 @@ are the server's, and the panel that sets them is the portal's ([Notifications](
 `<seedeep home>/config.json` and connects itself, and three things make that legitimate rather than
 convenient:
 
-- **A live record has already proved the server is here.** Its pid is one this kernel knows. That is
-  the same proof Stop relies on — and the tray trusts it enough to send that pid a SIGTERM, which is
-  a great deal more than reading a file.
+- **A live record has already proved the server is here**, with a pid this kernel knows — the same
+  proof Stop relies on when it sends that pid a SIGTERM, which is a great deal more than reading a
+  file.
 - **No privilege boundary is crossed.** `config.json` is `0600` and belongs to the user the tray runs
   as; anything learned there, that user's own shell can `cat`.
-- **The fingerprint comes from the certificate FILE, not from the handshake.** Pinning exists so an
-  identity presented over the wire is confirmed against something else, and here that something else
-  is the file the server generated it in.
+- **The fingerprint comes from the certificate FILE, not from the handshake**, so the identity
+  presented over the wire is still confirmed against something else.
 
 Nothing is stored: the config is the source of truth and is re-read whenever nothing is in the store,
 so persisting would only put a second copy of a secret on disk. When there is nothing to read — no
-config, or a `SEEDEEP_HOME` the tray cannot see — the panel asks for the URL as before.
+config, or a `SEEDEEP_HOME` the tray cannot see — the panel asks for the URL.
 
 **"Any port" is the record's doing.** With nothing stored, the tray reads
 `<seedeep home>/servers/*.json` — where every running server writes the address it answers on — and
-tries those before falling back to guessing `44842`. Until it did, `seedeep --port 9000` left the
-panel saying there was nothing to connect to. Two rules keep that from being a lottery:
+tries those before falling back to guessing `44842`, which is what makes `seedeep --port 9000`
+reachable with nothing to paste. Two rules keep that from being a lottery:
 
-- **The default port wins, then the lowest.** `read_dir` has no order, so with two records under one
-  home which one the tray adopted depended on the filesystem. Sorting keeps the capability purely
-  additive: the records decide only where the guess used to find nothing at all.
+- **The default port wins, then the lowest.** `read_dir` has no order, so without sorting, which of
+  two records under one home the tray adopts is the filesystem's choice.
 - **Only a plaintext record is adopted on sight.** Nothing is pinned when the tray tries an announced
   address, so an `https://` one would be trusted with no fingerprint — the confirmation the *paste a
   URL* path refuses to skip.
@@ -538,12 +428,12 @@ a `?token=` would land in the server's own request log and in shell history.
 
 ### Trust on first use, and what is deliberately not checked
 
-The first handshake **learns** the leaf certificate's SHA-256 and stores nothing. The panel shows
-it whole — all 32 bytes, because an abbreviated hash teaches the habit of comparing the first
-three groups, which is not a comparison — and asks for it to be confirmed against the value the
-server prints on every start and shows in Settings → TLS. Only then is it stored, and only then
-does the tray call itself connected: `trust` re-connects with the pin in force, so "connected" is
-never a claim inherited from the learning mode that produced the value.
+The first handshake **learns** the leaf certificate's SHA-256 and stores nothing. The panel shows it
+whole — all 32 bytes, because an abbreviated hash teaches the habit of comparing the first three
+groups, which is not a comparison — and asks for it to be confirmed against the value the server
+prints on every start and shows in Settings → TLS. Only then is it stored, and only then does the
+tray call itself connected: `trust` re-connects with the pin in force, so "connected" is never a
+claim inherited from the learning mode.
 
 Once pinned, that hash is the server's identity. **Nothing else about the certificate is
 checked** — not the chain, not the hostname, not the expiry — and each omission is deliberate:
@@ -555,12 +445,10 @@ checked** — not the chain, not the hostname, not the expiry — and each omiss
   security gain, because what is being asserted is the key, not the date.
 
 A pin is refused on the two values, not on the error text rustls happens to produce, so how that
-message is worded cannot change what the tray concludes.
-
-A replaced certificate is a normal event — the server regenerates one when its `commonName` no
-longer matches, and `~/.seedeep` can be deleted. So the refusal is recoverable in one confirmation:
-**Trust the new certificate**, next to the old value for comparison. Never a silent re-pin, and never
-a dead end that requires editing a file by hand.
+message is worded cannot change what the tray concludes. A replaced certificate is a normal event — the server regenerates one when its `commonName` no longer
+matches, and `~/.seedeep` can be deleted — so the refusal is recoverable in one confirmation: **Trust
+the new certificate**, next to the old value for comparison. Never a silent re-pin, and never a dead
+end that requires editing a file by hand.
 
 ### What the panel says
 
@@ -574,29 +462,27 @@ a dead end that requires editing a file by hand.
 | **Not answering** | A stored server that is down. The reason comes from Rust, which is the only side that knows whether the connection was REFUSED (nothing listening) or simply never answered (a machine asleep) — the panel adds no guess of its own. The connection is kept: forgetting it would ask for a URL the tray already has. |
 | **Looking / Connecting** | While an answer is being waited for. Shown for an action the USER took — the first open, a pasted URL, a retry — and deliberately NOT for the automatic refresh, so a screen that already says something true does not blink every time the popover is reopened. It carries no controls at all, or it would read as a screen waiting on the user. |
 
-Every state whose only control accepts something also offers **Use a different URL**. A decision
-with one button is not a decision, and a panel with no exit is one a user has to quit the app to
-escape.
+Every state whose only control accepts something also offers **Use a different URL**: a decision with
+one button is not a decision, and a panel with no exit is one a user has to quit the app to escape.
+The waiting screen exists because the first open is the slow one — a stored server that is asleep
+takes seconds to fail, and the first tick can be a whole poll interval away, so without it the
+panel's first paint is a blank rectangle.
 
-**The field it opens is a VIEW, not a status** (`view === 'url'` in `ui/panel.ts`), for the one
-reason that matters: a status is what the next tick overwrites. As a view it obeys the same rule the
-settings screen does — readings keep arriving and are kept, only the redraw is withheld, so what is
-behind the field is current the moment it ends. It ends on **closing the popover** (the mirror
-rule — a half-typed address is not what the next click on the icon shows), or on the user being
-ANSWERED: a URL that connects, a retry, a start. A URL that was refused keeps the field up with the
-reason under it, because that address is what has to be corrected.
-
-The waiting screen exists because the first open is the slow one: a stored server that is asleep
-takes seconds to fail, and the first tick can be a whole poll interval away. Without it the panel's
-first paint was a blank 392×560 rectangle.
+**The field it opens is a VIEW, not a status** (`view === 'url'` in `ui/panel.ts`), because a status
+is what the next tick overwrites. As a view it obeys the same rule the settings screen does —
+readings keep arriving and are kept, only the redraw is withheld, so what is behind the field is
+current the moment it ends. It ends on **closing the popover** (the mirror rule — a half-typed
+address is not what the next click on the icon shows), or on the user being ANSWERED: a URL that
+connects, a retry, a start. A URL that was refused keeps the field up with the reason under it,
+because that address is what has to be corrected.
 
 ### Where the connection lives
 
 The **app config dir** is `~/Library/Application Support/app.seedeep.tray` on macOS and
-`%APPDATA%\app.seedeep.tray` on Windows. Tauri derives that path from the bundle identifier in
-`tauri.conf.json`, which is `app.seedeep.tray`. The same string is the macOS bundle ID, so **changing
-it makes a different application** to both operating systems: the old install stays alongside the new
-one and its stored connection is abandoned, not migrated. It is an identity, not a setting.
+`%APPDATA%\app.seedeep.tray` on Windows — Tauri derives it from the bundle identifier in
+`tauri.conf.json`, which is also the macOS bundle ID. **Changing that string makes a different
+application** to both operating systems: the old install stays alongside the new one and its stored
+connection is abandoned, not migrated. It is an identity, not a setting.
 
 **One file in it** — or in `<SEEDEEP_HOME>/tray` when a dev run sets that — mode **0600**, written
 and read by Rust only: `connection.json`.
@@ -610,12 +496,12 @@ temporary name whose mode is set **at creation** and then renamed (`src/store.rs
 never exists in a world-readable file even for an instant, and a crash mid-write leaves the previous
 pin intact rather than a truncated one.
 
-**No keychain**, and the reason is that the two fields need different things. The fingerprint is
-not a secret — it travels in the clear in every handshake — what it needs is INTEGRITY, and a file
-only the user can write already gives that. The token *is* a secret, and it is what 0600 is for;
-the server keeps the same token in plaintext at the same mode in `~/.seedeep/config.json`, so
-storing it differently on the client would not make the pair safer, only inconsistent. On Windows
-there are no POSIX modes, but the per-user AppData directory is ACL'd by default.
+**No keychain**, because the two fields need different things. The fingerprint is not a secret — it
+travels in the clear in every handshake — what it needs is INTEGRITY, which a file only the user can
+write already gives. The token *is* a secret, and it is what 0600 is for; the server keeps the same
+token in plaintext at the same mode in `~/.seedeep/config.json`, so storing it differently on the
+client would not make the pair safer, only inconsistent. On Windows there are no POSIX modes, but the
+per-user AppData directory is ACL'd by default.
 
 A malformed file reads as *no connection*: the panel asks for the URL again and the next
 successful connect overwrites it, which is a recovery a user can perform.
@@ -633,9 +519,8 @@ Two decisions frame it, and neither is an implementation detail:
 - **Start is an explicit button, never an auto-start**, and it exists only where there is something
   to run. No server found on this machine means no button, not a button that fails.
 
-A server started from a terminal is stoppable from the tray just the same. There is no notion of
-"the tray's server": the record on disk is what makes a process stoppable, and it says nothing about
-who launched it.
+There is no notion of "the tray's server": the record on disk is what makes a process stoppable and
+says nothing about who launched it, so one started from a terminal is stoppable from the tray too.
 
 **Co-located is decided by IDENTITY, never by spelling.** A server with remote access on announces
 the name it was configured with, and `dev-mac.local` is not spelled `127.0.0.1` — it resolves to it.
@@ -676,11 +561,10 @@ opposites.** A checkout's server is `bun run dev`, which is not something the tr
 user is told to start it themselves; a released tray says `npm i -g seedeep`. Sending the first to
 install a release would send them away from the very thing they are working on.
 
-**Look again** is a control and not a wait: the words name it, and the lookup's own 30-second retry
-is not an answer to somebody who has just finished installing. It **waits for the shell** — the one
-gesture in the panel that does — because clearing the cache and then taking a reading can only ever
-answer *not installed*, since a reading starts the look in the background and returns the same
-instant.
+**Look again** is a control and not a wait: the lookup's own 30-second retry is not an answer to
+somebody who has just finished installing. It **waits for the shell** — the one gesture in the panel
+that does — because a reading starts the look in the background and returns the same instant, so
+clearing the cache and then taking one could only ever answer *not installed*.
 
 Stop lives in **Settings → Server**, under the address, and appears only when the tray is connected
 and can name exactly one process for it. Not among the sessions: it is the opposite of what that
@@ -690,9 +574,7 @@ surface is for, and a control that ends everything on screen does not belong in 
 
 A macOS GUI app inherits `PATH=/usr/bin:/bin:/usr/sbin:/sbin`. Neither `seedeep` nor `npm` is on it,
 whichever channel installed them, so `spawn("seedeep")` cannot work and `npm prefix -g` cannot be
-asked either.
-
-The tray therefore runs the user's own shell — `$SHELL -l -i -c 'command -v seedeep'`, or `where.exe`
+asked either. The tray therefore runs the user's own shell — `$SHELL -l -i -c 'command -v seedeep'`, or `where.exe`
 on Windows, where a GUI process does inherit the registry's PATH. **Both `-l` and `-i`**: `-l` alone
 reads `.zprofile` (where Homebrew's installer writes) and not `.zshrc` (where bun's and nvm's do), so
 it can miss `~/.bun/bin` entirely — one of the three channels seedeep ships through. The lookup is
@@ -702,16 +584,16 @@ tells the tray to look now.
 
 **The 30 seconds throttle the poll, never a click.** A click is somebody saying they have changed
 something, and answering it from a remembered *nothing* is answering the question the button was
-pressed to re-ask. And a look that a click overtook cannot write its answer: each one carries the
-generation it started in, so the cold shell still running from before the retry cannot land its
+pressed to re-ask. A look that a click overtook cannot write its answer either: each one carries the
+generation it started in, so a cold shell still running from before the retry cannot land its
 *nothing* on top of the path the warm one just found.
 
 **The lookup is not run where Start can never appear**, and **the poll never waits for it.** A
-reading takes what is already known and starts a look in the background when one is due, because
-that loop is what paints the menu-bar icon and sends the notifications — a user with a version
-manager in their `.zshrc`, the very reason the shell is interactive, would otherwise have the icon
-freeze for up to five seconds every thirty. The cost is that a newly installed seedeep appears one
-tick late. Only a **start** waits for the answer, because a start has to have one.
+reading takes what is already known and starts a look in the background when one is due, because that
+loop is what paints the menu-bar icon and sends the notifications — a user with a version manager in
+their `.zshrc`, the very reason the shell is interactive, would otherwise have the icon freeze for up
+to five seconds every thirty. The cost is that a newly installed seedeep appears one tick late. Only
+a **start** waits for the answer, because a start has to have one.
 
 Only a line that is an existing absolute file counts. An interactive shell may print a banner, and
 `command -v` for a shell *function* prints its body.
@@ -727,18 +609,18 @@ failure, reported with the first line it printed — which for the placeholder i
 names the problem.
 
 It is launched through `sh -c 'exec "$0" "$@"' <path> [--port <n>]`, and that is not a flourish. The
-placeholder carries no shebang on purpose, so `execve` on it fails with `ENOEXEC` and the user would
-be told *"Exec format error"* instead of the four lines the file exists to print; a shell takes its
-ENOEXEC fallback and produces the real message. `exec` leaves no shell in between, so the pid is the
-server's; `"$0"` carries the path as an argument and `"$@"` the flags, so neither a path with spaces
-nor a port needs quoting rules of ours. `setsid` puts it in its own session — a terminal signalling
-the tray's process group must not take the server with it.
+placeholder carries no shebang on purpose, so `execve` on it fails with `ENOEXEC` and reports *"Exec
+format error"* instead of the four lines the file exists to print; a shell takes its ENOEXEC fallback
+and produces the real message. `exec` leaves no shell in between, so the pid is the server's; `"$0"`
+carries the path as an argument and `"$@"` the flags, so neither a path with spaces nor a port needs
+quoting rules of ours. `setsid` puts it in its own session — a terminal signalling the tray's process
+group must not take the server with it.
 
 **Its output goes to `<seedeep home>/server.log`**, truncated by each start, mode **0600**. A process
 started from a menu bar has no terminal, and the first thing seedeep prints is the URL it serves —
-which in remote mode carries the **token** — followed by the TLS fingerprint a pinned client is
-asked to compare. Losing both, or leaving them in a world-readable file next to a config kept at
-0600, were the two ways to get this wrong.
+which in remote mode carries the **token** — followed by the TLS fingerprint a pinned client is asked
+to compare: neither may be lost, and neither may sit in a world-readable file next to a config kept
+at 0600.
 
 The tray passes **no flags**: the server reads the user's own config, so what starts from the menu
 bar is what would have started from a terminal, browser tab included if that is what the config says.
@@ -746,9 +628,9 @@ bar is what would have started from a terminal, browser tab included if that is 
 ### A stop is aimed at the connection
 
 The tray stops the server it is **showing**: it looks for a live record naming the address it is
-connected to. Co-location is proven by that record and never by the URL — a server with remote
-access on announces the host it was configured with (`https://<machine>:44842`), so a rule that read
-the address would refuse to stop a server running on this very machine.
+connected to. Co-location is proven by that record and never by the URL — a server with remote access
+on announces the host it was configured with (`https://<machine>:44842`), so a rule reading the
+address would refuse to stop a server running on this very machine.
 
 "Naming the same address" is not string equality. A loopback server announces
 `http://localhost:<port>` (`server.ts`, `displayHost`) while the tray's zero-configuration connection
@@ -780,22 +662,22 @@ Known limits, none of them silent:
 ## Notifications
 
 **Four triggers, four switches — and three of the four are the SERVER's.** A session entering
-`waiting`, a session whose API call FAILED, a session finishing a turn (off unless it is asked for)
-— and a newer seedeep having been published. Nothing else notifies: not a subagent finishing, not a
+`waiting`, a session whose API call FAILED, a session finishing a turn (off unless it is asked for) —
+and a newer seedeep having been published. Nothing else notifies: not a subagent finishing, not a
 tool error. A tray that notifies about everything is a tray you mute.
 
 The first three are decided, worded and switched in the server (`notify-watch.ts`), which announces
 them on its event stream; the tray subscribes and posts what arrives, composing no title and no
-verdict (`stream_notifications` in `client.rs`, posted from `poll.rs`). The fourth is the tray's own,
-because it is about the machine this tray is running on (`update.rs`). Posting is Rust's either way:
-the webview never needs the permission, which is why the notification permission is absent from
+verdict (`stream_notifications` in `client.rs`, posted from `poll.rs`). It obeys every rule below and
+implements none of them, because two implementations of one rule are free to diverge. The fourth is
+the tray's own, being about the machine this tray runs on (`update.rs`). Posting is Rust's either
+way, so the webview never needs the permission — which is why it is absent from
 `capabilities/default.json`.
 
 **The switches are edited in the portal's Settings**, under *Tray notifies you when* — not on this
-app's own surface, which carries none (see [Settings](#settings)). They live in
-`notifications.tray` in `~/.seedeep/config.json`, beside a second set governing the webhook channel:
-the same moment can be worth a banner on the machine you are sitting at and not worth a push
-somewhere else, and one shared set cannot say that.
+app's own surface, which carries none (see [Settings](#settings)) — and live in `notifications.tray`
+in `~/.seedeep/config.json`, beside a second set governing the webhook channel: the same moment can
+be worth a banner on the machine you are sitting at and not worth a push somewhere else.
 
 | Trigger | Setting | Default | What the banner says |
 | -- | -- | -- | -- |
@@ -804,52 +686,34 @@ somewhere else, and one shared set cannot say that.
 | A session that was `busy` becomes `idle`, having called the model at least once | *A session finishes a turn* | **off** | `project — subject` / `Turn finished` |
 | The connected SERVER is behind npm (`standing`, from `/api/update`) | *A new server version is out* | **on** | `seedeep <latest> is available` / `The server is running <its version>.` |
 
-**Why one switch per trigger, and not one reason for one switch.** The events are not the same
-bargain: a session stopped on you — by a question, or by a call that failed — cannot go on until you
-act, while a session that finished is news you can read whenever you like. With a single toggle the
-only way to stop the last is to silence the others, which is what the tray exists for. The failure
-banner ships **ON**, with the approvals, because the session has stopped and *nothing on screen said
-so*.
-
-**The switch says *fails*, while the band says *Broken*, and that divergence is deliberate.** The
-band names a STATE the session is in and sits next to a red icon that disambiguates it; the switch is
-read on its own in a list of four, where *a session breaks* is as easily read as a session taking a
-break. Do not harmonise the two.
-
-**The banner carries Claude Code's own words**, not a name of ours — `Not logged in · Please run
-/login`, `You've hit your session limit`, `API Error: 529 Overloaded`. A category invented on top of
-the one the CLI already wrote would send the user to the terminal to find out what actually happened.
-
-**A failure announces once, and re-arms on recovery.** It is a state, so `Watch` keeps a third set:
-still-broken is not news on the next tick, and only a successful call — which clears the server's
-`error` — makes the next failure announceable again. A session that breaks while it was ALSO stopped
-on the user raises **one** banner, the failure, for the same reason `busy → waiting` is not also a
-finish: one moment, one banner, and this is the more serious of the two.
-
-**A turn the user interrupted is never announced.** Esc means the user is standing at that terminal,
-and telling them what they just did is how a notification earns a mute. The digest says so directly
-(`turn.state === 'interrupted'`). Two neighbouring transitions are deliberately not finishes either:
-`busy → waiting` is a session stopped ON you, which is the other trigger and would otherwise put two
-banners saying opposite things on one moment; and a session that simply LEAVES the digest was closed
-by the user, who does not need to be told.
+**One switch per trigger, not one for one reason.** A session stopped on you cannot go on until you
+act, while a session that finished is news you can read whenever you like; with a single toggle the
+only way to stop the last is to silence the others. The failure banner ships **ON**, with the
+approvals, because the session has stopped and *nothing on screen said so*. **The switch says *fails*
+while the band says *Broken***, deliberately: the switch is read on its own in a list of four, where
+*a session breaks* is as easily read as a session taking a break. The banner carries Claude Code's
+own words — `Not logged in · Please run /login` — because a category invented on top of the CLI's
+would send the user to the terminal to find out what happened.
 
 **It fires on the TRANSITION, never on the state.** The watch (`notify-watch.ts`, in the server)
 remembers which sessions were stopped on the human, which were at work and which had broken, last
-time it could see; it announces only what was not there before. Three rules follow, and each of them
+time it could see, and announces only what was not there before — per session, never as counts, so
+one prompt answered and another raised in the same interval still interrupts. Each rule that follows
 is a way of not lying about when something happened:
 
-- **A turn that never called the model did not finish.** Esc pressed BEFORE the first reply leaves
-  nothing in the transcript — no marker, no `interruptedMessageId`, no assistant line — so the turn
-  is never marked interrupted, and the finish used to be announced minutes later, when liveness read
-  from the process finally said idle. Esc that Claude Code DOES record was already covered: the
-  marker line carries `interruptedMessageId`, the parser turns it into `turn-interrupted` before the
-  next turn opens, and an interrupted turn has never notified.
+- **A failure announces once, and re-arms on recovery.** Still-broken is not news on the next tick,
+  and only a successful call — which clears the server's `error` — makes the next failure
+  announceable. A session that breaks while it was ALSO stopped on the user raises **one** banner,
+  the failure, being the more serious of the two.
+- **A turn the user interrupted is never announced** (`turn.state === 'interrupted'`). Esc means the
+  user is standing at that terminal, and telling them what they just did is how a notification earns
+  a mute. Nor did a turn that never called the model *finish*, Esc before the first reply leaving
+  nothing in the transcript to mark; nor is `busy → waiting` a finish, being the other trigger; nor
+  is a session that simply LEAVES the digest, which the user closed.
 - **A session already waiting — or already idle — when the tray arrives is not an event.** The first
-  digest SEEDS the sets and announces nothing, and the sets are forgotten again the moment the last
+  digest SEEDS the sets and announces nothing, and the sets are forgotten the moment the last
   listener leaves, so whoever subscribes next also starts from a seed. Without that, opening the tray
   would replay every open prompt as if it had just happened.
-- **The sets are per session, not counts.** One prompt answered and another raised in the same
-  interval leaves the count at one, and that is exactly the moment worth an interruption.
 - LIMIT: a session that enters a wait, or finishes, during a stretch that could not be read is
   **never** announced — the next reading seeds it. There is no way to know when it happened, and the
   icon and the panel are what say where it now stands.
@@ -857,61 +721,44 @@ is a way of not lying about when something happened:
 **A banner is one title and one line, and never the detail.** The line names the event — `Waiting for
 your approval — Bash`, `in the terminal` when the transcript has not named the call, `The last API
 call failed`, `Turn finished` — and stops there. The command awaiting approval, the CLI's error text
-and the turn's own last words do not follow on a second line: you cannot act on a banner (approving
-still means going back to the terminal), a banner truncates exactly that line first, and every one of
-them is one click away in the panel, where it is not truncated. The webhook settled it — it is the
-one channel whose payload leaves the machine, so those second lines were shipping the contents of a
-work session to a third-party service to say what the first line already said. The two channels carry
-the identical text, so there is one thing to reason about. The title is the session
-(`project — subject`), because the banner already carries the app's name.
+and the turn's own last words do not follow on a second line: a banner truncates exactly that line
+first, every one of them is one click away in the panel, and the webhook — the one channel whose
+payload leaves the machine — would be shipping the contents of a work session to a third-party
+service to say what the first line already said. Both channels carry identical text. The title is the
+session (`project — subject`), because the banner already carries the app's name.
 
 **A switch silences its banner, not the bookkeeping.** The switches filter the OUTPUT of the watch
-and never its input (`notify-engine.ts`), so with one off the transitions are still tracked and
-turning it back on announces what happens next rather than the backlog. The menu-bar icon is not
-covered by any of them: it is peripheral information that costs nothing to ignore, and a user who
-silenced the interruption has not asked to be blinded.
-
-**Why none of it is decided here.** The rules above are the tray's rules and it obeys every one of
-them, but it implements none: two implementations of one rule are free to diverge, which is how a
-phone and a menu bar end up disagreeing about one session. The server already held the state and the
-words, so it kept them.
+and never its input (`notify-engine.ts`), so turning one back on announces what happens next rather
+than the backlog. The menu-bar icon is covered by none of them: it is peripheral information that
+costs nothing to ignore, and a user who silenced the interruption has not asked to be blinded.
 
 ### The release banner is the odd one out
 
-Its rules are its own (`update.rs`). The other three are about a SESSION, fire on a transition in the
-digest, and can arrive several times an hour. This one is about the tray itself and can be true while
-nothing is connected to look at.
+Its rules are its own (`update.rs`): the other three are about a SESSION and fire on a transition in
+the digest, while this one is about the tray itself and can be true while nothing is connected.
 
 - **Once per released VERSION, per RUN of the tray.** A banner repeated on every check is the
-  notification people silence first — but remembering it FOREVER is worse in the case that actually
-  happens: a freshly installed unsigned bundle has no notification permission yet, so a banner can be
-  sent, never shown, and recorded as announced. A fresh start is the one moment worth a second
-  chance, because it is when a reinstall has just happened — which is exactly when the permission was
-  lost. The memory is therefore in MEMORY: no file, no cleanup, and the rule falls out of the
-  process's own lifetime.
-- **The banner is about the SERVER, not the tray.** The tray is a client; the thing that is run, and
-  that a stale version actually affects, is the server. The verdict is the SERVER's own `standing`
-  from `/api/update`, the same answer the portal shows, so the tray never recomputes it.
-- **The PANEL still names both**, and marks whichever line is behind (`update_view`). The tray's own
-  version comes from `PackageInfo` — i.e. `tauri.conf.json > version`, the same number `getVersion()`
-  gives the panel — and **never** from `env!("CARGO_PKG_VERSION")`: `Cargo.toml` is deliberately
-  `0.0.0`, so the cargo variable would compare `0.0.0` against every release and tell every user,
-  forever, that an update was available. The two ship from one tag but are updated apart — a DMG and
-  an npm package are replaced by different acts. Only `latest` is taken from `GET /api/update`; the
-  `standing` in that response is the server's.
-- **Asked every 15 minutes** (`UPDATE_EVERY`), and SPAWNED rather than awaited — the poll's loop
-  paints the icon and feeds the panel, and an unreachable server would otherwise hold it for the
-  whole request timeout. Overlapping runs are impossible: the clock is claimed before the request.
-  The server answers from a file it refreshes once an hour, and the tray's period is DELIBERATELY
-  shorter than that hour: asking on the same period as the cache expires would land the request just
-  before the refresh as often as just after, making the worst case two hours rather than one. The
-  first check runs on the first tick, so a tray started after a release does not wait to say so.
+  notification people silence first, and remembering it forever is worse: a freshly installed
+  unsigned bundle has no notification permission yet, so a banner can be sent, never shown, and
+  recorded as announced. The memory is therefore in MEMORY — no file, no cleanup — and a fresh start
+  is the second chance, which is when a reinstall has just happened.
+- **The banner is about the SERVER, not the tray**, which is the thing that is run and that a stale
+  version affects. The verdict is the SERVER's own `standing` from `/api/update`, so the tray never
+  recomputes it — only `latest` is taken from that response. The PANEL still names both builds and
+  marks whichever is behind (`update_view`); the tray's own version comes from `PackageInfo`, i.e.
+  `tauri.conf.json > version`, and **never** from `env!("CARGO_PKG_VERSION")`, which is the
+  deliberately inert `0.0.0`.
+- **Asked every 15 minutes** (`UPDATE_EVERY`), SPAWNED rather than awaited so an unreachable server
+  cannot hold the loop that paints the icon, and never overlapping, since the clock is claimed before
+  the request. The server answers from a file it refreshes once an hour and the tray's period is
+  DELIBERATELY shorter, because asking on the cache's own period would make the worst case two hours.
+  The first check runs on the first tick.
 - **The switch silences the banner, not the bookkeeping** — the same rule as the other three.
 
 ### What an unsigned build can actually deliver
 
-seedeep ships **unsigned** — no Apple Developer ID, no notarization. Both platforms restrict
-notifications for such builds, and the restriction is not the same on each.
+seedeep ships **unsigned** — no Apple Developer ID, no notarization — and both platforms restrict
+notifications for such builds, differently.
 
 **macOS** — measured by sending one notification each way and then asking Notification Center what it
 received (its store lives at `~/Library/Group Containers/group.com.apple.usernoted/db2/db`):
@@ -921,21 +768,16 @@ received (its store lives at `~/Library/Group Containers/group.com.apple.usernot
 | Unbundled binary — what `tauri dev` runs | `Ok(())` | **No.** The app is never registered and no record exists |
 | Bundled `.app`, unsigned | `Ok(())` | **Yes.** The app is registered and the exact title and body sent are stored |
 
-Two things follow, and the second is the one that costs time if it is forgotten:
-
-1. **Unsigned is not the obstacle on macOS; being unbundled is.** A `.app` carrying only the
-   linker's ad-hoc signature notifies. Signing and notarization buy a clean install past
-   Gatekeeper — they are not what makes a notification appear.
-2. **`Ok(())` is not evidence.** The API returns success in the case where nothing is
-   delivered, so a dev run can never confirm this feature. Verify notifications from the
-   packaged artifact, or do not claim to have verified them.
+So **unsigned is not the obstacle on macOS; being unbundled is** — a `.app` carrying only the
+linker's ad-hoc signature notifies, and signing buys a clean install past Gatekeeper rather than a
+banner. And **`Ok(())` is not evidence**: the API returns success in the case where nothing is
+delivered, so a dev run can never confirm this feature. Verify notifications from the packaged
+artifact, or do not claim to have verified them.
 
 **Windows** — Tauri documents that notifications work only for an INSTALLED application; in
-development the PowerShell name and icon are shown instead. That is why the Windows deliverable
-is an installer rather than a portable `.exe`.
-
-Together: **on both platforms the notification only works from the packaged artifact.** Same
-conclusion, different reasons.
+development the PowerShell name and icon are shown instead, which is why the Windows deliverable is
+an installer. Together: **on both platforms the notification only works from the packaged
+artifact**, for different reasons.
 
 ## Settings
 
@@ -944,11 +786,11 @@ the footer and left by the header's back button. The popover dismisses on focus 
 makes it behave like a menu; a second window would either inherit that rule and vanish while being
 used, or break it and leave the app with two competing surfaces.
 
-**The panel states, it does not explain.** A design rationale is what this document is for. Two
-sentences survive on the surface itself because they prevent a MISREADING rather than justify a
-default — the menu-bar icon is never silenced by a toggle, and quitting the tray does not stop the
-server — and one because it is the only honest thing that can be said about delivery: a banner is the
-only proof.
+**The panel states, it does not explain** — a design rationale is what this document is for. Three
+sentences survive on the surface itself: the menu-bar icon is never silenced by a toggle, quitting
+the tray does not stop the server, and a banner is the only proof that a notification was delivered.
+The first two prevent a MISREADING rather than justify a default; the third is the only honest thing
+that can be said about delivery.
 
 Five things, which is the whole surface:
 
@@ -962,10 +804,10 @@ Five things, which is the whole surface:
 
 Rules that are not preferences:
 
-- **A tick does not redraw this view.** Nothing on it moves on the server's clock, and re-rendering
-  once a second would wipe a half-typed URL out of the field. The one thing that gets through is a
-  status that has stopped being `connected`, which takes the panel back to the screen that can fix it
-  — and does not leave the flag behind to spring back on the next tick.
+- **A tick does not redraw this view**, since nothing on it moves on the server's clock and
+  re-rendering once a second would wipe a half-typed URL out of the field. The one thing that gets
+  through is a status that has stopped being `connected`, which takes the panel back to the screen
+  that can fix it — and does not leave the flag behind to spring back on the next tick.
 - **Closing the popover leaves the settings behind.** *While nobody is looking the panel is a mirror*
   covers which SURFACE is up, not only the rows: the window is hidden and shown, never reloaded, so
   without this rule a settings screen left open yesterday is what the next click on the icon would
@@ -975,10 +817,10 @@ Rules that are not preferences:
   appended at the end is one about a click that just happened, below the fold.
 - **The settings exist only over a connected server**, so there is no gear on the connection screens.
 - **Each version says whose it is** — `seedeep tray 0.1.1` and `seedeep server 0.1.1`, never a bare
-  number. The two are separate downloads that update apart, so a bare version read here would be
-  quoted in a bug report as the other's, and a pair that differs is drawn as the ordinary state it
-  is: **no warning**. A server that did not answer with one gets no line rather than an "unknown", and
-  a version that could not be read draws no About section at all.
+  number, since the two are separate downloads that update apart and a bare version would be quoted
+  in a bug report as the other's. A pair that differs is the ordinary state and draws **no warning**;
+  a server that did not answer with one gets no line rather than an "unknown", and a version that
+  could not be read draws no About section at all.
 - **The server section says three different things, not one with holes in it**: a pinned certificate,
   or "plain HTTP, so there is nothing to pin", or — for `http://127.0.0.1:44842` — "the tray found
   this one by itself". An empty space where a fingerprint would be reads as *not checked yet* rather
@@ -1005,24 +847,21 @@ hides the panel, **hides the app**, waits out `NOTIFY_SETTLE` (400 ms), and only
 **Hiding the WINDOW does not do it, and neither does asking to deactivate.** An `Accessory` app owns
 no other window to fall back to, so hiding its only one leaves it the ACTIVE app with nothing on
 screen — the state that matters is activation, not visibility. `NSApplication.deactivate` says
-exactly that intent and does nothing, because nothing is there to take the activation. `NSApp.hide:`
+exactly that intent and does nothing, because nothing is there to take the activation; `NSApp.hide:`
 — Tauri's `AppHandle::hide` — hands it to the next app in line.
 
 **Its cost is the HIDDEN state, and `toggle_panel` is what pays it**: every window of a hidden app
 stays down until something unhides it, so the click after a test would otherwise open nothing. It
-calls `AppHandle::show` before showing the window, which is harmless in every other case. The branch
-above it stays correct on its own: a window of a hidden app reports `is_visible() == false`, so the
-click takes the path that opens the panel rather than the one that dismisses it. Whether `show` also
-ACTIVATES is left unstated here and in the code, because it cannot be settled from the
-documentation — `AppHandle::show` is `NSApplication.unhide:`, whose Apple page says "makes the
-receiver active" in the abstract and "invokes `unhideWithoutActivation`" in the discussion. Nothing
-depends on it: `set_focus` decides the activation on the next line.
+calls `AppHandle::show` before showing the window, which is harmless in every other case, and the
+branch above it stays correct on its own — a window of a hidden app reports `is_visible() == false`,
+so the click takes the path that opens the panel rather than the one that dismisses it. Whether
+`show` also ACTIVATES is left unstated here and in the code, because the documentation cannot settle
+it; nothing depends on it, since `set_focus` decides the activation on the next line.
 
 **There is no receipt, and there must not be**: the surface that would carry it is the one being put
-away. The banner IS the answer — the same rule the stop follows, where the screen that comes next is
-the receipt — and the caveat that a system can hide them silently sits on the button's own note,
-read while deciding to click. The note also says the panel will close: a popover that vanishes
-unannounced reads as a crash.
+away. The banner IS the answer — the same rule the stop follows — and the caveat that a system can
+hide them silently sits on the button's own note, read while deciding to click. The note also says
+the panel will close: a popover that vanishes unannounced reads as a crash.
 
 ## Platforms
 

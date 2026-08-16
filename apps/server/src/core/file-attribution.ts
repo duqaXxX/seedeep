@@ -11,7 +11,7 @@
  * describes the repository now, not what one session did, so two live sessions in one repo would
  * each claim the whole dirty tree — the very inference this module refuses for commits. What
  * remains is the one thing that is both complete and provably a session's own: the files of the
- * commits attributed to it (`docs/commits.md`), which include shell writes and build output
+ * commits attributed to it (`docs/session-output.md`), which include shell writes and build output
  * because a commit carries what changed, not how it was written.
  *
  * The ledger survives for the ONE thing git cannot see: the session scratchpad, which lives

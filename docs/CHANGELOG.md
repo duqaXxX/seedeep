@@ -18,6 +18,12 @@ Everything released before `0.20.0` — including the pre-publication developmen
 - `docs/configuration.md` — the config file and its schema, the precedence chain, the security
   model, the TLS certificate, the browser auth flow, the Settings panel and `SEEDEEP_HOME`, split
   out of the architecture document.
+- `docs/session-output.md` — one reference for what a session produced: its commits, the files
+  those commits delivered, and the tracker cards it worked on. It replaces `commits.md`,
+  `changed-files.md` and `cards.md`, which documented three cards of one row, fed by one pass over
+  the transcript, in three files: the git posture was stated twice, the repository-identity rule
+  could only be understood with two files open, and a change to `transcript-scan.ts` obliged a
+  reader to check all three.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and GitHub issue forms for bug reports and
   feature requests. The bug form asks the reporter to redact real paths, project names and prompt
   content before attaching anything.

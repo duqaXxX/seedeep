@@ -36,7 +36,7 @@ not by you.
 A query that is a single 7-40 character hex token is a commit hash, and the dialogue is the wrong
 place to look for one: the hash of a commit normally appears only in the output of the command
 that made it, which this index excludes by design. So a hash query ALSO asks git who produced that
-commit, by the attribution in `docs/commits.md`, and merges those sessions into the same rows.
+commit, by the attribution in [`session-output.md`](session-output.md#attribution-proof-first-testimony-second-otherwise-nothing), and merges those sessions into the same rows.
 
 Nothing else changes: same row shape, same ordering, no extra section — only the set of sessions
 grows. A text query is untouched: one regex decides, and a query that is not a hash never asks git.
@@ -53,12 +53,12 @@ directory) is simply not found.
 
 The same reasoning, for the other identifier a user types into a search box. `ABC-12` or `#42` also
 returns the sessions that ACTED on that card — read from their tool calls, by the rules in
-`docs/cards.md`. The dialogue index cannot see those: the id lives in a call's id field, and a
+[`session-output.md`](session-output.md#tracker-cards). The dialogue index cannot see those: the id lives in a call's id field, and a
 session that worked a card for an hour may never have typed its key.
 
 Same row shape, same ordering, same honest `hits: 0` as a hash match: a hash is answered by git, a
 card id by its own persisted index (`cards-index.jsonl`). That index is touched ONLY when the query
-is shaped like a card id, so a text search pays nothing for it. See `docs/cards.md`. The shape test
+is shaped like a card id, so a text search pays nothing for it. See [`session-output.md`](session-output.md#tracker-cards). The shape test
 is deliberately permissive — `GPT-4` and `UTF-8` pass it and simply match nothing, since the answer
 comes from ids observed in tool calls, never from text.
 

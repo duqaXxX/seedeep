@@ -223,12 +223,12 @@ file and gets `404 no prompt found`.
 Each takes `sessionId`, each answers `404 unknown session`.
 
 - **`/api/commits`** → `SessionCommits` (`core/commit-attribution.ts`): the commits this session
-  produced and the forge to link them to. Rules in [commits.md](commits.md).
+  produced and the forge to link them to. Rules in [session-output.md](session-output.md#commits).
 - **`/api/files`** → `SessionFiles` (`core/file-attribution.ts`): the repo files those commits
   delivered, plus the scratchpad files and the artifacts it published, the repo roots they sit
-  under, and where the answer came from. Rules in [changed-files.md](changed-files.md).
+  under, and where the answer came from. Rules in [session-output.md](session-output.md#changed-files).
 - **`/api/cards`** → `SessionCards` (`core/tracker-cards.ts`): `{ cards }`, the tracker cards it
-  touched, newest touch first. Rules in [cards.md](cards.md).
+  touched, newest touch first. Rules in [session-output.md](session-output.md#tracker-cards).
 
 ---
 

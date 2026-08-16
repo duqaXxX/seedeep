@@ -18,7 +18,7 @@ retrospective and the personal baseline fast.
 **Every deliverable is an app under `apps/`, and none of them sits at the root** — so a
 second one arrives as a peer of the first instead of as an appendage to it:
 
-```
+```text
 seedeep/
 ├── apps/
 │   ├── server/          the watcher, the HTTP/SSE server and the browser client
@@ -75,8 +75,8 @@ executables, out of the same workflow and the same commit — see
 
 **CI runs on every pull request and on every push to `main`** — three jobs, `scan`,
 `check` and `tray` (`.github/workflows/ci.yml`) — because a rule nothing enforces is a
-rule that quietly stops being true; the type-checker was red on `main` while every local
-test run stayed green. Between them they enforce:
+rule that quietly stops being true, and a local run that never invokes the type-checker is
+not evidence it is green. Between them they enforce:
 
 - the suite and `tsc --noEmit`;
 - **Biome** (`bun run lint`): format and lint check across all TypeScript sources. A PR
@@ -218,7 +218,7 @@ The core is an in-process, runtime-agnostic TypeScript library (standard
 `node:*` and Web APIs only — no runtime lock-in). It is organized as a layered
 pipeline where each unit has a single responsibility and a defined interface:
 
-```
+```text
 discovery ──▶ watcher ──▶ (EventEmitter: normalized events, tagged by sessionId)
    │            │  ▲                │
    │            │  └── parser       └──▶ core/     (pure: events → meaning)
@@ -268,21 +268,18 @@ only gets a vote when there is no process signal to read (`isOpen: null`, i.e.
 release may drop). The watcher tails a session while it is live, and the picker files it
 under **Live**, from that same call — split in two, they disagree exactly where it hurts: a
 session waiting on a **background subagent** writes nothing to its own jsonl, so `isActive`
-lapses while the process is alive and the child files are still growing. The watcher used to
-gate on `isActive` alone and dropped such a session — children included — until the main
-agent spoke again, freezing the live feed for the whole subagent run (measured on real logs:
-21% of the sessions with subagents, up to 33 minutes). The other side of the same rule: a
-session whose process has exited is NOT live, however recently its file was written.
+lapses while the process is alive and the child files are still growing — gating on `isActive`
+alone drops such a session, children included, until the main agent speaks again, freezing the
+live feed for the whole subagent run. The other side of the same rule: a session whose process
+has exited is NOT live, however recently its file was written.
 
 **One definition of "working", and it is not `status === 'busy'`.** `isWorking(record)` (beside
 `isLive`, same reason) reads `busy` OR **`shell`** — Claude Code's own word for a turn that is over
-while a command it launched in the background is still running. Measured by sampling the process
-file every 2 s across a 240-second command: `busy`, `shell` for the whole run, `busy` again when the
-notification landed. The status chain used to drop anything unrecognised to `null`, and a session
-with no status makes no claim, so such a session read as idle on every surface and jumped back to
-working when the command ended. The value is now carried raw and interpreted at the edges — the
+while a command it launched in the background is still running. A session with no status makes no
+claim, so dropping an unrecognised word to `null` reads as idle on every surface and jumps back to
+working when the command ends. The value is therefore carried raw and interpreted at the edges — the
 browser's tab badge, the tray's band, and the tray's Rust icon, each pinned to this function by a
-test. Everything still unknown keeps becoming `null`: the vocabulary is Claude Code's, and it has
+test. Everything still unknown becomes `null`: the vocabulary is Claude Code's, and it has
 already grown once.
 
 **One reading of `isOpen` is not proof it closed.** Claude Code REWRITES the PID file on every
@@ -308,7 +305,7 @@ so a resumed session can never be handed a new tab — nothing auto-opens it
 (`sessionsToAutoOpen` excludes both `known` and the ids on screen) and picking it from the
 dropdown only switches to it. So the poll that reports it live again calls `revive` (`app.ts`),
 which undoes the freeze and asks the replay endpoint for the tail the tab missed. What makes
-that possible is that the tab's READER outlives the session: `end` no longer stops it —
+that possible is that the tab's READER outlives the session: `end` does not stop it —
 `stop()` means the tab is gone — and a tab subscribes to the live stream even when it opens
 onto a session that is already dead, since a subscription cannot be added later without a
 second reader double-counting the file. Reversibility does not soften the confirmation above:
@@ -385,11 +382,10 @@ without re-deriving it.
 
 #### How it finds the live set without scanning the corpus
 
-The gate is `isLive` — `isOpen ?? isActive` — and it has not changed. What changed is
-how the set is REACHED. A tick used to run the complete discovery and filter afterwards,
-so a machine with a thousand cold sessions paid a full scan 3.3 times a second whether or
-not anything was running: measured, **13.6% of one core, permanently**, for a window in
-which the watcher emitted nothing at all.
+The gate is `isLive` — `isOpen ?? isActive`. What is not obvious is how the set is REACHED:
+a tick must never run the complete discovery and filter afterwards, or a machine with a
+thousand cold sessions pays a full corpus scan several times a second whether or not
+anything is running.
 
 Since `isLive()` is `isOpen ?? isActive`, whenever the open-session mechanism answers at all
 the live set is EXACTLY the sessions holding a live process file — `isActive` is unreachable
@@ -397,19 +393,17 @@ and the mtime window decides nothing. So a tick reads `~/.claude/sessions/` (one
 per running process) and looks each id up in a `sessionId → path` index. A full discovery
 still runs, but only to PLACE an id never seen before, which is what a new session is.
 
-Two states would otherwise bring the old cost straight back, and both are handled:
+Two states would otherwise bring that whole-corpus cost straight back, and both are handled:
 
 - **An open window nobody has typed into.** Claude Code writes the process file when the
   window opens but the transcript only when the conversation does, so the id is on no disk
   any scan can reach — and this is precisely the idle case. A failed placement is remembered
   and not retried for `RESCAN_MS` (1 s), which caps that state at one scan per second and
-  delays a brand-new session's first line by at most the same (against 300 ms before).
+  delays a brand-new session's first line by at most the same.
 - **No mechanism at all.** `~/.claude/sessions/` is an undocumented Claude Code internal a
   release may drop; `listOpenSessions` returns `null` rather than `[]` for exactly this. Then
   the mtime window is the only answer there is and the watcher degrades to a full scan per
-  tick — what it did before, not blindness.
-
-Measured after: **0.38%** of one core with 911 sessions on disk and nothing running.
+  tick — degraded, not blind.
 
 ### What a subagent's state SAYS vs what the reducer SAW
 
@@ -427,18 +421,15 @@ A background COMMAND has the same problem and cannot be answered the same way �
 [Is a background command still alive?](#is-a-background-command-still-alive) below.
 
 `hasStarted(a)` is true when the agent has **any one** sign: an `agentType` from its sidecar,
-tokens billed to it, a tool it ran, or text it returned. Measured 2026-07-29 by replaying 910
-ended sessions through the reducer, 3 of 1327 subagents (0.2%) reach the end still `running` —
-and all three have none of the four, while 92.8% of the ones that do end carry their own final
-text. They are launches with nothing behind them, not agents whose ending was lost.
+tokens billed to it, a tool it ran, or text it returned. A subagent that reaches the end of a
+session still `running` has none of the four: it is a launch with nothing behind it, not an
+agent whose ending was lost.
 
 **It is a fact, not a timeout.** Nothing in it measures duration: a legitimate `Explore` can run
 for minutes and a threshold would delete true state to hide missing state. It does not claim the
 agent finished — it declines to claim it ever started. Like the workflow rule it is DERIVED and
 never latched: one line from the agent and it is `running` again, so a false unknown heals
-itself. Measured over 1171 real spawns, a subagent's first trace lands 0.07 s after its launch
-(p90 0.08 s, max 0.30 s), so with a 300 ms watcher tick nothing real sits traceless for more than
-about half a second.
+itself within a watcher tick.
 
 **Counting and showing are different questions**, and `hasStarted` answers only the first. The
 Graph LISTS the launch with an `unknown` badge — seedeep sees a line in the transcript and must
@@ -451,9 +442,8 @@ carries no type or tools by construction, and the silence threshold judges it in
 ### Is a background command still alive?
 
 A background command's only ending is its `<task-notification>`, and **some launches never get
-one**: 23 of 198 in the local corpus (11.6%), across 11 sessions. `background && !outcome` then
-reads "still running" for as long as the session stays open — seen live as two rows counting past
-40 minutes with nothing of either alive on the machine. A subagent's `unknown` cannot be borrowed
+one**. `background && !outcome` then reads "still running" for as long as the session stays open,
+however long ago the command really stopped. A subagent's `unknown` cannot be borrowed
 here: it is reached by the view knowing the session has CLOSED, and this is a session still open.
 
 So seedeep asks the machine. `apps/server/src/server/command-liveness.ts` runs on its own 15 s
@@ -462,25 +452,25 @@ tree is already held for, and it asks ONE question: **does any process still hol
 output file open?**
 
 **A `Monitor` is never asked.** Its output file is named the same way, so the probe *would* answer
-— with the wrong answer. Measured 2026-08-10 on a monitor that was demonstrably alive (its `sleep`
-in the process table, its output file already written): **nothing held the file open**. A
-background shell command keeps it open through the whole chain (the harness's `zsh`, the command's
-shell, the leaf) and that is what this mechanism was measured on; a monitor's stream does not.
-Asking anyway reported a working monitor as gone two probes after its first event. What ends a
-monitor instead is its `TaskStop` — see the `agent-end` row in the event table.
+— with the wrong answer. A background shell command keeps that file open through the whole chain
+(the harness's `zsh`, the command's shell, the leaf), which is what this mechanism rests on; a
+monitor's stream does not, so a monitor that is demonstrably alive answers exactly like one that
+has gone. What ends a monitor instead is its `TaskStop` — see the `agent-end` row in the event
+table.
 
 - The file is found from the launch's task id, not from the path the transcript prints:
   `anon()` masks the session uuid inside that path before it can reach an event, so the parsed
   value cannot open anything. Two `readdir`s under `/tmp/claude-<uid>` and the id names the file.
-- Measured 2026-08-08 on real launches: the whole chain holds it (the harness's `zsh` wrapper, the
-  command's own shell, the leaf), `claude` itself does not, and a command that ends or is killed
-  releases it while the file stays on disk. One `lsof -F pn` answers every command at once in
-  33–35 ms with 691 processes on the box.
-- Two other sources were **measured and refuted** first: Claude Code keeps no registry of its
-  background shells on disk (the task id appears nowhere in `~/.claude` outside the transcript),
-  and the output file's mtime or size says nothing — four healthy `until … sleep 20` waiters had
-  written 0 bytes after tens of minutes ALIVE. Matching `ps` on the command TEXT fails too: the
-  harness re-quotes what it runs, so the string seedeep holds is not the string `ps` prints.
+- The whole chain holds the file open (the harness's `zsh` wrapper, the command's own shell, the
+  leaf), `claude` itself does not, and a command that ends or is killed releases it while the file
+  stays on disk. One `lsof -F pn` answers every command at once, which is why the probe spends one
+  subprocess per tick and not one per command.
+- **Three other sources cannot answer this** and must not be reached for: Claude Code keeps no
+  registry of its background shells on disk (the task id appears nowhere in `~/.claude` outside
+  the transcript); the output file's mtime or size says nothing, since a healthy waiter can sit
+  ALIVE for tens of minutes having written 0 bytes; and matching `ps` on the command TEXT fails
+  because the harness re-quotes what it runs, so the string seedeep holds is not the string `ps`
+  prints.
 
 **The verdict is `unknown` and can never be anything else.** The probe learns that something
 stopped, never what it stopped WITH, so it emits a `command-vanished` event — out of band,
@@ -512,13 +502,13 @@ The parser flattens the raw log into a small set of events consumers care about:
 | `turn-interrupted` | `interruptedMessageId` on the next user line after an Esc | the previous turn was interrupted. Emitted BEFORE that line's `user-turn`, so the reducer closes the old turn before opening the new one |
 | `turn-end`        | a `system` line with `subtype: 'turn_duration'`; main session only | the turn finished — `durationMs` and `messageCount`, both nullable. Claude Code's own measure, not one seedeep derives |
 | `agent-launch`    | `<forked-skill-launch>` on a `system`/`local_command` line  | a forked skill (`/code-review`) started a background agent — `launchedAgentId`, `skillName`, `description`. It is NOT a `tool_use`: this line is the only record that the agent exists, when it started and which turn asked for it |
-| `file-change`     | a `file-history-delta` line (`trackingPath`)               | Claude Code backed up one file it changed — its own /rewind ledger. It records ONLY what CC's own file-writing tools wrote: measured on a real 16-file commit, 8 of them came from `python3`/`cat >>`/the build and produced no delta at all, and WHICH session made a shell write is recorded nowhere on disk. So the Changed files card does not count this event — its number comes from the session's own commits via `GET /api/files` (`docs/changed-files.md`), reproducible with `git show --stat`. The ledger's one remaining job is the session scratchpad, which lives outside the repo where git cannot see it: `isScratchPath` (`apps/server/src/core/text.ts`) classifies on the `~scratch` token `anon` produces, so a path is anonymized BEFORE it is tested. `trackingPath` has TWO shapes — measured 2026-08-03, 609 of 1765 absolute and 1156 relative to the cwd, `backup.realParentDir` present on 1192 — and `ledgerPath` resolves both. The reducer still attributes each delta to the open turn; the baseline `file-history-snapshot` stays ignored |
+| `file-change`     | a `file-history-delta` line (`trackingPath`)               | Claude Code backed up one file it changed — its own /rewind ledger. It records ONLY what CC's own file-writing tools wrote: a file written by `python3`, by `cat >>` or by the build produces no delta at all, and WHICH session made a shell write is recorded nowhere on disk. So the Changed files card does not count this event — its number comes from the session's own commits via `GET /api/files` (`docs/session-output.md`), reproducible with `git show --stat`. The ledger's one remaining job is the session scratchpad, which lives outside the repo where git cannot see it: `isScratchPath` (`apps/server/src/core/text.ts`) classifies on the `~scratch` token `anon` produces, so a path is anonymized BEFORE it is tested. `trackingPath` has TWO shapes — absolute, or relative to the session's cwd, in which case `backup.realParentDir` names the directory — and `ledgerPath` resolves both. The reducer still attributes each delta to the open turn; the baseline `file-history-snapshot` stays ignored |
 | `tool-start`      | a `tool_use` content block                                 | a tool call began — id, name, anonymized `arg`; for an `Agent`/`Task` block also the `launchPrompt` + `subagentType` + the launch `description` (which heads the subagent's row — see the GUI shell); for a Task-family block a `taskRef` instead of an `arg` (see below) |
-| `tool-end`        | a `tool_result` content block                              | a tool call finished — `toolUseId`, `outputSize` (rendered char length); `error: true` when the result is a real FAILURE (a user refusal carries the same `is_error` flag but is NOT a failure — classified by `toolOutcome` in `apps/server/src/server/failure.ts`); for a foreground `Agent` result the inline `returned` payload; for a background one `launched` (a receipt: the subagent STARTED), for a `Workflow` also `workflow` (runId + name), and for a `TaskCreate` result `taskCreated` (the todo number it was given + its subject). A launch into the BACKGROUND carries `background` (taskId + who put it there), and it has two receipt shapes: a `Bash`'s `backgroundTaskId`, and a `Monitor`'s `taskId` **with** `timeoutMs` — the same kind of launch under a different field name. The second half of that gate is not decoration: a `TaskUpdate` receipt carries a todo's `taskId` (218 locally) and a `Workflow`'s carries a run's, and `taskId` alone would list both as running commands |
-| `agent-end`       | a `queue-operation` line whose content is a `<task-notification>`, OR a `TaskStop` receipt (`Successfully stopped task: <id>`) | a background subagent really finished — `toolUseId` (the spawn, **nullable**), `taskId` (`<task-id>`, the child's agentId), `status` (completed/failed/killed/stopped). Fires on every stop, so a resumed agent produces several: last wins, never latched — **except the instant a background COMMAND ended, which is first-wins**. Claude Code writes each notification twice (`enqueue`, then `remove` when its queue drains) with an identical payload but not at the same time, so last-wins was dating the end to the DRAIN: measured 2026-08-09, 281 of 611 notifications repeat, first-to-last p50 3.9 s / p90 30.9 s / max 76 min, and a `sleep 3` was shown as having run 22.6 s. The status and the sentence stay last-wins, where a repeat really is inert. **The event is gated on `toolUseId` OR `status`**, never on the spawn name alone — requiring it dropped the only signal a subagent with no spawn ever gets. What makes a notification TERMINAL is the `status`: the same line type is written for progress (`event` + `summary`, no status — 54 in the local corpus, re-measured 2026-08-08), and that ends nothing. The reducer enforces it where the difference is destructive: a background COMMAND is closed only by a notification carrying a status, since applying a progress summary as its outcome would mark it `done` minutes early and measure its duration to the wrong instant. All 54 progress notifications carry a `<task-id>` and NONE a `<tool-use-id>`, so none can reach a command through this event at all — they are reported as `background-event` instead, which counts them against the task and ends nothing. The subject is an AGENT, and the line names it TWICE — requiring the spawn name dropped the only signal a subagent with no spawn ever gets, and a skill forked into the background has none by construction (its `meta.json` carries no `toolUseId`). **`toolUseId` is not always a spawn either**: after a `SendMessage` resume Claude Code keys the notification on the resume call (26 of 655 real notifications). So the reducer routes by `toolUseId`, then `taskId → spawn`, then — naming no spawn we hold — records the end against the agentId itself. The line is also written for things that are not subagents (a background `Bash`/`Monitor` task, a `Workflow` run, a nested spawn): those name no agent, so nothing ever looks them up. `<task-id>` carries a type prefix, exact on 862 real terminal notifications — `a…` an agent (751, all naming a child file), `b…` a background shell task (109), `w…` a workflow run (2). **A `TaskStop` receipt is the other source of this event**, and the only end a stopped `Monitor` ever gets: Claude Code writes no notification for it (0 of the 49 lines naming two stopped monitors carries a `<status>`) and the liveness probe cannot answer for a monitor either, so without this the row would call itself running for the rest of the session. It names the TASK and not the call, so the reducer resolves it through `bgByTaskId`; its status is `stopped`, Claude Code's own word, which every surface already reads as a clean end |
-| `background-event` | a `queue-operation` line whose `<task-notification>` carries an `<event>` and NO `<status>` | a still-running background task reported something — today only a `Monitor`, whose stream is its whole output. `taskId` (the launch receipt's own id, the only link it carries — there is no `<tool-use-id>`), `event` (anonymized: a watched log line can hold anything). **Only the `enqueue` copy** is emitted: Claude Code writes the identical payload again as `remove` when the queue drains (42 enqueue / 6 remove locally, every remove repeating an enqueue), and counting the line would double every event that happened to be drained. The reducer counts these per task id and keeps the latest — the row shows a count and one line, and none of them reach the activity feed: one measured session forwarded 74, which a 13-row ring cannot hold alongside anything else |
-| `note` | an `attachment` line whose `hook_additional_context` comes from a TOOL hook (`hookEvent` `PreToolUse`/`PostToolUse`), OR a `<task-notification>` carrying nothing but a `<summary>` | something attached TEXT to the session that seedeep would never have derived — a hook warning about the file just written, a background review reporting findings. `toolUseId` (null when it is about the session and not a call), `hook`, `source` (the writer, when the text declares it as `[from <plugin> plugin]`), `text` (anonymized). **`attachment` is otherwise dropped wholesale** — nearly all of them are the bookkeeping every tool produces, twice per call. The gate is the hook's EVENT, and NOT the presence of `toolUseID`: every one of the 555 SessionStart injections carries `toolUseID: "SessionStart"`, a non-empty string that anchors nothing, so an id-only gate emitted all of them as notes about a call that does not exist. Measured 2026-08-10 over 533 sessions, the field takes exactly two shapes — `PostToolUse` with a real `toolu_…` (73), and `SessionStart` with that literal (555). The `content` is an array of BARE STRINGS, not of `{type:'text'}` blocks, which is why `renderedText` returns nothing for it. Measured 2026-08-10 over 533 sessions: 73 anchored notes in 39 of them, 2 unanchored. An UNANCHORED note also carries WHEN it arrived and in which turn: the complete-history list (`Expand all`) folds it in among the calls in time order, being the only surface with no cap, and one appended at the end would sit beside work it has nothing to do with. It is not a span, and the Trace never draws one — `SpanType` carries a `note` member that only that list ever produces. Deliberately not modelled as "a security finding": a type keyed on one plugin goes blind the day another one speaks |
-| `wakeup` | a `ScheduleWakeup` receipt (`toolUseResult.scheduledFor`) | the session arranged to wake itself up (a self-paced `/loop`): `toolUseId`, `at` (epoch ms, null when the receipt STOPPED the loop — `scheduledFor: 0` with `stopped: true`). NOT a background task: nothing runs, nothing holds a file open, there is nothing for the liveness probe to ask about. Last-wins in the reducer, because a dynamic loop re-arms every turn and only the newest instant is what the session is waiting for. **The firing is invisible** — a wakeup that goes off produces no line of its own, no `origin` and no `promptSource` that tells it from any other system prompt — so every surface shows this while the instant is ahead and stops showing it after, and none of them ever says it fired. 18 receipts locally (14 arm, 4 stop) |
+| `tool-end`        | a `tool_result` content block                              | a tool call finished — `toolUseId`, `outputSize` (rendered char length); `error: true` when the result is a real FAILURE (a user refusal carries the same `is_error` flag but is NOT a failure — classified by `toolOutcome` in `apps/server/src/server/failure.ts`); for a foreground `Agent` result the inline `returned` payload; for a background one `launched` (a receipt: the subagent STARTED), for a `Workflow` also `workflow` (runId + name), and for a `TaskCreate` result `taskCreated` (the todo number it was given + its subject). A launch into the BACKGROUND carries `background` (taskId + who put it there), and it has two receipt shapes: a `Bash`'s `backgroundTaskId`, and a `Monitor`'s `taskId` **with** `timeoutMs` — the same kind of launch under a different field name. The second half of that gate is not decoration: a `TaskUpdate` receipt carries a todo's `taskId` and a `Workflow`'s carries a run's, and `taskId` alone would list both as running commands |
+| `agent-end`       | a `queue-operation` line whose content is a `<task-notification>`, OR a `TaskStop` receipt (`Successfully stopped task: <id>`) | a background subagent really finished — `toolUseId` (the spawn, **nullable**), `taskId` (`<task-id>`, the child's agentId), `status` (completed/failed/killed/stopped). Fires on every stop, so a resumed agent produces several: last wins, never latched — **except the instant a background COMMAND ended, which is first-wins**. Claude Code writes each notification twice (`enqueue`, then `remove` when its queue drains) with an identical payload but not at the same time — minutes apart in the worst case — so last-wins would date the end to the DRAIN rather than to the stop. The status and the sentence stay last-wins, where a repeat really is inert. **The event is gated on `toolUseId` OR `status`**, never on the spawn name alone: the subject is an AGENT and the line names it TWICE, so requiring the spawn drops the only signal a subagent with no spawn ever gets — and a skill forked into the background has none by construction (its `meta.json` carries no `toolUseId`). What makes a notification TERMINAL is the `status`: the same line type is written for progress (`event` + `summary`, no status), and that ends nothing. The reducer enforces it where the difference is destructive: a background COMMAND is closed only by a notification carrying a status, since applying a progress summary as its outcome would mark it `done` minutes early and measure its duration to the wrong instant. A progress notification carries a `<task-id>` and never a `<tool-use-id>`, so none can reach a command through this event at all — they are reported as `background-event` instead, which counts them against the task and ends nothing. **`toolUseId` is not always a spawn either**: after a `SendMessage` resume Claude Code keys the notification on the resume call. So the reducer routes by `toolUseId`, then `taskId → spawn`, then — naming no spawn we hold — records the end against the agentId itself. The line is also written for things that are not subagents (a background `Bash`/`Monitor` task, a `Workflow` run, a nested spawn): those name no agent, so nothing ever looks them up. `<task-id>` carries a type prefix — `a…` an agent (always naming a child file), `b…` a background shell task, `w…` a workflow run. **A `TaskStop` receipt is the other source of this event**, and the only end a stopped `Monitor` ever gets: Claude Code writes no notification for it and the liveness probe cannot answer for a monitor either, so without this the row would call itself running for the rest of the session. It names the TASK and not the call, so the reducer resolves it through `bgByTaskId`; its status is `stopped`, Claude Code's own word, which every surface already reads as a clean end |
+| `background-event` | a `queue-operation` line whose `<task-notification>` carries an `<event>` and NO `<status>` | a still-running background task reported something — today only a `Monitor`, whose stream is its whole output. `taskId` (the launch receipt's own id, the only link it carries — there is no `<tool-use-id>`), `event` (anonymized: a watched log line can hold anything). **Only the `enqueue` copy** is emitted: Claude Code writes the identical payload again as `remove` when the queue drains, and counting the line would double every event that happened to be drained. The reducer counts these per task id and keeps the latest — the row shows a count and one line, and none of them reach the activity feed, whose ring is `FEED_CAP` rows deep and has other things to hold |
+| `note` | an `attachment` line whose `hook_additional_context` comes from a TOOL hook (`hookEvent` `PreToolUse`/`PostToolUse`), OR a `<task-notification>` carrying nothing but a `<summary>` | something attached TEXT to the session that seedeep would never have derived — a hook warning about the file just written, a background review reporting findings. `toolUseId` (null when it is about the session and not a call), `hook`, `source` (the writer, when the text declares it as `[from <plugin> plugin]`), `text` (anonymized). **`attachment` is otherwise dropped wholesale** — nearly all of them are the bookkeeping every tool produces, twice per call. The gate is the hook's EVENT, and NOT the presence of `toolUseID`: a SessionStart injection carries `toolUseID: "SessionStart"`, a non-empty string that anchors nothing, so an id-only gate emits all of them as notes about a call that does not exist. The field takes exactly two shapes — `PostToolUse` with a real `toolu_…`, and `SessionStart` with that literal. The `content` is an array of BARE STRINGS, not of `{type:'text'}` blocks, which is why `renderedText` returns nothing for it. An UNANCHORED note also carries WHEN it arrived and in which turn: the complete-history list (`Expand all`) folds it in among the calls in time order, being the only surface with no cap, and one appended at the end would sit beside work it has nothing to do with. It is not a span, and the Trace never draws one — `SpanType` carries a `note` member that only that list ever produces. Deliberately not modelled as "a security finding": a type keyed on one plugin goes blind the day another one speaks |
+| `wakeup` | a `ScheduleWakeup` receipt (`toolUseResult.scheduledFor`) | the session arranged to wake itself up (a self-paced `/loop`): `toolUseId`, `at` (epoch ms, null when the receipt STOPPED the loop — `scheduledFor: 0` with `stopped: true`). NOT a background task: nothing runs, nothing holds a file open, there is nothing for the liveness probe to ask about. Last-wins in the reducer, because a dynamic loop re-arms every turn and only the newest instant is what the session is waiting for. **The firing is invisible** — a wakeup that goes off produces no line of its own, no `origin` and no `promptSource` that tells it from any other system prompt — so every surface shows this while the instant is ahead and stops showing it after, and none of them ever says it fired |
 | `command-vanished` | NO LINE — the server's liveness probe                     | nothing holds a background command's output file open any more, so its process is gone: `toolUseId`, `lastSeenAlive`. The only event with no source in the transcript, because the fact is not in it — see [Is a background command still alive?](#is-a-background-command-still-alive). It says a command STOPPED and never what it stopped with, so the reducer turns it into `unknown`, refuses it outright when an `outcome` is already there, and applies it idempotently (`seq: -1`, out of band, like `subagent-meta`) |
 | `workflow-agent`  | a run's `subagents/workflows/wf_<runId>/` dir + its `journal.jsonl` | one subagent of a Workflow run — `runId`, `phase` (`seen`/`started`/`result`). `started` minus `result` is the only record of how many are still working |
 | `subagent-meta`   | `agent-*.meta.json` sidecar + the child's model            | agentId → toolUseId link, type, model, and the sidecar's `description` — what the agent was launched to do, which for a forked skill is the ONLY name it has |
@@ -552,16 +542,15 @@ applied to the main fill is the exact bug that shipped once.
 **A subagent is born at its SPAWN, not at its child file.** The list of subagents is keyed
 by the spawning `Agent` tool_use id and created the moment that block is seen; the child file
 only enriches it (model, usage, output, real duration) and may arrive late or never. Keying
-the list on the child instead — the earlier design — made a whole class of launches
-invisible: a `Workflow` run's subagents have no spawn of their own in this session's log, and
-were never listed at all.
+the list on the child instead makes a whole class of launches invisible: a `Workflow` run's
+subagents have no spawn of their own in this session's log.
 
 **A launch receipt is not a completion.** A `tool_result` for an `Agent` block means "this
 subagent finished" only when the spawn was *foreground*. Since CC v2.1.198 subagents run in
-the background by default (measured: 92% of launches on v2.1.208), and a background result
-carries `status: "async_launched"` and lands ~0.07s after the spawn — it is a receipt saying
-the work *started*. Reading it as completion made every background subagent be born `done`,
-so the live monitor never showed one. The real end arrives later, on its own line type
+the background by default, and a background result carries `status: "async_launched"` and
+lands almost immediately after the spawn — it is a receipt saying the work *started*. Reading
+it as a completion makes every background subagent be born `done`, so the live monitor never
+shows one working. The real end arrives later, on its own line type
 (`queue-operation` → `agent-end`). The parser flags the receipt (`launched`), and only a
 foreground result ends a subagent.
 
@@ -580,22 +569,22 @@ consecutive usage lines drives the trend.
 
 **The denominator follows the calls, not the session head.** The window comes from
 `main.model`, which is the model of the LATEST main-session `usage` — never a value read
-once when the tab opened. Two real failures forced this, and both were invisible:
+once when the tab opened. Two states make the difference visible, and neither announces
+itself:
 
 - a session opened right after `/clear` has written no assistant line yet, so discovery can
-  only report `model: null` and the window falls back to 200k + `estimated`. Seeding it once
-  froze that fallback until the page was reloaded;
+  only report `model: null` and the window falls back to 200k + `estimated`. Seeding the
+  denominator once freezes that fallback until the page is reloaded;
 - `/model` mid-session moves the real window (opus-4-8 is 1M, sonnet-4-6 is 200k), so the
-  same 188k reads as 19% full or 94% full depending on which model is believed. Measured: 1
-  real session in 1197 does switch.
+  same 188k reads as 19% full or 94% full depending on which model is believed.
 
 `main.model` is therefore the model in force NOW, and `main.models` every model the session
 has run on in first-seen order — a surface that shows only the last hides that anything
 changed, and one that shows only the first is the bug itself. Each `TurnNode` carries the
 same pair scoped to its own calls (`models`, `efforts`), which is what lets a scoped widget
-name the model that turn actually ran on. `efforts` is empty on ~98% of real turns: Claude
-Code only writes `effort` when one is configured, so the absence is the normal case and no
-surface may render a placeholder for it.
+name the model that turn actually ran on. `efforts` is empty on most turns: Claude Code only
+writes `effort` when one is configured, so the absence is the normal case and no surface may
+render a placeholder for it.
 
 **Two numbers, two questions — do not conflate them.** A `usage` line is the whole
 prompt of ONE API call, so the reducer keeps its tokens in two shapes:
@@ -624,9 +613,9 @@ separate **Subagents** row. That row is the sum of each subagent's cumulative **
 Σ its own per-call `input+output+cache`, read from the child jsonl the watcher tails and
 folded once per `callId` exactly like the main sums. It is kept a separate row rather than
 folded into the four categories because a subagent's tokens are billed under its OWN context
-window, not the main one. This is the same metric on both sides, so the two are comparable —
-which they were not while the row showed only each subagent's *last* call (it undercounted a
-multi-call subagent by up to ~20x). A **background** subagent writes no child jsonl, so its
+window, not the main one. It is the same metric on both sides, which is what makes the row and
+the hero comparable: a subagent's *last* call is not its volume, and reading one for the other
+understates a multi-call subagent by an order of magnitude. A **background** subagent writes no child jsonl, so its
 per-call usage is unavailable: its volume falls back to the parent-reported `totalTokens`
 (≈ its final context, not a true sum) and is flagged **estimated** — the Subagents row shows a
 leading `~` when the total blends any such approximation. The per-subagent card mirrors the
@@ -635,30 +624,29 @@ split: a **VOLUME** line (cumulative, no window frame — a volume can exceed th
 drawer — drawn there as ONE stacked bar, because their meaning is the ratio between them, not
 four separate figures. It is a VOLUME view, not a cost one — the categories are additive tokens, deliberately
 not price-weighted (cost is ccusage's lane, not seedeep's). Re-read (`cache_read`) dominates
-every real session — the same window handed back on every call, ~95% of a subagent's volume —
-which is exactly the invisible churn seedeep exists to show.
+every real session — the same window handed back on every call, and the bulk of a subagent's
+volume — which is exactly the invisible churn seedeep exists to show.
 
 The Subagents row opens into a **by-model** bar: the row's total split by which model burned it,
 one segment per model **family** (`opus`/`sonnet`/`haiku`/`fable`), biggest share first. It is
 subagent tokens ONLY — the main thread never enters it, the two staying apart by the reducer's
 `owner` — so the bar splits the figure directly above it, never the hero; it is absent when no
 subagent ran, because the row it explains is absent then too. The split is charged per CALL, not
-per agent: `subagent-meta` names one model per agent, but ~2% of real subagent transcripts run
-on more than one family, and charging the whole volume to the declared model misattributes ~1% of
-subagent tokens overall (7% inside one real 130-subagent session). An estimated volume, having no
-per-call detail, lands wholly on the agent's own model — the split always totals the row.
+per agent: `subagent-meta` names one model per agent, but a subagent transcript can run on more
+than one family, and charging the whole volume to the declared model misattributes every token it
+spent elsewhere. An estimated volume, having no per-call detail, lands wholly on the agent's own
+model — the split always totals the row.
 
 Summing per SCOPE, not per last call, is load-bearing: within a single call `cache_read`
 is the entire conversation prefix while `cache_creation` is only the newest increment,
 and a turn's LAST call is its cheapest (the final answer adds almost nothing), so a
 last-call reading understates a turn that re-created hundreds of thousands of tokens.
 **A line is not an API call.** Claude Code writes ONE LINE PER CONTENT BLOCK — thinking,
-each `tool_use`, text — and every one of those lines repeats the SAME `usage` block
-(measured: 192 assistant lines carrying 110 distinct `message.id`s, one id spanning 4
-lines). Anything summed over calls therefore folds once per `message.id` (carried on the
+each `tool_use`, text — and every one of those lines repeats the SAME `usage` block.
+Anything summed over calls therefore folds once per `message.id` (carried on the
 event as `callId`, with the `seq` as fallback for `<synthetic>` lines that have no id):
-`cacheTotals`, `inputTotal`, `outputTotal`, and `apiCalls`. Summing per LINE inflates
-them ~2x. The same guard also absorbs the stream's high-water re-send after a reconnect
+`cacheTotals`, `inputTotal`, `outputTotal`, and `apiCalls`. Summing per LINE multiplies
+each call by its block count. The same guard also absorbs the stream's high-water re-send after a reconnect
 (`stream.ts` guards with `seq <`), which a SUM — unlike everything set-shaped in the
 reducer — would otherwise double-count.
 
@@ -695,9 +683,9 @@ output size), compaction nodes, and per-skill turn/invocation counts, and hands
 callers an immutable `snapshot()`. It exposes `onChange(cb)` (a bare "something
 changed" signal, for rendering) **and** `onEvent(cb, ctx)` (each applied event, for
 per-event UI like toasts and the activity feed). `onChange` carries **no payload**: a
-listener pulls `snapshot()` itself, when it is actually about to paint. Building one
-per event made folding a session O(n²) — `snapshot()` is O(turns + tools + agents) —
-and the view, which coalesces its paints, threw every one of them away. `ctx.turnIndex`
+listener pulls `snapshot()` itself, when it is actually about to paint. Carrying one
+per event makes folding a session O(n²) — `snapshot()` is O(turns + tools + agents) —
+and the view, which coalesces its paints, would throw every one of them away. `ctx.turnIndex`
 is the turn the event belongs to: the reducer is
 the only layer that knows it (events carry no turn), and for a subagent's event it is
 the turn that *spawned* the subagent, so an async subagent outliving its turn still
@@ -706,10 +694,10 @@ counts against the turn that asked for it.
 **The timeline holds everything the user sent, and each entry is classified by what it
 COST — never by its name.** A typed prompt and a slash command are indistinguishable in
 intent (`/paste-image fix this` is a prompt with a helper attached) but not in the log: a
-slash command carries no `origin`. Gating turns on `origin.kind: 'human'` therefore dropped
-every one of them — a `/paste-image` round produced no turn at all, so nothing was ever live
-while Claude worked, and its `turn_duration` landed on the previous turn. The parser now
-reports what was sent and leaves the classification to the reducer, which decides from the
+slash command carries no `origin`. Gating turns on `origin.kind: 'human'` therefore drops
+every one of them — a `/paste-image` round gets no turn at all, so nothing is live while
+Claude works and its `turn_duration` lands on the previous turn. The parser reports what was
+sent and leaves the classification to the reducer, which decides from the
 token count (`TurnKind`):
 - **`work`** — it consumed tokens: typed prompts, and commands that run the model.
 - **`local`** — a command that closed without burning a single token, without an Esc, and
@@ -722,7 +710,7 @@ token count (`TurnKind`):
   from a work turn — only intent can, which is why these two names appear in the code.
 
 **Whose line it is is decided before what shape it has.** A headless `claude -p` line carries no
-`origin` either (0 of 5586 measured), so reading the shape first would file `claude -p "/review
+`origin` either, so reading the shape first would file `claude -p "/review
 this"` as a slash command — and turn detection keeps a command while it deliberately drops an sdk
 prompt, so a headless run would grow a turn it never had. `promptSource` is therefore read ahead of
 both shapes rather than guarded inside one: an sdk line stays an sdk line and still names its
@@ -731,17 +719,16 @@ session with the command's arguments.
 **A command is written in one of TWO shapes, and both are the user sending something.** The
 familiar one is the expansion — `<command-message>` / `<command-name>` / `<command-args>`. The other
 is the command exactly as it was typed, in plain text (`/code-review del diff`), with no `origin`, no
-`promptSource` and no tags: measured 2026-08-02 over 721 real transcripts, 19 lines, all real
-commands (`/compact` ×17, `/code-review` ×2), on versions 2.1.200 → 2.1.220, with zero false hits.
-Reading only the tagged shape lost the whole round again — a `/code-review` iteration had no turn at
-all and its work was credited to the previous one. The gate for the plain shape is
+`promptSource` and no tags. It is the rarer of the two, and reading only the tagged shape loses the
+whole round: the command gets no turn at all and its work is credited to the previous one. The gate
+for the plain shape is
 `origin` **absent** (a task-notification is a `user` line with an origin of its own) and not
 `isMeta`, and the line must be a command and nothing else, anchored at both ends.
 
-**One invocation can write BOTH shapes, and they share a `promptId`** — `/compact` does, on 15 of
-those 19 lines. The reducer folds them into one turn, keyed by `promptId` **and the command name**:
-a prompt QUEUED while a command runs inherits that command's `promptId` (measured once, on a real
-`/compact`), so deduping on the id alone would swallow a human turn to save a duplicate one.
+**One invocation can write BOTH shapes, and they share a `promptId`.** The reducer folds them into
+one turn, keyed by `promptId` **and the command name**: a prompt QUEUED while a command runs
+inherits that command's `promptId`, so deduping on the id alone would swallow a human turn to save
+a duplicate one.
 
 `state: 'live'` means **working**, not merely open: an entry goes live only once it has
 consumed a token, or while an agent it launched is still running. Otherwise a `/model` —
@@ -756,8 +743,7 @@ are built by the same helper, so their shape and ordering cannot drift.
 
 **The live intent panel (V1)** answers "what is the agent trying to do right now" from a datum
 the model already writes: a main-session `assistant` line that carries a **text block** but
-is **not** the turn's end (`stop_reason !== "end_turn"`, measured `tool_use` on 79% of
-text-bearing lines) is mid-turn **narration**. The parser emits it as a `turn-narration`
+is **not** the turn's end (`stop_reason !== "end_turn"`) is mid-turn **narration**. The parser emits it as a `turn-narration`
 event (main session only — a subagent's narration has no consumer); the reducer keeps the
 latest per turn (`TurnNode.lastNarration`, last wins). The panel sits between the Live activity
 header and the feed; it shows the current intent — or the turn's final output (`TurnNode.result`)
@@ -765,39 +751,35 @@ once the `end_turn` answer lands — and its age. The text is clamped to two lin
 overflows, a `more` (revealed by measuring overflow after layout) opens the full text, rendered,
 in the output modal. No LLM: the extraction is pure, because the harness already makes the model
 narrate in short phrases. The activity feed below trades rows for the panel so the card's height
-barely moves — 13 events when the panel is absent, 11 with a one-line intent, 10 with two (measured
-from the panel's line count after layout; the ring still retains `FEED_CAP` = 13 for the drawer),
-with the full history in Expand all and the Trace.
+barely moves — its visible cap drops as the panel grows, measured from the panel's line count after
+layout, while the ring still retains `FEED_CAP` = 13 for the drawer — with the full history in
+Expand all and the Trace.
 
 **What the agent DID since it last spoke outranks what it said — once its words have had their
-moment.** A narration alone leaves the panel stale, not empty: measured on real sessions, one
-narration stands unchanged for a median of 24s (p90 100s, worst observed 22 minutes) while ~8 tool
-calls run under it. So the panel also carries an **activity group** — one line counting the turn's
-calls since its last word (`TurnNode.activity`, `ActivityGroup`).
+moment.** A narration alone leaves the panel stale, not empty: one narration can stand unchanged
+for minutes while tool calls run under it. So the panel also carries an **activity group** — one
+line counting the turn's calls since its last word (`TurnNode.activity`, `ActivityGroup`).
 
 The handover is **not** immediate, and that is the whole difference between a live panel and an
-unreadable one. A narration is the newest thing that happened for a median of just **2.6s** (42.9%
-under two seconds, p90 11.6s), so giving the panel to the group on the turn's first call made every
-narration flash past: the words were there and nobody could finish them. The last word (via
-`TurnNode.lastWordTs`) therefore holds the panel — for **as long as that particular word takes to
-read**, `narrationHoldMs` in `apps/server/src/core/activity-line.ts`, and only then does the group take over,
-for as long as the silence lasts.
+unreadable one. A narration is frequently the newest thing that happened for only a second or two,
+so giving the panel to the group on the turn's first call makes every narration flash past: the
+words are there and nobody can finish them. The last word (via `TurnNode.lastWordTs`) therefore
+holds the panel — for **as long as that particular word takes to read**, `narrationHoldMs` in
+`apps/server/src/core/activity-line.ts` — and only then does the group take over, for as long as
+the silence lasts.
 
-The hold is `chars / 17 per second`, floored at 3s and capped by what the panel can actually SHOW.
-`.nowtext` is `-webkit-line-clamp: 2`; measured against the real CSS in Chrome at a 1440px
-viewport, that is 828px of 14.72px type at ~6.89px per character of prose — ~120 characters a line,
-so **240 visible**, ~14.1s of reading. Past that the text is behind `more` and no amount of holding
-reveals it. This replaced a flat 12s, which the corpus (9020 real narrations, p10 55 chars, p50
-**161**, p90 700) showed was wrong in both directions: **60% of narrations are read in less** — a
-median of 6.1s in which the panel sat on a line already finished while work was under way — and the
-other 40% were cut off mid-sentence. The floor binds on 8.3% of them, the two-line cap on 34.4%.
-The hold runs from the word's **first sighting**, never from its timestamp: Claude Code stamps a
-text block when it starts generating it but appends the line only once the block closes, so
-counting from the stamp spent most of the hold before the panel had anything to show. Because no event announces the deadline passing, the panel arms one
-entry on the shared 1s ticker that re-runs its own decision — and since that makes it the one
-surface re-rendering OUTSIDE `render()` (which is what clears the counters), its counters carry
-`owner: 'now'` and it reclaims them on each pass. Skipping that reclaim grew the list by one or two
-entries a second between events, ~840 across a 7-minute command, each re-written on every tick.
+The hold is `chars / 17 per second`, floored at 3s and capped by what the panel can actually SHOW:
+`.nowtext` is `-webkit-line-clamp: 2`, so past the two visible lines the text sits behind `more`
+and no amount of holding reveals it. A flat hold is wrong in both directions — the short
+narrations, which are the majority, are read long before it expires, and the long ones are cut off
+mid-sentence — which is why the hold is derived from the text rather than fixed. It runs from the
+word's **first sighting**, never from its timestamp: Claude Code stamps a text block when it starts
+generating it but appends the line only once the block closes, so counting from the stamp spends
+most of the hold before the panel has anything to show. Because no event announces the deadline
+passing, the panel arms one entry on the shared 1s ticker that re-runs its own decision — and since
+that makes it the one surface re-rendering OUTSIDE `render()` (which is what clears the counters),
+its counters carry `owner: 'now'` and it reclaims them on each pass. Without that reclaim the
+ticker list grows by an entry or two a second between events, each re-written on every tick.
 Three rules define the group itself:
 
 - **Derived, never accumulated.** The group is read off the tool ledger — a call counts when it
@@ -807,8 +789,8 @@ Three rules define the group itself:
   **memoised per turn** (`groupCache`) over a per-turn index of call ids (`toolIdsByTurn`), and a
   turn is recomputed only when something that feeds its group moved: one of its own calls started
   or ended, or the turn spoke (`dirtyGroups`). Walking the whole ledger on every snapshot instead
-  measured +35% on the replay of the largest real session (1521 calls × 11.6k snapshots: 3898 ms
-  vs 2892 ms); memoised it is 2864 ms, i.e. free. A cache like this can only be tested by asking
+  costs a large session's replay a double-digit percentage of its time; memoised, the derivation is
+  free. A cache like this can only be tested by asking
   for the snapshot after EVERY event, which is what the golden transcript does — a test that
   snapshots once at the end cannot see a stale group.
 - **The group empties itself.** Any word from the agent — a new narration, or the turn's
@@ -821,26 +803,23 @@ The words live apart from the panel in `apps/server/src/core/activity-line.ts` (
 testable): one verb and an explicit plural per tool, MCP tools summed per **server** (`get_issue`
 + `list_comments` read as "2 linear calls", taking ONE slot), biggest count first with ties broken
 by name so the line cannot jitter, and an unmapped tool named rather than given an invented verb.
-The line names at most `MAX_FAMILIES` = 3 of them and trails off — measured, only 1.7% of real
-groups touch more than three. It is past tense only: what is running lives in the age chip, so the
-text does not move with the clock and needs no ticker entry.
+The line names at most `MAX_FAMILIES` = 3 of them and trails off; a group touching more than three
+is rare enough that the tail costs almost nothing. It is past tense only: what is running lives in
+the age chip, so the text does not move with the clock and needs no ticker entry.
 
 The **age chip times the running CALL**, not the group: it answers "is something still going, and
 for how long", in the same unit as the feed rows below so the two read as one card. It shows the
-oldest call open for at least `RUNNING_AFTER_MS` = 1s (a lower bar would flash and vanish: the
-median real call is 157ms), and is otherwise ABSENT — measured, 78.6% of a group's life has no
+oldest call open for at least `RUNNING_AFTER_MS` = 1s (a lower bar would flash and vanish: most
+calls finish in a fraction of a second), and is otherwise ABSENT — most of a group's life has no
 call open that long, and the panel then shows the count with no number. A call crossing the
 one-second mark is nobody's event, so that chip appears on the shared 1s ticker.
 
 One limit worth knowing before reading the chip as "nothing is running": Claude Code writes a
-call's `tool_use` line about **3.6s after the call starts** (measured from inside a running call),
-so anything shorter than roughly five seconds is never observed in flight at all. The chip times
-the slow calls, which are the ones worth timing. Verified live from inside a 24s command: 17.8s at
-t+18s, 23.8s at t+24s.
+call's `tool_use` line several seconds after the call starts, so a short call is never observed in
+flight at all. The chip times the slow calls, which are the ones worth timing.
 
 The line is seedeep counting, not the agent speaking, so it wears the same quote-less `.plain`
-voice as the waiting panel. Capped at three families it stays inside the two-line clamp in every
-measured case (the longest full line was 125 characters and two lines hold at least 140), but the
+voice as the waiting panel. Capped at three families it stays inside the two-line clamp, but the
 deferred overflow measure can still add `clamped` after the panel has rendered, which reveals
 `more` — so `more` opens the line in full rather than being left inert.
 
@@ -911,7 +890,7 @@ fixtures and against a real roster from the machine running the tests.
 **A catalogue record taken while its session was live is PROVISIONAL**: its `subject` can predate
 the first prompt, its `model` the first API call, and its `lastActivity` is `null` by construction.
 So a client refetches the catalogue on either of two signals, not one — the count changed (a session
-was born), **or** it holds a provisional record for a session the live payload no longer lists (a
+was born), **or** it holds a provisional record for a session the live payload has dropped (a
 session ended). Size alone cannot see the second, because a finished session keeps its file.
 
 `createRoster` serves fresh rows from every poll but notifies only when the identity key changes:
@@ -1081,329 +1060,152 @@ produced, in one pass, so the verdict cannot become a reason to keep data around
 
 ## The GUI shell
 
-One page, one process, tabbed. A live session gets a tab by itself; on top of that
-the workspace you left is restored (see below). It offers a dropdown of **all**
-sessions (active and inactive, grouped) to switch to or add — including replaying
-a finished one. It is built as small ES modules: pure logic
-(`stream`, `replay`, `sessions`, `tab-store`) that is unit-tested
-without a browser, plus thin DOM glue (`tab-bar`, `nav-menu`, `dropdown`, `view`, `home-view`,
-`app`).
+One page, one process, tabbed. A live session gets a tab by itself; on top of that the workspace
+you left is restored, and a dropdown offers **all** sessions (active and inactive, grouped) to
+switch to or add, including replaying a finished one. It is built as small ES modules: pure logic
+(`stream`, `replay`, `sessions`, `tab-store`) unit-tested without a browser, plus thin DOM glue
+(`tab-bar`, `nav-menu`, `dropdown`, `view`, `home-view`, `app`). What each surface SHOWS is
+[features.md](features.md); what follows is the shell's own rules.
 
 **The fixed surfaces live in a header menu, not in the tab strip** (`nav-menu.ts`, mounted on
 `#nav` left of the wordmark): **Home**, **Compare** and **Search**, each keyed by a reserved id
 (`HOME_ID`, `COMPARE_ID`, `SEARCH_ID`) that is not a uuid, so it can never collide with a session.
-They were three permanent pills at the head of the strip, and the strip is where you find a
-SESSION — labels that never change were spending the width the subjects need. None is a session:
-all live outside the `openTabs` map, and `switchTo` shows their panel the same way it shows a
-session's.
+None of them is a session: all live outside the `openTabs` map, and `switchTo` shows their panel
+the same way it shows a session's. The strip is where you find a SESSION, and a label that never
+changes spends the width the subjects need. The trigger **adopts the current surface's name**
+(`✦ Home`) and drops it on a session, because no tab is active while a fixed surface is on screen
+and Search's panel, an empty input, does not name itself; it is one menu idiom with the picker
+(toggle, click-outside and Esc close, ↑/↓ over real buttons, `aria-current="page"`).
 
-The trigger **adopts the current surface's name** (`✦ Home`) and drops it on a session. That is
-not decoration: with the pills gone, no tab in the strip is active while a fixed surface is on
-screen, so the trigger is the only thing left that says where you are — and Search's panel, an
-empty input, does not name itself. Interactions match the picker's, one menu idiom in the header:
-the trigger toggles, click-outside and Esc close, ↑/↓ walk the items (real focus on real buttons,
-so Enter and Space come free), and the current surface is marked with `aria-current="page"`.
-`tabBar.setActive` is still called with the reserved id and simply lights nothing.
-
-**Search** (`search-view.ts`, reserved id `SEARCH_ID`) renders `/api/search`. It fetches nothing on
-switch — it has no answer until there is a question — and takes the caret instead, so switching to
-it and typing is one gesture. A row states how well it matches (the number it is ORDERED by), which
-session it is, and the passages that matched, each attributed to *you* or *claude* and highlighted
-with `<mark>` ELEMENT nodes built from indices — never an HTML string, since the text is a real
-prompt. The row's meta line carries the session's WHOLE uuid as a click-to-copy chip — the id you
-paste into `claude --resume` — and the actions column on the right holds one button, opening the
-session in a tab (the same path the picker and the Compare row take). Ordering, the Human/Automated
-split and whether the automated runs are shown are all client-side over one response. Rules:
-[`search.md`](./search.md).
-
-**The id chip** (`id-chip.ts`) is shared by the Search row and the picker row: it shows the first 8
-characters of the session id — what seedeep already printed — and copies the FULL uuid on click,
-which is what `claude --resume` and a grep of the transcripts need. A copy the browser refuses
-leaves the chip unchanged rather than claiming one.
-
-**Compare** (`compare-view.ts`, reserved id `COMPARE_ID`) renders `/api/compare`: a header and one
-row per session. It carries **no KPI tiles** — they were removed on request (2026-07-28): the
-leaderboard is the surface, and a tile restating the window's total said nothing a row did not.
-The window's totals are still in the response and still used — for the model legend, the scope
-line and the remainder's share. A row's bar is **two facts in one object** — its LENGTH is the
-session's weight, its SEGMENTS are the model mix — so "how heavy" and "why" need no second column.
-A row is **three STACKED lines**: the prompt, then every chip (project · main model · when it last
-ran · API calls · complete tokens · subagent share · a `▲N vs unweighted` chip when the weighting moved
-it by 3 places or more), then the **bar, full width**, with the weight at its right end. Each line is
-clipped with an ellipsis, never wrapped — a row that wraps is taller than its neighbours, and an
-uneven leaderboard reads as if the tall rows meant something — with the full text on hover.
-
-Stacking is what ended a fight the column layout kept losing. With the bar beside the text, the chips
-and the prompt shared roughly half the row and the ratio between them had to be rebalanced three
-times, each new field costing ~70px before it silently clipped the chips at the end (model, subagent
-share, `▲N`) while still looking tidy. Stacked, the prompt and the chips each get the whole row —
-~1190px at 1440px against ~650px before, and 0 clipped chip lines down to 1100px — and the bar loses
-nothing by being full width, since its job is to be comparable, not short: a small bar is in fact
-easier to read on a longer track.
-
-The subagent share carries **no threshold**: it is a fact about the session, not a judgement about
-what deserves the space, and "2% subagents" is as true as 24% — a 5% cut used to hide it on a
-quarter of the rows. The `▲N` chip does carry one, at 3 places, and it is measured rather than felt:
-in the only window where it decides anything (7d, where nearly every session ran the same model so
-the weighting multiplies them all alike) shifts of ±1 are 11 of the 14 rows that would carry a chip
-— two sessions of near-identical weight trading places, which says nothing about the weighting. At
-30d and all, 12–13 rows clear 3 regardless.
-
-**A row opens the session it describes** — same path as the picker (`openFromDropdown`), so a row
-and a pick cannot open a session two different ways. It is a real button: `role="button"`,
-tab-reachable, and Enter/Space do what the click does, because a `div` that only answers the mouse
-is a control nobody can reach from the keyboard.
-
-The window filter switches client-side (all three windows arrive in one response) and **opens on
-`all`**: the question is which session weighed the most, and landing on a 7-day slice hides the
-sessions that actually did. The fetch happens on **tab switch**, not at boot, so a launch that lands on a session tab does not pay for a
-corpus refresh. There is **no unit label** — no "opus-equivalent": a permanent *how this is
-computed* block carries the explanation instead, with the per-model factors shown in the same
-colours as the bars, and the one factor Anthropic does not publish marked as seedeep's own.
-
-**Home.** The first menu entry (`home-view.ts`, reserved id `HOME_ID`) renders the minute-zero
-retrospective from `/api/retro` as a compact
-dashboard: KPI tiles, the turn-size distribution (the hero), weekly activity, a waste-by-cause
-breakdown, the verdict split, and a `7d / 30d / all` window filter that switches client-side (all
-three windows arrive in one response). The **activity card carries its own metric tabs** —
-`tokens` (default) / `turns` / `hours` — so one bar per calendar week can be read three ways;
-they repaint from the loaded retrospective, never refetch. `turns` keeps the severity stack;
-`tokens` and `hours` are single-colour, because a volume is not a severity (the same rule the
-histogram follows). It is never closable and is not a session, so it lives outside the `openTabs`
-map. Its dashboard classes are
-all `rt-`-prefixed: the stylesheet has no CSS scoping, and a generic name (a pre-existing `.wrow` with
-a red left border) once bled onto every waste row — the prefix is the isolation mechanism.
-**Launch rule:** if a live session auto-opens (or a saved tab is restored active) you land there
-and Home is one menu click away; otherwise Home is the landing surface. Either way Home always exists,
-so an empty workspace never reads as a broken page — it replaces the old empty-hint.
-
-**Why `graph.ts` is one large module and stays that way.** It is the client's largest
-module (~4900 lines), and the
-obvious answer — split it per widget — was measured rather than assumed. Each candidate
-block was scored by what it would have to receive from `createGraph`'s closure, because
-the extraction interface is what decides whether a split helps: the drawer needs **25**
-closure bindings, the turn explorer 15, the subagent rail 14. A module taking 25
-parameters is the same closure with a form to fill in — it moves the coupling behind an
-interface instead of removing it, and makes the next diff unreadable for no gain. 830
-lines across 15 functions sit at 8+ bindings, so per-widget splitting was rejected on the
-numbers.
-
-What DID come out is `graph-derive.ts`: the functions that derive a value from a snapshot
-and touch neither the DOM nor the closure. Session state they used to read from the
-closure (`ended`, the clock) is a parameter there, which is what makes the rules testable
-without mounting the bento or waiting five minutes — turn numbering (the "Turn 13 / 11"
-class of bug), the workflow silence threshold, and what "running" means on a session that
-has ended. The rule for anything else: extract what becomes *testable*, not what merely
-becomes *shorter*.
+Four of their properties belong to the shell rather than to what they draw: **Search** fetches
+nothing on switch, having no answer until there is a question; **Compare** fetches on tab switch
+rather than at boot, so a launch landing on a session tab does not pay for a corpus refresh;
+**Home** is never closable, so an empty workspace never reads as a broken page, and its classes are
+all `rt-`-prefixed because the stylesheet has no CSS scoping; and **a row opens the session it
+describes** through the picker's own `openFromDropdown`, so a row and a pick cannot open a session
+two ways.
 
 **`apps/server/src/client/` is rendering and transport; the meaning it draws comes from
-`apps/server/src/core/`.** What lives under `client/` is the DOM (the shell, the bento, the
-Trace, the widgets), the SSE plumbing (`stream.ts`, `replay.ts`, `event-types.ts`)
-and browser-local state (`tab-store.ts`, `end-guard.ts`, the client half of the
-roster split). Everything that turns events into meaning is core, and the test for
-which side a module belongs on is not "does it compile in a browser" — it is
-**whether it derives**. A module that reduces or selects goes in `core/`; a module
-that paints, listens or remembers stays in `client/`.
+`apps/server/src/core/`.** What lives under `client/` is the DOM (the shell, the bento, the Trace,
+the widgets), the SSE plumbing (`stream.ts`, `replay.ts`, `event-types.ts`) and browser-local state
+(`tab-store.ts`, `end-guard.ts`, the client half of the roster split). Everything that turns events
+into meaning is core, and the test for which side a module belongs on is not "does it compile in a
+browser" — it is **whether it derives**. A module that reduces or selects goes in `core/`; a module
+that paints, listens or remembers stays in `client/`. That is also the only rule for splitting one:
+`graph.ts` is the client's largest module and stays one, because splitting it per widget would hand
+the drawer alone **25** bindings out of `createGraph`'s closure, and a module taking 25 parameters
+is the same closure with a form to fill in — what DID come out is `graph-derive.ts`, the pure
+derivations, with session state (`ended`, the clock) as a parameter. Extract what becomes
+*testable*, not what merely becomes *shorter*.
 
-**The client ships as one bundle.** `index.html` loads a single module, so there is
-exactly one entry point: `bun run build:client` bundles `apps/server/src/client/app.ts` into
-`apps/server/public/lib/app.js` (committed, so the repo runs without a build step). `apps/server/public/` therefore holds only the page, its stylesheet
-(`apps/server/public/css/`, one file per sub-feature, `<link>`ed in cascade order) and that
-artifact.
-The rule the layout enforces: a shared module is resolved once. Registering each
-module as its own entry point bundles it independently — a module imported by two
-entries is inlined into both, so the page loads two copies of the same reducer.
-Adding a module is now free (import it; the bundler follows), which is what keeps
-splitting a large view into smaller ones from touching the build at all.
+**The client ships as one bundle.** `index.html` loads a single module, so there is exactly one
+entry point: `bun run build:client` bundles `apps/server/src/client/app.ts` into
+`apps/server/public/lib/app.js` (committed, so the repo runs without a build step), and
+`apps/server/public/` therefore holds only the page, its stylesheet (`public/css/`, one file per
+sub-feature, `<link>`ed in cascade order) and that artifact. The rule the layout enforces: **a
+shared module is resolved once.** Registering each module as its own entry point bundles it
+independently — a module imported by two entries is inlined into both, so the page loads two copies
+of the same reducer. Adding a module is free (import it; the bundler follows).
 
-- **A session that starts gets a tab — once.** One rule covers the first visit and
-  every session started later: a live, interactive session that has not been
-  offered before opens a tab. "Offered" is remembered (`known`, persisted next to
-  the tab set), which is what separates *offer it once* from *reopen what I
-  closed*: a closed tab is gone from the tab set but stays in `known`, so it never
-  returns — not on the next poll, not after a refresh. `known` is pruned to the
-  live sessions, since one that has ended can never re-trigger.
-  - It opens in the **background**. The tab appears and starts reading, but does
-    not pull you onto it — anything else would yank you off what you are reading
-    every time a session starts. The exception is an empty screen, where a tab
-    nobody is looking at would leave the page blank.
-  - **Automated runs are excluded.** A headless `claude -p` registers as an open
-    session for the length of its run (measured), so without this every git push
-    would pop a tab — and a content-less one at that.
+The tab rules:
 
-- **A tab says which session it is.** The label is `<project> · <subject>` — the
-  subject (the session's first human prompt, anonymized at parse time) cut to 30
-  chars, falling back to a short session id when there is none. The project alone
-  made two sessions of one project indistinguishable.
-- **A tab's state is never words.** The label is the label; state rides on other
-  channels, because `· ended` ate the room the subject needs:
-  - dot **pulse** = generating right now (green);
-  - the **tab dims** when its session ends, since everything inside it is then
-    frozen history — a property of the whole tab, not a badge on it. The active
-    tab dims less: being quiet must not mean being unreadable.
-  - the `title` spells all of it out on hover and for assistive tech, so a class is
-    never the only channel — the words used to carry that, and dropping them
-    without a replacement would have traded space for accessibility.
-- **The workspace survives a refresh.** The open tabs, their order and the active
-  one are saved to `localStorage` on every change and restored at boot. The saved
-  set decides which tabs **exist**, so a tab you closed stays closed; only a
-  genuinely new session adds one, per the rule above. Storage is best-effort — it
-  is guarded at the access, not only at the call, because reading `localStorage`
-  throws outright where storage is disabled — and a dead storage degrades to
-  opening the live sessions, which is also the first-visit behaviour.
-- **The picker pins what is already open.** Sessions with a tab are marked, since
-  picking one switches to its tab instead of opening a second. The pin is pushed by
-  `app.js` on every open/close: the roster's identity key is built from the sessions
-  themselves (id, liveness, status, subject), so it does not change when a tab opens
-  and could never drive this.
+- **A session that starts gets a tab — once.** One rule covers the first visit and every session
+  started later: a live, interactive session not offered before opens a tab. "Offered" is
+  remembered (`known`, persisted next to the tab set), which separates *offer it once* from *reopen
+  what I closed* — a closed tab is gone from the tab set but stays in `known`, so it never returns,
+  not on the next poll and not after a refresh; `known` is pruned to the live sessions, since one
+  that has ended can never re-trigger. It opens in the **background** (the exception is an empty
+  screen, where a tab nobody is looking at would leave the page blank), and **automated runs are
+  excluded**, since a headless `claude -p` registers as an open session for the length of its run
+  and would otherwise pop a content-less tab on every git push.
+- **The workspace survives a refresh.** The open tabs, their order and the active one are saved to
+  `localStorage` on every change and restored at boot, and the saved set decides which tabs
+  **exist**, so a tab you closed stays closed. Storage is best-effort — guarded at the access, not
+  only at the call, because reading `localStorage` throws outright where storage is disabled — and
+  a dead storage degrades to opening the live sessions, the first-visit behaviour.
+- **A tab says which session it is, and its state is never words.** The label is
+  `<project> · <subject>`, the subject cut to 30 chars, because the project alone cannot tell two
+  sessions of one project apart; state rides on other channels (pulse, dimming) since `· ended`
+  eats the room the subject needs, with the `title` spelling it out for assistive tech so a class
+  is never the only channel.
+- **The picker pins what is already open**, since picking such a session switches to its tab rather
+  than opening a second. The pin is pushed by `app.js` on every open/close: the roster's identity
+  key is built from the sessions themselves (id, liveness, status, subject), so it does not change
+  when a tab opens and could never drive this.
 
-- **One shared live connection.** The whole GUI opens a single `/api/stream`
-  `EventSource`; a client-side router dispatches each event to the tab that
-  subscribed to its `sessionId`. Opening or closing a tab only mutates a handler
-  map — it never opens or closes a connection, so tabs cannot leak feeds.
-- **Replay is a separate, ephemeral connection.** Each replay opens its own
-  `/api/replay` `EventSource` that self-closes at `replay-end`.
-- **A tab loads before it paints.** Until the replay ends, the tab shows a skeleton
-  loader (on the bento's own grid, so the layout does not jump) and the views paint
-  **nothing** — the Graph still absorbs every event (its activity feed keeps filling its
-  ring) but draws only at the replay→live handoff, in a single pass. A large session's
-  history is thousands of events: painting through that flood rebuilt the whole bento per
-  coalesced tick, and the user watched the dashboard assemble itself for seconds on every
-  refresh. The loader cannot hang, because `startReplay` fires the handoff exactly once —
-  on `replay-end`, on a dead connection, or on `stop()`.
-- **Active tab = replay then live.** An active tab first subscribes to the live
-  feed but buffers it, replays its history from the start (so the view shows the
-  real accumulated fill immediately), then flushes the buffered live events the
-  replay did not already emit — deduped on `(sessionId, seq)` — and continues
-  live. This handoff loses no event written during the replay and doubles none.
-- **A live roster.** The roster is re-fetched on a light timer: a newly-born
-  session appears in the dropdown (never steals focus by auto-opening a tab), and
-  an active session that expires re-labels its tab "ended" and closes its live
-  subscription, freezing the view on the last state.
-- **One view per tab, one feed.** The tab mounts the **Graph** against the
-  session-tree reducer: a live bento dashboard on ONE left vertical — the cockpit's left column,
-  the stats strip's first card and the output row's first card are all one strip card wide
-  (`calc((100% - 2rem) / 3)`), so Context, Subagents, Session and Commits share an edge — with a context dial +
-  token breakdown (with a colour legend), a Session card (the token ledger plus the
-  turn KPIs and the timeline entry point — the turn DISTRIBUTION lives only in the
-  timeline strip), a skills+commands widget and a Changed files widget — the three share the
-  stats strip in EQUAL thirds — the last carrying a total plus a
-  proportional bar per file extension, counted from GIT (`GET /api/files`, see
-  `docs/changed-files.md`): the files of the commits attributed to the session, so a shell write and
-  a build are included where the `file-change` ledger above cannot see them — and a session that has
-  not committed shows no number rather than one nothing can verify. Its DESCRIPTION doubles as the caption naming that set, which is why
-  the card has no trailing line; the session scratchpad — the one thing git cannot see — is
-  tallied in one row below the bars. The complete list lives in its drawer, grouped
-  project-then-scratchpad and narrowed by a path filter and a type filter.
-  Below the strip sits an output row of its own: the Commits card — as wide as one stats-strip
-  card, so the two rows share a vertical, and present only when the session owns commits (see
-  `docs/commits.md`) — leading collapsed main tools ordered by output size, which takes the rest;
-  with no commits, Main tools takes the whole row and stops truncating its paths.
-  Then a bounded activity feed, and a subagents grid in launch order. When the session ran subagents the Session card's by-model
-  bar makes it taller and `align-items:stretch` hands its two capped neighbours the same height, so
-  Changed files shows a 5th file-extension bar (cap 4→5) and Main tools a 4th hog (3→4) — gated on
-  the same `subagentsTotal > 0` as the bar, spending the height on real data (96% of subagent
-  sessions have a 4th tool, 43% a 5th file type) rather than blank space. The Skills+Commands card
-  splits its own height 50/50 between the two (in CSS, independent of subagents), so its slack is
-  shared evenly instead of pooling under Commands. With a right-side drawer (per subagent / tool / API call /
-  tool-type / skill / command) that locks page scroll while open, and a read-only modal above it for a
-  subagent's full launch prompt or returned text (both truncated in the drawer with
-  a "show full" affordance). An activity-feed row opens the same drawer: it keeps
-  only the `tool_use_id`, and resolves it against a freshly built snapshot at click
-  time (a spawn row → the subagent it launched), so the feed never holds a second,
-  drifting copy of a tool's state. Every drawer is laid out the same way, and the
-  order encodes rank: a header (kind chip, title, and an identity line carrying only
-  what the entity IS — type, model, owner — never a measurement), then 2–3 KPI tiles
-  for the facts the entity actually raises, then bars for anything that is a
-  proportion, then the content blocks, then a `Details` list for bookkeeping. A fact
-  the snapshot does not carry is DROPPED, never rendered as a dash: an empty row in a
-  demoted list is pure noise. Plus cyan/purple toasts for new tools and subagents
-  (armed only after the initial
-  replay hands off to live, so history never floods them).
-- **A subagent toast names the model the spawn runs on.** Not inferable from the
-  session: measured over ~1600 real subagents, 74.6% run on a different family than
-  their parent. The toast never WAITS for it (deferring it was tried in 2026-07 and cost
-  real latency): it fires at once with the model line reserved, and
-  `syncSubToastModels` fills that line in place on the next render. **Filling in is the
-  normal case, not the exception** — Claude Code writes the child's sidecar BEFORE the
-  parent's assistant line, so the `subagent-meta` that fires the toast usually arrives
-  ahead of everything that could name the model: measured on the live stream, 4 of 6
-  spawns had the `Agent` tool-start (which carries `spawnModel`) land 0.6–2.7s LATER,
-  and the model appeared on screen 0.6–1.8s after the toast. When the tool-start does
-  win the race, the model is in the reducer but not yet in the last painted snapshot, so
-  the lookup falls back to `state.snapshot()` and the line is filled at birth. For the
-  30.1% of spawns that declare no `model:`, nothing can name it before the child writes
-  its first assistant line — p50 3.2s, inside the toast's 5s life. A model landing after
-  the toast is gone touches nothing: `dismiss()` drops the slot.
-- **A pending prompt takes over the NOW panel, and the tab dot goes amber.** When the
-  roster reports the session blocked on the user, the panel that says what the agent is
-  doing says instead that it is doing nothing until you answer — amber, naming the tool
-  it is waiting to approve WHEN THE TRANSCRIPT HAS IT (read from the newest unfinished
-  feed row; for a gated `Bash` it does not — see `pendingTool` above, measured
-  2026-07-30) and ticking how long it has been
-  stopped, from CC's own `statusUpdatedAt` rather than from the poll that noticed. An
-  amber toast announces the transition ONCE, for whoever is looking; the panel and the
-  tab dot keep saying it until it is answered, which is what a tab switch needs (a toast
-  in a hidden panel is born and dies unseen). A turn the user has SELECTED is never
-  hijacked — the tab badge still carries the state. Latency is the roster poll (≤3s),
-  which the wait itself dwarfs. A **Trace** button in the
-  Live activity header opens a near-fullscreen modal that shows the session as a
-  single continuous flow diagram — a vertical spine of turns, each expanding in
-  place into its grouped strip of steps, with subagent lanes unfolding under their
-  spawns. Scope-aware, follows the newest work live. Its rules (grouping, live
-  semantics, subagent lanes, reply-vs-done) have their own reference: `trace.md`.
-  Clicking any span opens the existing detail drawer (no separate state).
-  `apps/server/src/core/span-store.ts` is the sole data source, fed by `onEvent`.
-- **Selecting a turn scopes EVERY widget, the feed included.** Context, cache,
-  skills, commands, activity, main tools and subagents all read the turn-scoped
-  snapshot; the Session card's footer and the timeline strip stay session-wide
-  because they are the navigator. The activity feed is the one widget not driven by snapshots (it folds
-  raw events), so it scopes itself: its ring retains the last N activities **per
-  turn**, not globally — a session-wide cap would have already evicted an older
-  turn's events by the time you select it, leaving that turn permanently empty. Its
-  header follows the scope, and the "live" badge only survives on a turn still running.
-- **`Expand all` on the Live activity card opens the COMPLETE activity list** in the
-  standard drawer. It exists because the ring's cap (13) is, measured over real logs,
-  about the *median* turn — so roughly half of all turns have activity the card can never
-  show, and the ring's eviction is destructive (the rows are gone from memory, not
-  merely hidden). The list therefore does NOT read the ring: `activity-list.ts`
-  flattens `span-store.ts`, which keeps everything, into one chronological sequence.
-  **It is the card's list, longer — never a different list**: the span store also holds
-  each turn's `prompt` and its `result` (`done`), which are turn STRUCTURE and never reach
-  the feed, so `ACTIVITY_TYPES` keeps only the span types the two `feed.push` sites emit —
-  `api`, `tool`, `subspan`, `spawn`. Without that filter the list showed rows the card
-  cannot have (the next turn's prompt among them) and its `Elapsed` KPI, measured
-  first-row → last-row, spanned prompt-to-prompt, counting the user's thinking time as
-  activity. The Trace, which draws the turn itself, still shows both.
-  Subagent spans live **only** inside `turn.spawns[].lanes[].spans` — never in
-  `turn.spans` — so a list built from a turn's own spans would silently omit
-  everything a subagent did while still looking complete; the flatten merges both and
-  ties on `t0` put the main thread first, keeping a spawn above the children it
-  created. Rows carry the span's `DrawerHandle` and open through the same `openBlock`
-  router the Trace uses, so a row and its span lead to the identical drawer — but the list
-  passes a `BackEntry` and the Trace does not, and that asymmetry is the rule: a breadcrumb
-  appears when the surface you came FROM was itself a drawer and got replaced. The Trace
-  modal and a feed row stay visible behind the drawer, so they are still there to return to
-  and add no crumb; the all-activity list is replaced, so without a crumb a drill-down would
-  strand you. Rows keep a
-  `t-<type>` class as a semantic hook but draw no type marker: the name already says what
-  the row is. Scope-aware like every other widget. A span that closed within the millisecond
-  it opened has no duration and renders `—`: `running…` is reserved for spans that actually
-  are.
-- **Prompts and results render as markdown** (`apps/server/src/client/markdown.ts`) in the modal —
-  headings, fenced code, lists, tables, quotes, inline code/bold/italic/links. It
-  builds DOM nodes with `createElement`/`textContent` and **never touches
-  `innerHTML`**: the content is arbitrary session text, so markup in a prompt must be
-  text, not structure. A link with a non-`http(s)`/`mailto` scheme is left as literal
-  text rather than becoming an anchor. The `user-turn` event carries the **whole** prompt
-  (same 20k cap and `anon()` pass as a turn's result): a view can always shorten a prompt
-  to a line, but it cannot recover what the parser dropped. The banner therefore shows a
-  derived one-liner (`promptLine()`, shared with the strip's tooltips and rows) and offers
-  an **Input** button that opens the original. The button appears when what you see is not
-  what you typed — either the DATA was shortened (lines collapsed or cut), which is known
-  outright, or the LAYOUT ellipsized the line, which is *measured* with a `ResizeObserver`
-  (truncation depends on the viewport, and an inactive tab is `display:none`, where a
-  one-shot measurement would read zero).
+And the connection rules:
+
+- **One shared live connection.** The whole GUI opens a single `/api/stream` `EventSource`; a
+  client-side router dispatches each event to the tab that subscribed to its `sessionId`. Opening
+  or closing a tab only mutates a handler map — it never opens or closes a connection, so tabs
+  cannot leak feeds. **Replay is separate and ephemeral**: each replay opens its own `/api/replay`
+  `EventSource` that self-closes at `replay-end`.
+- **Active tab = replay then live.** An active tab first subscribes to the live feed but buffers
+  it, replays its history from the start (so the view shows the real accumulated fill immediately),
+  then flushes the buffered live events the replay did not already emit — deduped on
+  `(sessionId, seq)` — and continues live, losing no event written during the replay and doubling
+  none. Until the replay ends the tab shows a skeleton loader and the views paint **nothing**: the
+  Graph absorbs every event but draws only at the handoff, in a single pass, because a large
+  session's history is thousands of events and painting through that flood rebuilds the whole bento
+  per coalesced tick. The loader cannot hang — `startReplay` fires the handoff exactly once, on
+  `replay-end`, on a dead connection, or on `stop()`.
+- **A live roster.** The roster is re-fetched on a light timer: a newly-born session appears in
+  the dropdown (never stealing focus by auto-opening a tab), and a session that ends re-labels its
+  tab, closes its live subscription and freezes the view on the last state.
+
+**One view per tab, one feed.** The tab mounts the **Graph** against the session-tree reducer: a
+bento dashboard, a right-side drawer (per subagent / tool / API call / tool-type / skill / command)
+that locks page scroll, a read-only modal above it, the **Trace** ([`trace.md`](./trace.md)), and
+toasts armed only after the replay hands off to live, so history never floods them. Which cards
+exist and what each shows is [features.md](features.md). Four of its rules are structural, not
+visual:
+
+- **Every drawer is laid out the same way, and the order encodes rank**: a header (kind chip,
+  title, and an identity line carrying only what the entity IS — type, model, owner — never a
+  measurement), then 2–3 KPI tiles for the facts it actually raises, then bars for anything that
+  is a proportion, then the content blocks, then a `Details` list for bookkeeping. A fact the
+  snapshot does not carry is DROPPED, never rendered as a dash.
+- **One drawer, one router.** A feed row, a Trace span and an `Expand all` row all open through
+  `openBlock`, so one entity can never be presented two ways. A feed row keeps only the
+  `tool_use_id` and resolves it against a freshly built snapshot at click time, so the feed holds
+  no second, drifting copy of a tool's state; `core/span-store.ts`, fed by `onEvent`, is the sole
+  source for the other two. A breadcrumb (`BackEntry`) appears only where the surface you came FROM
+  was itself a drawer and got replaced: the Trace and a feed row stay visible behind it, the
+  all-activity list does not.
+- **`Expand all` reads the span store, never the feed's ring**, whose cap is about the size of a
+  median turn and whose eviction is destructive. It is the card's list, longer — never a different
+  one: `ACTIVITY_TYPES` keeps only the span types the two `feed.push` sites emit (`api`, `tool`,
+  `subspan`, `spawn`), since the store also holds each turn's `prompt` and `result`, which are turn
+  STRUCTURE. Subagent spans live **only** inside `turn.spawns[].lanes[].spans`, never in
+  `turn.spans`, so the flatten must merge both or omit everything a subagent did while still
+  looking complete.
+- **A subagent toast names the model the spawn runs on** and never WAITS for it: it fires with the
+  model line reserved and `syncSubToastModels` fills it in place on the next render. Filling in is
+  the normal case — Claude Code writes the child's sidecar BEFORE the parent's assistant line, so
+  the `subagent-meta` firing the toast usually precedes anything that could name the model; when
+  the `Agent` tool-start (carrying `spawnModel`) wins instead, the lookup falls back to
+  `state.snapshot()`.
+
+**Selecting a turn scopes EVERY widget, the feed included.** Context, cache, skills, commands,
+activity, main tools and subagents all read the turn-scoped snapshot; the Session card's footer and
+the timeline strip stay session-wide because they are the navigator. The activity feed is the one
+widget not driven by snapshots (it folds raw events), so it scopes itself: its ring retains the
+last `FEED_CAP` activities **per turn**, not globally — a session-wide cap would have already
+evicted an older turn's events by the time you select it, leaving that turn permanently empty.
+
+Two rules govern the text seedeep puts on screen. **A pending prompt takes over the NOW panel**
+from the roster rather than from the transcript, ticking on CC's own `statusUpdatedAt` rather than
+on the poll that noticed, and names the tool it is waiting to approve only WHEN THE TRANSCRIPT HAS
+IT — for a gated `Bash` it does not, which is why `pendingTool` is nullable. And **prompts and
+results render as markdown** (`client/markdown.ts`) built with `createElement`/`textContent`,
+**never `innerHTML`**: the content is arbitrary session text, so markup in a prompt must be text,
+not structure, and a link with a non-`http(s)`/`mailto` scheme stays literal. The `user-turn` event
+carries the **whole** prompt (same 20k cap and `anon()` pass as a turn's result) because a view can
+shorten a prompt to a line but cannot recover what the parser dropped, so the banner shows a
+derived one-liner (`promptLine()`) plus an **Input** button opening the original — offered when the
+DATA was shortened, which is known outright, or when the LAYOUT ellipsized the line, which is
+*measured* with a `ResizeObserver` (an inactive tab is `display:none`, where a one-shot measurement
+would read zero).
 
 ### Startup
 

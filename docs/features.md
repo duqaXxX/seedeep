@@ -208,7 +208,7 @@ session published with the Artifact tool gets a row of the same kind: it is not 
 file that changed, it is something put online, and the link is the only part of it
 that outlasts the session. Expand the card for the complete list, project first
 then scratchpad, narrowed by a path filter and by type, with the published pages
-listed under it as links. Full rules: [`changed-files.md`](changed-files.md).
+listed under it as links. Full rules: [`session-output.md`](session-output.md#changed-files).
 
 <img src="assets/shots/changed-files.png" width="459" alt="The Changed files card: four files in two commits, split by extension, and a row saying one artifact was published">
 
@@ -244,7 +244,7 @@ own empty state instead.
 - **Commits** — the commits that session produced, each opening on GitHub or
   GitLab, or marked `local` when it is not pushed. Attributed from the commit's own
   hash in the call that made it, so two sessions working on one repo never claim
-  each other's work. Full rules: [`commits.md`](commits.md).
+  each other's work. Full rules: [`session-output.md`](session-output.md#commits).
 
   <img src="assets/shots/session-commits.png" width="344" alt="The Commits card: two commits, both marked local, each with its short hash and subject">
 
@@ -255,7 +255,7 @@ own empty state instead.
   Read from the calls that named them, never from a key typed in a prompt, where
   most key-shaped strings name no tracker at all (`GPT-4`, `UTF-8`). A row says
   whether the session **changed** the card or only **read** it. Full rules:
-  [`cards.md`](cards.md).
+  [`session-output.md`](session-output.md#tracker-cards).
 
   <img src="assets/shots/tracker-cards.png" width="344" alt="The Cards card: two tracker cards with their titles, one badged read, the other changed by the session">
 

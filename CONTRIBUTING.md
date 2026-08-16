@@ -256,8 +256,9 @@ server reached over HTTPS on another machine. What that leaves is ordinary use r
 of open questions — report what you see in an issue, since an "it all worked" is still worth
 sending on a platform nobody here uses daily.
 
-Where an observation goes: `docs/tray.md` holds the platform measurements in a table under *What
-is signed, and what that costs*. Something broken is its own issue, not a footnote to that one.
+Where an observation goes: [`docs/tray.md`](docs/tray.md#what-an-unsigned-build-can-actually-deliver)
+holds what an unsigned build actually delivers on each platform. Something broken is its own issue,
+not a footnote to that one.
 
 ## Documentation
 

@@ -238,7 +238,7 @@ send a change.
 | [`api.md`](docs/api.md) | the HTTP reference: every route, its parameters and its responses |
 | [`configuration.md`](docs/configuration.md) | the config file, precedence, TLS, auth, the Settings panel |
 | [`trace.md`](docs/trace.md) · [`search.md`](docs/search.md) · [`tray.md`](docs/tray.md) | the three surfaces with rules of their own |
-| [`commits.md`](docs/commits.md) · [`cards.md`](docs/cards.md) · [`changed-files.md`](docs/changed-files.md) | what a session shipped, worked on, and touched |
+| [`session-output.md`](docs/session-output.md) | what a session shipped, worked on, and touched |
 | [`claude-code-upgrades.md`](docs/claude-code-upgrades.md) | how seedeep survives a Claude Code release |
 | [`CHANGELOG.md`](docs/CHANGELOG.md) | what changed, newest first |
 | [`SECURITY.md`](SECURITY.md) | found a vulnerability? report it privately, never as an issue |

@@ -4384,7 +4384,7 @@ export function createGraph(
     });
   }
 
-  // ---- Changed files: the three witnesses, joined server-side (see docs/changed-files.md) ----
+  // ---- Changed files: the session's commits, joined server-side (see docs/session-output.md) ----
   let filesData: SessionFiles | null = null;
   // What the ledger held when the last fetch went out. A delta is the only on-transcript signal
   // that the file set moved, so it is what asks for a fresh answer — the commit and worktree
