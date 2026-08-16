@@ -250,7 +250,7 @@ export async function remoteBase(repo: RepoRef): Promise<string | null> {
  *
  * LIMIT: Bitbucket serves `/commits/<hash>` (plural) and whether it redirects the singular form is
  * UNVERIFIED; Azure DevOps uses a different shape altogether. Covering either needs an explicit
- * per-forge map, not one more hostname guess. See `docs/commits.md`.
+ * per-forge map, not one more hostname guess. See `docs/session-output.md`.
  */
 export function commitUrl(base: string | null, hash: string): string | null {
   if (!base) return null;

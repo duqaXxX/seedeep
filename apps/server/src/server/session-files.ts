@@ -7,7 +7,7 @@ import { commitsForSession } from './session-commits.ts';
 import { type Scan, scanSession } from './transcript-scan.ts';
 
 /**
- * The files a session changed, read from the commits it produced (see `docs/changed-files.md`).
+ * The files a session changed, read from the commits it produced (see `docs/session-output.md`).
  *
  * Every number is one a reader can reproduce with `git show --stat`. Nothing is inferred: a file
  * written by a shell command carries no record of WHICH session wrote it, and the working tree
@@ -53,7 +53,7 @@ async function reposOf(scan: Scan): Promise<RepoRef[]> {
  * The files `rec` delivered, newest first, each carrying the commit that delivered it.
  *
  * `others` must be every known session: `commitsForSession` needs them to keep a commit exclusive
- * to the session that made it (attribution by proof, `docs/commits.md`).
+ * to the session that made it (attribution by proof, `docs/session-output.md`).
  */
 export async function filesForSession(rec: SessionRecord, others: readonly SessionRecord[]): Promise<SessionFiles> {
   const scan = await scanSession(rec.path);

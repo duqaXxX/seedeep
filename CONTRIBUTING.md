@@ -1,7 +1,59 @@
 # Contributing to seedeep
 
-Thanks for your interest in `seedeep`. This guide covers how to set up the project
-locally and the conventions to follow when sending a change.
+Thanks for your interest in `seedeep`. The three things you are most likely to want are first —
+how to report something, how to send a change, and what to expect from the people here. Everything
+after them is setup and convention, to read when you need it.
+
+## Reporting a bug, or asking for a feature
+
+Open an issue — the forms ask for what a report needs to be actionable: the seedeep version
+(`seedeep --version`), how it was installed, your operating system, the Claude Code version, and
+whether the session was live or being replayed.
+
+**Redact before you attach anything.** seedeep reads real session logs, so a screenshot, a pasted
+line of output or a copied panel can carry your file paths, your project names and your prompts.
+Nothing in an issue is private, and this is the one mistake this project cannot undo for you. A
+**security** finding is different and never goes in an issue: [`SECURITY.md`](SECURITY.md) has the
+private route.
+
+## Sending a change
+
+1. Fork and branch from the default branch.
+2. Make the change; keep it focused (avoid unrelated cleanup in the same commit).
+3. Ensure `bun run test` and `bun run typecheck` pass (and `bun run test:tray` for a
+   change under `apps/tray/src-tauri/`).
+4. Open a pull request describing **what** changed and **why**.
+
+Three CI jobs then run on the pull request, and **all of them must be green before it can be
+merged** — `main` takes no direct pushes, from anyone, and cannot be force-pushed or
+deleted. The maintainer goes through a pull request on the same terms:
+
+- **Tests, types, lint, client bundle** — the suite, the type-checker, `bun run lint`
+  (Biome: a formatting violation blocks the change here, before review), and a rebuild of
+  `apps/server/public/lib/app.js` that fails if the committed bundle no longer
+  matches its source. Rebuild and commit it whenever you change client code.
+- **Tray (Rust)** — `cargo test` on a macOS and Windows matrix. `bun run test` does not
+  reach it, so this job is the whole of CI's coverage for a change under
+  `apps/tray/src-tauri/` — run `bun run test:tray` before you push one.
+- **Sensitive-data scan** — the added lines are checked for real home paths,
+  personal email addresses, secret markers and private tracker references. This
+  repo is public and a leak committed once stays in the history forever, so this
+  job blocks the change rather than warning about it. The check is
+  `.github/scripts/scan-sensitive-diff.sh`; you can run it yourself with
+  `git diff main...HEAD | .github/scripts/scan-sensitive-diff.sh`.
+
+## How we work together
+
+Everyone taking part is covered by the [Contributor Covenant](CODE_OF_CONDUCT.md), and reporting
+an unacceptable interaction uses the same private route as a vulnerability.
+
+Two expectations beyond it, both about this project's shape rather than about conduct:
+
+- **It is maintained by one person, outside working hours.** There is no SLA. A pull request may
+  sit; a question may take a week. Saying so is more honest than an unstated promise.
+- **Say what you measured, not what you assume.** seedeep reads a log format Anthropic owns and
+  changes often, so "this is wrong" is hard to act on and "on version X, this line said Y and the
+  card showed Z" is one command away from a fix.
 
 ## Prerequisites
 
@@ -219,6 +271,32 @@ not be accepted.
   real paths, project names, or session content. The repo is public; never
   commit a real session log, real user data, or a screenshot of a real session.
 
+### The tray's live probes
+
+Certificate pinning is a claim about a real TLS handshake, and nothing hermetic can make it. **Seven
+Cargo tests are `#[ignore]`d**, each gated on a variable of its own: four need a server started by
+hand, one starts and stops a real server itself, and the last two are a hostname check and an icon
+dump. The four:
+
+```sh
+cd apps/tray/src-tauri
+# a seedeep in DEFAULT loopback mode on 44842
+SEEDEEP_TRAY_PROBE_LOCAL=1 cargo test -- --ignored --nocapture a_default_local_server
+# a seedeep in REMOTE mode on 44842 (the local-remote case)
+SEEDEEP_TRAY_PROBE_LOCAL_REMOTE=1 cargo test -- --ignored --nocapture a_local_server_in_remote_mode
+# a seedeep in REMOTE mode on THIS machine, which the tray adopts without asking for a paste
+SEEDEEP_TRAY_PROBE_LOCAL_ADOPT=1 cargo test -- --ignored --nocapture a_co_located_server_in_remote_mode
+# the whole remote flow against any server: learn, refuse to store, trust, restart, read the digest,
+# re-paste without being asked again, then refuse a pin that does not match — and re-pin it
+SEEDEEP_TRAY_PROBE_URL='https://127.0.0.1:44842/?token=…' cargo test -- --ignored --nocapture a_real_server_is_reached
+```
+
+Each is named on purpose: they want different servers and more than one wants the same port, so
+`--ignored` with no filter runs all seven and fails the ones whose server is not up. That noise is
+deliberate — a probe that passes without having run is worse than one that says it could not. The
+last one prints the fingerprint it learned, so it can be compared against the line the server
+printed: the same out-of-band check a user is asked to perform.
+
 ## Running it on Windows
 
 Three Windows sessions have happened, on a Windows 11 guest (2026-08-14, 2026-08-15 and
@@ -230,14 +308,37 @@ server reached over HTTPS on another machine. What that leaves is ordinary use r
 of open questions — report what you see in an issue, since an "it all worked" is still worth
 sending on a platform nobody here uses daily.
 
-Where an observation goes: `docs/tray.md` holds the platform measurements in a table under *What
-is signed, and what that costs*. Something broken is its own issue, not a footnote to that one.
+Where an observation goes: [`docs/tray.md`](docs/tray.md#what-an-unsigned-build-can-actually-deliver)
+holds what an unsigned build actually delivers on each platform. Something broken is its own issue,
+not a footnote to that one.
 
 ## Documentation
 
 - Permanent docs live in `docs/`. Keep them in sync with the code in the **same**
   change — a behavior change and its doc update belong together.
 - Structural changes get a dated entry at the top of `docs/CHANGELOG.md`.
+
+Four rules keep those references usable. They are not style preferences: an audit read every
+public document against the code and found about forty claims that contradicted it, and roughly a
+fifth of the prose describing designs that no longer existed. None of it arrived in one bad
+change — it accumulated a sentence at a time.
+
+- **A reference states CURRENT behaviour.** Not "it used to", not "this was tried and rejected",
+  not a dated internal decision. That belongs in `docs/CHANGELOG.md` and in git, where it stays
+  findable without making a reference lie.
+- **Point at a symbol, never at a line number.** A pointer naming a line in a source file is a
+  comment three weeks later, and nothing can tell a stale line number from a good one.
+  `bun run test` fails on one in a doc — including on the example this bullet is tempted to give.
+- **Do not publish a measurement a reader cannot reproduce.** State the rule instead; if the
+  number is what justifies the rule, keep it in a comment beside the code it constrains, where a
+  change has to read it.
+- **One subject, one home.** If you find yourself writing "unlike in `other-doc.md`", the two
+  belong together.
+
+`apps/server/tests/docs.test.ts` checks what a machine can: every link and anchor resolves, every
+`apps/…` path a doc names exists, no doc points at a line number, and no doc under `docs/` is
+unreachable. It runs over the whole doc set, not over your diff, because a claim usually goes
+false when the code grows around it rather than when someone edits the sentence.
 - **Never add a screenshot by hand.** The figures in `docs/features.md` are cut by
   `bun run doc-shots` — from a recorded session, or from a written transcript in
   `apps/server/scripts/doc-scenes.ts` for the states no recording can provoke (a
@@ -292,27 +393,82 @@ is signed, and what that costs*. Something broken is its own issue, not a footno
   shared height the settings panel was cropped with 45% of the figure empty under
   its last row. Everything that grows with its content leaves it out.
 
-## Sending a change
+## How a release is built
 
-1. Fork and branch from the default branch.
-2. Make the change; keep it focused (avoid unrelated cleanup in the same commit).
-3. Ensure `bun run test` and `bun run typecheck` pass (and `bun run test:tray` for a
-   change under `apps/tray/src-tauri/`).
-4. Open a pull request describing **what** changed and **why**.
+`.github/workflows/release.yml` builds everything a user downloads, across nine jobs, and **a tag is
+the only thing that publishes.** Pushing `v*` creates a draft release, the build jobs upload into
+it, and a final job flips the draft to published.
 
-Two CI jobs then run on the pull request, and **both must be green before it can be
-merged** — `main` takes no direct pushes, from anyone, and cannot be force-pushed or
-deleted. The maintainer goes through a pull request on the same terms:
+- **Publishing is its own job, gated on all the others** — `needs: [tray, server, smoke, windows]`
+  and `if: github.ref_type == 'tag'`. A Windows failure, or a server that will not compile, leaves a
+  draft rather than putting half a download page in front of people. Publishing from a build job
+  would put a release on the download page as soon as the first runner finished.
+- **A manual run (`workflow_dispatch`) publishes nothing.** It builds the same artifacts and leaves
+  them on the workflow run; every step that writes to a repository or a registry is gated on the tag.
+- **The pipeline rehearses on a pull request.** The same jobs run on the version-bump pull request,
+  publishing nothing, and one `Release rehearsal` check reports the result — so the release path is
+  exercised before the tag exists rather than after. The tray job is skipped there: what it would add
+  is the Tauri bundler, and the gates being rehearsed are elsewhere.
+- **Every asset carries a build-provenance attestation** (`actions/attest-build-provenance`),
+  generated on a tag before the upload, so what is attested is what ships. Anyone can check a
+  download with `gh attestation verify <file> -R duqaXxX/seedeep`. Nothing is code-signed.
+- **The npm job runs in the `npm-publish` environment**, which the trusted publishers on npmjs.com
+  are configured to demand — one setting written in two places, so renaming it here makes the
+  registry reject every publish until the other side matches. It is also gated on the repository
+  variable `SEEDEEP_NPM_PUBLISH`, and it is not a dependency of `publish`: a failed npm publish
+  leaves a perfectly green release page, so check both channels after a tag.
 
-- **Tests, types, client bundle** — the suite, the type-checker, and a rebuild of
-  `apps/server/public/lib/app.js` that fails if the committed bundle no longer
-  matches its source. Rebuild and commit it whenever you change client code.
-- **Sensitive-data scan** — the added lines are checked for real home paths,
-  personal email addresses, secret markers and private tracker references. This
-  repo is public and a leak committed once stays in the history forever, so this
-  job blocks the change rather than warning about it. The check is
-  `.github/scripts/scan-sensitive-diff.sh`; you can run it yourself with
-  `git diff main...HEAD | .github/scripts/scan-sensitive-diff.sh`.
+### Every binary is run on a machine that did not build it
+
+The six server executables are cross-compiled on one runner, so the Windows binary and both Linux
+ARM binaries are never executed by the build that produces them. Three scripts close that gap, each
+running against the asset itself on a runner of its own OS (`ubuntu-latest`, `ubuntu-24.04-arm`,
+`macos-latest`, `macos-15-intel`, `windows-latest`, `windows-11-arm`):
+
+- **`.github/scripts/smoke-server.sh`** asserts that `--version` prints the version being released,
+  that `GET /api/config` answers, and that `/`, `/lib/app.js` and `/css/chrome.css` answer too — the
+  last three because the measured failure mode of a first compile was an API that answered while
+  every static path returned 404.
+- **`.github/scripts/idle-survival.sh`** starts the binary repeatedly and leaves it completely alone
+  for an idle window. Starting is not surviving: a binary that dies seconds later passes a smoke
+  check, and a request in flight makes an innocent bystander of itself.
+- **`.github/scripts/server-lifecycle.sh`** drives `start` → `status` → `restart` → `stop` and
+  asserts that the restart changed the pid and that something answers afterwards. The detached path
+  earns its own coverage because it branches by OS, and its only other test injects its
+  dependencies — proving the logic while never running the process.
+
+On a tag the binary is downloaded **from the release**, which also proves the upload happened; on a
+manual run it comes from the run's own artifact, so the whole matrix is provable without cutting a
+release. Both exits from the pipeline wait for these: `publish`, so a broken build stays a draft, and
+`npm`, which cannot be taken back at all.
+
+The Windows x64 binary additionally gets its own job, running one binary on two runners — native x64
+silicon and the same binary under Prism, Windows-on-ARM's x64 emulator — at the full protocol, so a
+crash can be attributed rather than assumed. **The Prism leg is `continue-on-error`**: failing a
+release over Microsoft's emulator would be failing it over something seedeep does not ship. The
+native leg gates `publish` and `npm` exactly as the smoke job does.
+
+### Why the rehearsal's filter is a job and not a `paths:` trigger
+
+A workflow a path filter keeps from starting reports nothing at all, and a required check that is
+never reported sits at *Pending* and blocks the pull request forever — while a job skipped by its own
+`if:` reports success. So a first job (`changes`) reads the diff and decides whether the rest is
+needed, and one summary job with a fixed name, `Release rehearsal`, is what the `main` ruleset
+requires. The matrix legs cannot be required directly: their names carry the matrix, so the ruleset
+would break the day a target is added or renamed.
+
+### Every action is pinned to a commit SHA
+
+Trusted publishing removes the stored token but not the credential — it mints one inside the job, so
+anything running there is already in a position to publish. A tag like `@v2` is a pointer its owner
+can move at any time, and a SHA is the content, so what runs is what was reviewed. The tag is kept
+in a comment on the same line.
+
+The cost is that a pinned action never updates itself, and GitHub does not raise Dependabot alerts
+for actions pinned to a SHA. `.github/dependabot.yml` closes that: one grouped pull request a week
+that moves the SHAs and their comments together.
+
+What a user downloads and how they install it is in [`docs/install.md`](docs/install.md).
 
 ## License
 

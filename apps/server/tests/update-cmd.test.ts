@@ -121,7 +121,12 @@ test('every channel says how often the network is asked, and that a restart is n
   ];
   for (const c of channels) {
     const advice = updateAdvice(c, '/home/dev/bin/seedeep', at('1.0.0'));
-    assert.match(advice, /only thing seedeep asks the network, and at most once an hour/);
+    // The sentence has to match what `runUpdate` DOES: it passes `force`, so a typed verb asks the
+    // registry every time. The advice used to say "at most once an hour", which is the cache's rule
+    // for every OTHER surface and the opposite of this one's.
+    assert.match(advice, /only thing seedeep asks the network/);
+    assert.match(advice, /A verb you type asks it now/);
+    assert.match(advice, /at most once an hour/);
     assert.match(advice, /keeps the old code until `seedeep restart`/);
   }
 });

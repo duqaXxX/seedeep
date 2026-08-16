@@ -27,7 +27,10 @@ switch it off within a week.
 
 Everything below follows from that asymmetry.
 
-## Two mechanisms, two different jobs
+## Three mechanisms, three different jobs
+
+The radar and the probe are below; the third, **evidence**, needs nobody to run it and is
+described in [The rest closes itself](#the-rest-closes-itself).
 
 ### The radar — `bun test`
 
@@ -209,8 +212,12 @@ TEST THESE BY HAND — the probe could not prove them:
   [ ] the child's end_turn text = the subagent's RETURNED OUTPUT
       how: click that subagent and confirm seedeep shows the text it RETURNED.
            This is the differentiator — check it first.
-      if it is wrong, the break is at parser.ts:194
+      if it is wrong, the break is at server/parser.ts
 ```
+
+A claim names the file that reads the field, and a symbol inside it where one exists — never a
+line number. `schema-contract-readers.test.ts` fails when a path or a symbol named there stops
+existing, which is the check a line number could never carry.
 
 Work an item by doing it in a real session; the next probe run will find the
 evidence and close the claim on its own.

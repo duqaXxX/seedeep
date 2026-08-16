@@ -63,7 +63,7 @@ const fake = (over: Partial<Claim>): Claim => ({
   id: 'CX',
   scene: 99,
   describe: 'a test claim',
-  reader: 'parser.ts:1',
+  reader: 'server/parser.ts:parseLine',
   investigate: 'look here',
   kind: 'gesture',
   provoked: () => true,
@@ -75,7 +75,14 @@ test('every claim has a unique id, a reader site and an instruction', () => {
   const ids = CLAIMS.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length, 'duplicate claim id');
   for (const c of CLAIMS) {
-    assert.match(c.reader, /\.ts:\d+|\.ts$/, `${c.id} must name the site that reads it`);
+    // A path under apps/server/src/, optionally `:symbol`, and NEVER a line number — the reader
+    // used to be `parser.ts:194` and every sampled one had rotted into a `}` or a comment.
+    // `schema-contract-readers.test.ts` checks that the paths and symbols actually resolve.
+    assert.match(
+      c.reader,
+      /^[\w-]+\/[\w-]+\.ts(:[A-Za-z_]\w*)?(, [\w-]+\/[\w-]+\.ts(:[A-Za-z_]\w*)?)*$/,
+      `${c.id} must name the site that reads it`,
+    );
     assert.ok(c.investigate.length > 20, `${c.id} must say what to verify`);
   }
 });
@@ -145,7 +152,7 @@ test('the report names the reader site and the next action, not just the field',
   delete (lines[0] as any).origin;
   const text = report(evaluate(claimsForScene(1), ctxOf(lines)), '2.1.213');
   assert.match(text, /IS BROKEN on 2\.1\.213/);
-  assert.match(text, /parser\.ts:110/);
+  assert.match(text, /server\/parser\.ts/);
   assert.match(text, /Verify:/);
 });
 
@@ -187,7 +194,7 @@ test('everything the probe could not prove becomes an actionable manual checklis
   const text = manualChecklist(r);
   assert.match(text, /TEST THESE BY HAND/);
   assert.match(text, /open a session and click the subagent/);
-  assert.match(text, /parser\.ts:1/);
+  assert.match(text, /server\/parser\.ts:parseLine/);
 });
 
 test('a fully-proven run has an empty manual checklist', () => {

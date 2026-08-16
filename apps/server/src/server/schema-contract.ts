@@ -39,6 +39,15 @@ export interface Claim {
   id: string;
   scene: number;
   describe: string;
+  /**
+   * Where the break lands: one or more paths under `apps/server/src/`, each optionally
+   * `:symbol`.
+   *
+   * **Never a line number.** These were line numbers once, and by the time anyone read them
+   * every sampled one pointed at a `}`, a function signature or a comment — the parser changes
+   * far faster than this table, and nothing could notice. A path and a symbol can be checked:
+   * `schema-contract-readers.test.ts` fails when either stops existing.
+   */
   reader: string;
   /** What a human should go and look at when this does not hold. */
   investigate: string;
@@ -131,7 +140,7 @@ export const CLAIMS: Claim[] = [
     id: 'C1',
     scene: 1,
     describe: "origin.kind === 'human' on a typed prompt",
-    reader: 'parser.ts:110',
+    reader: 'server/parser.ts:userLineIntent',
     investigate:
       "open a real session's jsonl, find a line you typed, and see what replaced `origin`. seedeep's turn detection keys off it.",
     kind: 'gesture',
@@ -142,7 +151,7 @@ export const CLAIMS: Claim[] = [
     id: 'C2',
     scene: 1,
     describe: 'message.usage carries the four token counters',
-    reader: 'parser.ts:151',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'check an assistant line: are the counters renamed, nested, or gone? The context bar reads them.',
     kind: 'gesture',
     provoked: (ctx) => typed(ctx, 'assistant').length > 0,
@@ -162,7 +171,7 @@ export const CLAIMS: Claim[] = [
     id: 'C3',
     scene: 1,
     describe: 'message.id identifies the API call',
-    reader: 'parser.ts:155',
+    reader: 'server/parser.ts:parseLine',
     investigate: "seedeep groups a turn's usage by call id; without it the per-call breakdown collapses.",
     kind: 'gesture',
     provoked: (ctx) => typed(ctx, 'assistant').length > 0,
@@ -172,7 +181,7 @@ export const CLAIMS: Claim[] = [
     id: 'C4',
     scene: 1,
     describe: 'system/turn_duration with durationMs + messageCount',
-    reader: 'parser.ts:277',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'this is the end-of-turn marker. Without it a turn never closes and the live bar stays stuck.',
     kind: 'gesture',
     provoked: (ctx) => userLineWith(ctx, SCENE1_MARKER) !== null,
@@ -186,7 +195,7 @@ export const CLAIMS: Claim[] = [
     id: 'C5',
     scene: 1,
     describe: "stop_reason 'end_turn' with a text block = the turn's answer",
-    reader: 'parser.ts:189',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'seedeep shows the turn result from this. Mid-stream lines have stop_reason null, so the gate matters.',
     kind: 'gesture',
@@ -202,8 +211,8 @@ export const CLAIMS: Claim[] = [
   {
     id: 'C6',
     scene: 1,
-    describe: 'the three line types seedeep parses still exist',
-    reader: 'parser.ts:138',
+    describe: 'the assistant / user / system line types still exist',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'if a type was renamed, the parser drops every line of it silently.',
     kind: 'gesture',
     provoked: (ctx) => ctx.lines.length > 0,
@@ -213,7 +222,7 @@ export const CLAIMS: Claim[] = [
     id: 'C7',
     scene: 1,
     describe: 'sessionId / cwd / entrypoint / message.model — the discovery anchors',
-    reader: 'discovery.ts:85',
+    reader: 'server/discovery.ts:discoverSessions',
     investigate: 'these label a session in the picker; without them sessions are unnamed or invisible.',
     kind: 'gesture',
     provoked: (ctx) => ctx.lines.length > 0,
@@ -227,7 +236,7 @@ export const CLAIMS: Claim[] = [
     id: 'C8',
     scene: 1,
     describe: 'the session is a `cli` entrypoint (the species seedeep observes)',
-    reader: 'discovery.ts:87',
+    reader: 'server/discovery.ts:discoverSessions',
     investigate: "if a driven TUI now reports something other than 'cli', every species assumption needs re-measuring.",
     kind: 'gesture',
     provoked: (ctx) => ctx.lines.some((d) => typeof d?.entrypoint === 'string'),
@@ -237,7 +246,7 @@ export const CLAIMS: Claim[] = [
     id: 'C9',
     scene: 1,
     describe: '~/.claude/sessions/<PID>.json marks the session open while it lives',
-    reader: 'open-sessions.ts:59',
+    reader: 'server/open-sessions.ts:listOpenSessions',
     investigate: 'seedeep badges live sessions from this file; if it moved, everything looks closed.',
     kind: 'gesture',
     provoked: () => true,
@@ -249,7 +258,7 @@ export const CLAIMS: Claim[] = [
     id: 'C10',
     scene: 2,
     describe: '<command-name> + <command-args>, and NO origin on a command line',
-    reader: 'parser.ts:91,114',
+    reader: 'server/parser.ts:commandShape',
     investigate:
       'the parser trusts the tag ONLY on a line without human origin. If commands gained an `origin`, every typed prompt quoting a tag gets misread.',
     kind: 'gesture',
@@ -266,7 +275,7 @@ export const CLAIMS: Claim[] = [
     id: 'C11',
     scene: 2,
     describe: 'an argument-less command still writes <command-name>',
-    reader: 'parser.ts:118',
+    reader: 'server/parser.ts:commandShape',
     investigate: 'a bare /command must still open a turn; when it did not, the live bar showed nothing for it.',
     kind: 'gesture',
     provoked: (ctx) => userLineWith(ctx, ECHO_MARKER) !== null,
@@ -282,7 +291,7 @@ export const CLAIMS: Claim[] = [
     id: 'C23',
     scene: 11,
     describe: "promptSource === 'sdk' on a headless prompt",
-    reader: 'parser.ts:120',
+    reader: 'server/parser.ts:userLineIntent',
     investigate:
       'the sdk branch exists for `claude -p` sessions (a git hook, a script). A cli session can never prove it — this claim is evaluated against a separate headless run.',
     kind: 'gesture',
@@ -295,7 +304,7 @@ export const CLAIMS: Claim[] = [
     id: 'C14',
     scene: 4,
     describe: "toolUseResult.status 'async_launched' + agentId = a background launch",
-    reader: 'parser.ts:237',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'without this the launch receipt reads as a completion and ~92% of subagents show as finished at birth (the bug that made background subagents look finished at birth).',
     manual:
@@ -312,7 +321,7 @@ export const CLAIMS: Claim[] = [
     id: 'C15',
     scene: 4,
     describe: 'queue-operation carrying <task-notification> with <tool-use-id>',
-    reader: 'parser.ts:290',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'this line ENDS a background subagent. Without it they stay running forever.',
     manual: 'wait for that subagent to finish and confirm seedeep stops showing it as running.',
 
@@ -330,7 +339,7 @@ export const CLAIMS: Claim[] = [
     id: 'C16',
     scene: 4,
     describe: 'the child transcript exists, with a meta.json naming its toolUseId',
-    reader: 'replay.ts:24,45',
+    reader: 'server/subagent-files.ts:subagentDir',
     investigate: 'seedeep reads a subagent from its own file; if the layout moved, subagents vanish from the tree.',
     manual: "with a subagent spawned, confirm it appears as its own node in seedeep's tree.",
     kind: 'model',
@@ -341,7 +350,7 @@ export const CLAIMS: Claim[] = [
     id: 'C16b',
     scene: 4,
     describe: "the child's own lines carry message.usage (a subagent's fill)",
-    reader: 'parser.ts:148',
+    reader: 'server/parser.ts:parseLine',
     investigate: "a subagent's context fill is read from its own transcript, not the parent's.",
     manual: "click that subagent in seedeep and confirm it reports its own token fill, not the parent's.",
     kind: 'model',
@@ -352,7 +361,7 @@ export const CLAIMS: Claim[] = [
     id: 'C16c',
     scene: 4,
     describe: "the child's end_turn text = the subagent's RETURNED OUTPUT",
-    reader: 'parser.ts:194',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       "seedeep's differentiator. If this line stops being written, every subagent renders output-less while everything else still 'works'.",
     manual:
@@ -378,7 +387,7 @@ export const CLAIMS: Claim[] = [
     id: 'C17',
     scene: 5,
     describe: 'interruptedMessageId on the user line after an Esc',
-    reader: 'parser.ts:251',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'seedeep marks a turn interrupted from this. Without it an Esc looks like a normal turn.',
     kind: 'gesture',
     // Ground truth: the post-Esc prompt was typed AND the interrupted one exists.
@@ -392,7 +401,7 @@ export const CLAIMS: Claim[] = [
     id: 'C18',
     scene: 6,
     describe: 'toolUseResult.content + totalTokens/totalDurationMs/status (inline result)',
-    reader: 'parser.ts:222',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'the synchronous subagent branch. Background launches never carry inline output, so only this proves it.',
     manual:
@@ -408,7 +417,7 @@ export const CLAIMS: Claim[] = [
     id: 'C19',
     scene: 7,
     describe: 'attributionSkill when the model invokes a skill',
-    reader: 'parser.ts:160',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'the Skills widget reads this; without it skill activity is invisible. Note it records MODEL invocation only — a user-typed /skill runs the skill and attributes nothing.',
     manual:
@@ -427,7 +436,7 @@ export const CLAIMS: Claim[] = [
     id: 'C20',
     scene: 8,
     describe: 'attributionMcpServer + attributionMcpTool',
-    reader: 'parser.ts:160',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'MCP attribution. Needs a configured, authenticated server — absence here usually means no server answered.',
     manual: 'call any MCP tool in a real session and confirm seedeep attributes it to the right server.',
@@ -446,7 +455,7 @@ export const CLAIMS: Claim[] = [
     id: 'C21',
     scene: 9,
     describe: "the 'Task #N created successfully: <subject>' result text",
-    reader: 'parser.ts:56',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'the ONLY claim that is a text shape, so a reworded message breaks it silently. It maps a todo to its number.',
     manual:
@@ -462,7 +471,7 @@ export const CLAIMS: Claim[] = [
     id: 'C12',
     scene: 3,
     describe: 'tool_use blocks carry id + name + input',
-    reader: 'parser.ts:170',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'every tool seedeep shows starts here.',
     manual: "open a real session, ask Claude to read a file, and confirm seedeep's feed shows the tool starting.",
     kind: 'model',
@@ -476,7 +485,7 @@ export const CLAIMS: Claim[] = [
     id: 'C13',
     scene: 3,
     describe: 'tool_result blocks carry tool_use_id (the link back to the call)',
-    reader: 'parser.ts:209',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'without the id a tool never ends and stays spinning in the feed.',
     manual:
       'same session as C12: confirm the tool row STOPS spinning and shows a duration — that is the tool_result link working.',
@@ -494,7 +503,7 @@ export const CLAIMS: Claim[] = [
     id: 'C22',
     scene: 10,
     describe: 'compactMetadata (preTokens/postTokens) or isCompactSummary',
-    reader: 'parser.ts:300',
+    reader: 'server/parser.ts:parseLine',
     investigate: 'seedeep shows compaction as a context event; without it a compaction is invisible.',
     manual:
       'run /compact in a session big enough to actually compact, and confirm seedeep shows the compaction with its before/after token numbers.',
@@ -524,7 +533,7 @@ export const CLAIMS: Claim[] = [
     scene: 12,
     describe:
       "a pending approval writes status 'waiting' + waitingFor 'permission prompt' in ~/.claude/sessions/<PID>.json",
-    reader: 'open-sessions.ts:60, sessions.ts pendingInput',
+    reader: 'server/open-sessions.ts:listOpenSessions, core/types.ts:pendingInput',
     investigate:
       'seedeep badges a session that is blocked on the user from this pair. If the label changed, the tab badge, the amber NOW panel and the toast all go silent — and silently, because a session that never says it is waiting looks like one that is simply idle.',
     manual:
@@ -547,7 +556,7 @@ export const CLAIMS: Claim[] = [
     id: 'C25',
     scene: 13,
     describe: "a background command outliving its turn writes status 'shell' in ~/.claude/sessions/<PID>.json",
-    reader: 'open-sessions.ts:31',
+    reader: 'server/open-sessions.ts:listOpenSessions',
     investigate:
       'seedeep reads this to keep a session under Working while a command it launched runs on. Unknown values become null, and a session with no status is filed under Idle — so a renamed value does not fail, it silently demotes the session, which is exactly how this was found (reported by a user, not by a test).',
     manual:
@@ -570,7 +579,7 @@ export const CLAIMS: Claim[] = [
     id: 'C26',
     scene: 13,
     describe: "a background command's output file is <tmp>/claude-<uid>/<slug>/<session>/tasks/<taskId>.output",
-    reader: 'command-liveness.ts:58',
+    reader: 'server/command-liveness.ts:resolveOutputFile',
     investigate:
       'seedeep resolves that file from the launch receipt\'s task id to ask whether any process still holds it open — the only way a command whose end Claude Code never writes can stop counting. The parsed path itself cannot be used (anon() masks the session uuid inside it), so the LAYOUT is what the search depends on. If it moved, resolveOutputFile returns null, every probe answers "no verdict", and the rows silently go back to counting for ever.',
     manual:
@@ -606,7 +615,7 @@ export const CLAIMS: Claim[] = [
     id: 'C27',
     scene: 14,
     describe: 'toolUseResult.backgroundedByUser marks a command the USER moved to the background (Ctrl+B)',
-    reader: 'parser.ts:415',
+    reader: 'server/parser.ts:parseLine',
     investigate:
       'the receipt of a Ctrl+B background carries no other signal of its own — no `run_in_background` in the input, no `timedOutAfterMs` — so if this field goes, the command becomes indistinguishable from one the model chose to background, and the live row, the catalogue row and the drawer can only tell the majority story about it.',
     manual:

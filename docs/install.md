@@ -4,10 +4,8 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows build has been used three times**, in a VM (2026-08-14, 2026-08-15 and
-> 2026-08-16), which found six defects between them, all since fixed.
-> The Linux arm64 build was used on Ubuntu 24 in a VM (2026-08-14); its x64 build has
-> been started, never used.
+> **The Windows build has been used in a VM**, several times, which found defects since fixed.
+> The Linux arm64 build was used on Ubuntu 24 in a VM; its x64 build has been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
 > says exactly what each of those covers.
 
@@ -64,7 +62,7 @@ It is the same executable either way, and it is what a headless box reached over
 SSH needs. macOS refuses an unsigned download on first launch: the way through is
 **System Settings → Privacy & Security → Security → Open Anyway**, then your login
 password — the same gesture the tray needs, described in
-[`tray.md`](tray.md#what-is-signed-and-what-that-costs). The Linux builds need glibc
+[`tray.md`](tray.md#packaging-and-releases). The Linux builds need glibc
 (Debian, Ubuntu, Fedora…), not musl.
 
 ### Checking a download came from here
@@ -74,7 +72,7 @@ provenance attestation — a public, tamper-evident record that this exact file 
 by seedeep's release workflow from the tagged commit, and by nothing else:
 
 ```sh
-gh attestation verify seedeep-server_0.20.0_macos-arm64 -R duqaXxX/seedeep
+gh attestation verify seedeep-server_<version>_macos-arm64 -R duqaXxX/seedeep
 ```
 
 It answers with the workflow and the commit that produced the file, or it fails. That is
@@ -372,7 +370,7 @@ promising a recovery that will not come.
 deliberately not its job: use an SSH port-forward
 (`ssh -L 44842:127.0.0.1:44842 user@host`, which leaves the server on loopback and
 makes the tunnel the authentication), or a VPN you already run. The security model in
-full is in [`architecture.md`](architecture.md#security-model).
+full is in [`configuration.md`](configuration.md#security-model).
 
 ## Installing the tray
 
@@ -385,10 +383,10 @@ on everything else, since Windows has no universal binary to hide the question. 
 release is listed there, `bun run tray:build` produces the same bundle locally,
 under the same name.
 
-**The tray is called `seedeep-tray`, the server is called `seedeep`**, and they are
-two programs. They used to share the one name, which made a system permission dialog
-impossible to read: it said *"seedeep"* while asking on behalf of whichever of the
-two it was, and `killall seedeep` reached the server rather than the app you meant.
+**The tray is called `seedeep-tray`, the server is called `seedeep`**, and they are two
+programs, named apart on purpose. One name for both makes a system permission dialog impossible to
+read — it names the app that is asking, and both would be *"seedeep"* — and makes
+`killall seedeep` reach the server rather than the app you meant.
 
 It is optional, and it is a **client**: it connects to a server, on this machine or
 on another one. The server is what has to run where Claude Code runs.

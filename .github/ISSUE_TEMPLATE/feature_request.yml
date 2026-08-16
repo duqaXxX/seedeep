@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something new for seedeep.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem this would solve
+      description: What are you trying to do that seedeep does not help with today?
+      placeholder: "When a turn ends I cannot tell which subagent spent the most tokens."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to see
+      placeholder: "A breakdown in the Trace panel showing each subagent's token count alongside its model."
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this concern?
+      options:
+        - "Web GUI — Trace"
+        - "Web GUI — Home"
+        - "Web GUI — Search"
+        - "Web GUI — Session feed"
+        - "Web GUI — other"
+        - "Menu-bar tray"
+        - "Server / API"
+        - "CLI (seedeep command)"
+        - "Not sure / multiple"
