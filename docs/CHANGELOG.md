@@ -4,6 +4,16 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+## 0.28.1 (2026-08-16)
+
+**0.28.0 was tagged and never published**, so this is the version that ships what it carried. The
+release run built everything, held the release in a draft, and went red on both Windows legs — over
+an assertion in the gate itself, not a defect in the product: `stop` was asserted to remove the
+server's run-state record, which is true on POSIX and false on Windows, where there is no SIGTERM.
+That assertion is now inverted rather than dropped, so the record's survival AND the next start's
+sweep are both checked; and the whole class of "the gate is discovered after the irreversible step"
+is closed by the two entries below.
+
 **The rehearsal became a check the merge actually waits for.** It ran on every release pull request
 already, and nothing required it: a pull request could be merged with the gates red, which is the
 same hole the rehearsal was built to close, one step up. The obstacle was the path filter — a
