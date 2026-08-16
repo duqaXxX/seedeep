@@ -171,28 +171,26 @@ the GUI, stops the server, or reports what the current session cost.
 ## Which platforms have actually been run
 
 Everything above was checked by hand on **macOS**, on the machine `seedeep` is
-developed on. **Linux has been used once**, in a VM, on arm64. **Windows has been
-used three times**, in a VM — the table says exactly how far
-each got, and what each found. Building for three systems is not the same as having
-used three, and this section is that difference written down rather than left for you
-to find.
+developed on. **Linux has been used once**, in a VM, on arm64; **Windows in a VM**,
+several times. Building for three systems is not the same as having used three, and
+this section is that difference written down rather than left for you to find.
 
-Since 0.24.0 there is a middle ground worth naming: **started is not used**. Every
-release now runs each server binary on a runner of its own operating system before
-anything is published — it must report its version, answer on its API and serve the
-browser GUI, or the release stays a draft. That rules out the download that dies at
-startup. It says nothing about whether the thing is pleasant, or correct, in front of
-a person on that machine.
+There is a middle ground worth naming: **started is not used**. Every release runs
+each server binary on a runner of its own operating system before anything is
+published — it must report its version, answer on its API and serve the browser GUI,
+or the release stays a draft. That rules out the download that dies at startup. It
+says nothing about whether the thing is pleasant, or correct, in front of a person on
+that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **Used on Windows 11 in a VM** (2026-08-14, 2026-08-15 and 2026-08-16) — installed from npm, server started and served its API against a real Claude Code session, `status`, `stop`, `restart` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Six defects those sessions found are fixed: a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, unreadable punctuation, a panel button that swallowed about one click in ten, and a burst of console windows on a portal refresh. Four of them were driven again on that machine after the fix — the restart, the popover, the tray's console window and the button; the punctuation and the console burst were not re-checked there. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)) | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: exercised on every release, never used by a person** — started, left idle and driven through the full lifecycle in CI, and version-checked on Docker; never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
-| **Tray** | Used daily on a real menu bar | **Installed and used on Windows 11 in a VM** (2026-08-15 and 2026-08-16) — the installer runs, the icon reads in the notification area, the popover opens at full height, trust-on-first-use and the connection screen work, the panel's buttons respond, notifications are delivered, and no console window appears | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **Used on Windows 11 in a VM** — installed from npm, server started and served its API against a real Claude Code session, `status`, `stop`, `restart` and `install-command` confirmed, and consecutive cold starts measured without a failure. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)) | **arm64: used on Ubuntu 24 in a VM** — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: exercised on every release, never used by a person** — started, left idle and driven through the full lifecycle in CI, and version-checked on Docker; never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
+| **Tray** | Used daily on a real menu bar | **Installed and used on Windows 11 in a VM** — the installer runs, the icon reads in the notification area, the popover opens at full height, trust-on-first-use and the connection screen work, the panel's buttons respond, notifications are delivered, and no console window appears | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
 Concretely: on **Linux x64** you are the first to use it. A defect there is expected
 rather than surprising, and [an issue](../../issues) saying what you saw is the most
-useful thing you can send. The three Windows sessions behind the table above found six
-defects, which is the honest estimate of what an untouched square still holds.
+useful thing you can send — every Windows session so far found several, which is the
+honest estimate of what an untouched square still holds.
 
 ## Design principles
 
@@ -241,6 +239,7 @@ send a change.
 | [`session-output.md`](docs/session-output.md) | what a session shipped, worked on, and touched |
 | [`claude-code-upgrades.md`](docs/claude-code-upgrades.md) | how seedeep survives a Claude Code release |
 | [`CHANGELOG.md`](docs/CHANGELOG.md) | what changed, newest first |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | hit a bug or want a change? start here — and what to redact before you attach anything |
 | [`SECURITY.md`](SECURITY.md) | found a vulnerability? report it privately, never as an issue |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | community standards and how violations are handled |
 

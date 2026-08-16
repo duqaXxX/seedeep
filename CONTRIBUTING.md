@@ -1,7 +1,59 @@
 # Contributing to seedeep
 
-Thanks for your interest in `seedeep`. This guide covers how to set up the project
-locally and the conventions to follow when sending a change.
+Thanks for your interest in `seedeep`. The three things you are most likely to want are first —
+how to report something, how to send a change, and what to expect from the people here. Everything
+after them is setup and convention, to read when you need it.
+
+## Reporting a bug, or asking for a feature
+
+Open an issue — the forms ask for what a report needs to be actionable: the seedeep version
+(`seedeep --version`), how it was installed, your operating system, the Claude Code version, and
+whether the session was live or being replayed.
+
+**Redact before you attach anything.** seedeep reads real session logs, so a screenshot, a pasted
+line of output or a copied panel can carry your file paths, your project names and your prompts.
+Nothing in an issue is private, and this is the one mistake this project cannot undo for you. A
+**security** finding is different and never goes in an issue: [`SECURITY.md`](SECURITY.md) has the
+private route.
+
+## Sending a change
+
+1. Fork and branch from the default branch.
+2. Make the change; keep it focused (avoid unrelated cleanup in the same commit).
+3. Ensure `bun run test` and `bun run typecheck` pass (and `bun run test:tray` for a
+   change under `apps/tray/src-tauri/`).
+4. Open a pull request describing **what** changed and **why**.
+
+Three CI jobs then run on the pull request, and **all of them must be green before it can be
+merged** — `main` takes no direct pushes, from anyone, and cannot be force-pushed or
+deleted. The maintainer goes through a pull request on the same terms:
+
+- **Tests, types, lint, client bundle** — the suite, the type-checker, `bun run lint`
+  (Biome: a formatting violation blocks the change here, before review), and a rebuild of
+  `apps/server/public/lib/app.js` that fails if the committed bundle no longer
+  matches its source. Rebuild and commit it whenever you change client code.
+- **Tray (Rust)** — `cargo test` on a macOS and Windows matrix. `bun run test` does not
+  reach it, so this job is the whole of CI's coverage for a change under
+  `apps/tray/src-tauri/` — run `bun run test:tray` before you push one.
+- **Sensitive-data scan** — the added lines are checked for real home paths,
+  personal email addresses, secret markers and private tracker references. This
+  repo is public and a leak committed once stays in the history forever, so this
+  job blocks the change rather than warning about it. The check is
+  `.github/scripts/scan-sensitive-diff.sh`; you can run it yourself with
+  `git diff main...HEAD | .github/scripts/scan-sensitive-diff.sh`.
+
+## How we work together
+
+Everyone taking part is covered by the [Contributor Covenant](CODE_OF_CONDUCT.md), and reporting
+an unacceptable interaction uses the same private route as a vulnerability.
+
+Two expectations beyond it, both about this project's shape rather than about conduct:
+
+- **It is maintained by one person, outside working hours.** There is no SLA. A pull request may
+  sit; a question may take a week. Saying so is more honest than an unstated promise.
+- **Say what you measured, not what you assume.** seedeep reads a log format Anthropic owns and
+  changes often, so "this is wrong" is hard to act on and "on version X, this line said Y and the
+  card showed Z" is one command away from a fix.
 
 ## Prerequisites
 
@@ -265,6 +317,28 @@ not a footnote to that one.
 - Permanent docs live in `docs/`. Keep them in sync with the code in the **same**
   change — a behavior change and its doc update belong together.
 - Structural changes get a dated entry at the top of `docs/CHANGELOG.md`.
+
+Four rules keep those references usable. They are not style preferences: an audit read every
+public document against the code and found about forty claims that contradicted it, and roughly a
+fifth of the prose describing designs that no longer existed. None of it arrived in one bad
+change — it accumulated a sentence at a time.
+
+- **A reference states CURRENT behaviour.** Not "it used to", not "this was tried and rejected",
+  not a dated internal decision. That belongs in `docs/CHANGELOG.md` and in git, where it stays
+  findable without making a reference lie.
+- **Point at a symbol, never at a line number.** A pointer naming a line in a source file is a
+  comment three weeks later, and nothing can tell a stale line number from a good one.
+  `bun run test` fails on one in a doc — including on the example this bullet is tempted to give.
+- **Do not publish a measurement a reader cannot reproduce.** State the rule instead; if the
+  number is what justifies the rule, keep it in a comment beside the code it constrains, where a
+  change has to read it.
+- **One subject, one home.** If you find yourself writing "unlike in `other-doc.md`", the two
+  belong together.
+
+`apps/server/tests/docs.test.ts` checks what a machine can: every link and anchor resolves, every
+`apps/…` path a doc names exists, no doc points at a line number, and no doc under `docs/` is
+unreachable. It runs over the whole doc set, not over your diff, because a claim usually goes
+false when the code grows around it rather than when someone edits the sentence.
 - **Never add a screenshot by hand.** The figures in `docs/features.md` are cut by
   `bun run doc-shots` — from a recorded session, or from a written transcript in
   `apps/server/scripts/doc-scenes.ts` for the states no recording can provoke (a
@@ -395,32 +469,6 @@ for actions pinned to a SHA. `.github/dependabot.yml` closes that: one grouped p
 that moves the SHAs and their comments together.
 
 What a user downloads and how they install it is in [`docs/install.md`](docs/install.md).
-
-## Sending a change
-
-1. Fork and branch from the default branch.
-2. Make the change; keep it focused (avoid unrelated cleanup in the same commit).
-3. Ensure `bun run test` and `bun run typecheck` pass (and `bun run test:tray` for a
-   change under `apps/tray/src-tauri/`).
-4. Open a pull request describing **what** changed and **why**.
-
-Three CI jobs then run on the pull request, and **all of them must be green before it can be
-merged** — `main` takes no direct pushes, from anyone, and cannot be force-pushed or
-deleted. The maintainer goes through a pull request on the same terms:
-
-- **Tests, types, lint, client bundle** — the suite, the type-checker, `bun run lint`
-  (Biome: a formatting violation blocks the change here, before review), and a rebuild of
-  `apps/server/public/lib/app.js` that fails if the committed bundle no longer
-  matches its source. Rebuild and commit it whenever you change client code.
-- **Tray (Rust)** — `cargo test` on a macOS and Windows matrix. `bun run test` does not
-  reach it, so this job is the whole of CI's coverage for a change under
-  `apps/tray/src-tauri/` — run `bun run test:tray` before you push one.
-- **Sensitive-data scan** — the added lines are checked for real home paths,
-  personal email addresses, secret markers and private tracker references. This
-  repo is public and a leak committed once stays in the history forever, so this
-  job blocks the change rather than warning about it. The check is
-  `.github/scripts/scan-sensitive-diff.sh`; you can run it yourself with
-  `git diff main...HEAD | .github/scripts/scan-sensitive-diff.sh`.
 
 ## License
 

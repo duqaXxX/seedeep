@@ -4,10 +4,8 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows build has been used three times**, in a VM (2026-08-14, 2026-08-15 and
-> 2026-08-16), which found six defects between them, all since fixed.
-> The Linux arm64 build was used on Ubuntu 24 in a VM (2026-08-14); its x64 build has
-> been started, never used.
+> **The Windows build has been used in a VM**, several times, which found defects since fixed.
+> The Linux arm64 build was used on Ubuntu 24 in a VM; its x64 build has been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
 > says exactly what each of those covers.
 
@@ -385,10 +383,10 @@ on everything else, since Windows has no universal binary to hide the question. 
 release is listed there, `bun run tray:build` produces the same bundle locally,
 under the same name.
 
-**The tray is called `seedeep-tray`, the server is called `seedeep`**, and they are
-two programs. They used to share the one name, which made a system permission dialog
-impossible to read: it said *"seedeep"* while asking on behalf of whichever of the
-two it was, and `killall seedeep` reached the server rather than the app you meant.
+**The tray is called `seedeep-tray`, the server is called `seedeep`**, and they are two
+programs, named apart on purpose. One name for both makes a system permission dialog impossible to
+read — it names the app that is asking, and both would be *"seedeep"* — and makes
+`killall seedeep` reach the server rather than the app you meant.
 
 It is optional, and it is a **client**: it connects to a server, on this machine or
 on another one. The server is what has to run where Claude Code runs.

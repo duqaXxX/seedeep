@@ -137,12 +137,12 @@ its commit could be claimed here by testimony (never by proof).
 
 ### What the Commits card shows
 
-- **The Commits card** sits in the output row behind Main tools, which leads it (the maintainer's call —
-  the widest card and the one with the most to read takes the position the eye reaches first).
+- **The Commits card** sits in the output row behind Main tools, which leads it: the widest card
+  and the one with the most to read takes the position the eye reaches first.
   Commits is a quarter of the row, Cards the last quarter. It carries the count, the four newest commits (short hash + subject) and
   `+ N more →` into the drawer. At that width a typical subject fits whole.
 - **The short hash is cyan** (`--agent`).
-- **The card is ALWAYS there, empty or not** (the maintainer's call): a missing widget cannot
+- **The card is ALWAYS there, empty or not**: a missing widget cannot
   distinguish "this session shipped nothing" from "seedeep did not look". Empty, it says
   `No commits in scope yet.` and its **Expand all is hidden** — the drawer is built from the rows,
   so on an empty card that button would do nothing.
