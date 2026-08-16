@@ -9,6 +9,8 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.29.0 (2026-08-17)
+
 ### Added
 
 - `docs/api.md` — the HTTP reference: every route with its parameters, response type, status

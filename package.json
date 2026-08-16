@@ -1,6 +1,6 @@
 {
   "name": "seedeep",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "private": true,
   "type": "module",
   "description": "Live context & subagent visualizer for Claude Code",
