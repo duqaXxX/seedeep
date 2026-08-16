@@ -292,6 +292,53 @@ test('golden transcript: a cut-off round is interrupted, but it is NOT an Esc', 
   assert.equal(byHand.turnList[0]!.cutoff, false, 'but that one WAS the user');
 });
 
+test('golden transcript: the Trace and the timeline agree about a local command a crash found open', () => {
+  // The reducer deliberately leaves a round that called nothing alone, so `kindOf` keeps filing it
+  // as a local command. The Trace was marking `interrupted` on ANY turn-interrupted, so the same
+  // `/model` read "interrupted" in one surface and "local command" in the other.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  tree.onEvent((e, c) => store.apply(e, c));
+  let seq = 0;
+  for (const l of [
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    turnDuration('d1'),
+    slash('u2', 'model', 'opus'),
+    synthetic('s1', 'No response requested.'),
+  ])
+    for (const e of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+
+  const last = tree.snapshot().turnList.at(-1)!;
+  assert.equal(last.kind, 'local', 'the timeline calls it a local command');
+  const traced = store.snapshot().turns.find((t) => t.index === last.index);
+  assert.notEqual(traced?.state, 'interrupted', 'and the Trace must not call it interrupted');
+});
+
+test('golden transcript: a round the user stopped stays an Esc even when a cutoff closes it again', () => {
+  // The user presses Esc, and the session is killed before they type again — so the Esc marker and
+  // the receipt land on the SAME round. It was still the user who stopped it: letting the receipt
+  // stamp `cutoff` there took the round out of the Esc accounting altogether, which is the opposite
+  // of what the comment beside that line claims.
+  const escMarker = JSON.stringify({
+    type: 'user',
+    uuid: 'x1',
+    timestamp: '2026-07-14T10:00:06.000Z',
+    isMeta: true, // marks the round interrupted without opening a new one
+    interruptedMessageId: 'a1',
+    message: { role: 'user', content: '[Request interrupted by user]' },
+  });
+  const snap = timelineOf([
+    typed('u1', 'do the thing'),
+    assistant('a1', 5000),
+    escMarker,
+    synthetic('s1', 'No response requested.'),
+  ]);
+  const turn = snap.turnList.at(-1)!;
+  assert.equal(turn.state, 'interrupted');
+  assert.equal(turn.cutoff, false, 'the user stopped this round; the crash only found it already stopped');
+});
+
 test('golden transcript: the receipt does not promote a local command to an interrupted work turn', () => {
   // `kindOf` files a command with no calls as `local` only while its state is not `interrupted` —
   // so closing a killed session's LAST entry unconditionally turned a `/model` into a work turn

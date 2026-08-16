@@ -1174,6 +1174,14 @@ And the connection rules:
   never claimed — and requests whole any file the tab has never seen, which is what makes the
   children arrive complete. A tab whose session has ENDED needs this most: nothing else would ever
   ask again.
+- **Nothing the tab already holds is delivered twice.** A re-read is sent a line from its top, so
+  the tab counts how many of that line's events it holds and skips exactly that many — the same
+  offset-into-a-line the live path keeps, on the side that had none. It matters because the
+  consumers are not idempotent, which is what the reducer's own idempotence hides: the feed appends
+  a second row and re-points its index (so the first row never gets its duration), the Trace opens a
+  duplicate span stuck on `running`, and the toast rail — armed at the handoff — announces a tool
+  that ran minutes ago. The record is of what is HELD, not a budget spent as it is used: a read that
+  skips a line still holds it, and the read after that must skip it again.
 - **Until the history is complete, the live feed is HELD, not applied.** Two reasons, and the second
   is the one that bites: a line from the file's tail applied before the middle would put the newest
   turn ahead of every turn that precedes it, and the resume mark reads the live frontier as proof

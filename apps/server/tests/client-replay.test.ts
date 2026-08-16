@@ -124,6 +124,38 @@ test('an explicit resync after a give-up starts its own budget', async () => {
   r.stop();
 });
 
+// The give-up releases the buffer over a SHORT history, so from then on the tab holds a scatter of
+// live lines above a low mark. Whatever asks next — a revive, the feed recovering — must not be
+// handed those lines a second time: the reducer would survive it, but every event delivered twice
+// is a duplicate feed row, a duplicate Trace span, and a toast for a tool that ran long ago (the
+// toast rail is armed at the handoff, and cannot tell a re-read from news).
+test('after a give-up, a resync does not re-deliver what the tab already applied', async () => {
+  const stream = fakeStream();
+  const got: number[] = [];
+  const r = startReplay('A', (e) => got.push(e.seq), {
+    stream: stream as any,
+    EventSourceImpl: FakeES as any,
+    retryMs: 3,
+  });
+  for (let round = 0; round < 8; round++) {
+    FakeES.last!.emit('usage', ev(0, 1));
+    FakeES.last!.emit('usage', ev(1, 2)); // never gets past line 1
+    FakeES.last!.emitError();
+    await new Promise((res) => setTimeout(res, 12));
+  }
+  // Released over a hole, with the live feed running on: these three are held only by the tab.
+  for (const seq of [700, 701, 702]) stream.push(ev(seq, 1));
+  // Line 1 was delivered ONCE, by the first round — every later round is sent it again and skips
+  // it. That is the whole invariant: eight attempts, one delivery.
+  assert.deepEqual(got, [0, 1, 700, 701, 702], 'what it read, then what the feed brought while it tried');
+
+  r.resync(); // the stream recovered, or the session was resumed
+  for (const seq of [1, 2, 700, 701, 702, 703]) FakeES.last!.emit('usage', ev(seq, 1)); // the server sends it all
+  FakeES.last!.emit('replay-end', { sessionId: 'A' });
+  assert.deepEqual(got, [0, 1, 700, 701, 702, 2, 703], 'only the hole (2) and the new line (703) are applied');
+  r.stop();
+});
+
 // A tab that gave up holds a history with a HOLE in it, so the live frontier is no proof of
 // anything — the same reason the buffer is held in the first place. A later resync that trusted it
 // would ask past the missing middle and then reach `replay-end` calling itself complete.
@@ -426,12 +458,12 @@ test('active handoff: an error before replay-end holds the buffer, then flushes 
   FakeES.last!.emit('replay-end', { sessionId: 'A' }); // …and reaches the end
   assert.deepEqual(
     got.map((e) => e.seq),
-    [0, 0, 1],
+    [0, 1], // the re-read of line 0 is dropped: the tab already holds it
   );
   stream.push(ev(2, 30)); // and subsequent live flows straight through
   assert.deepEqual(
     got.map((e) => e.seq),
-    [0, 0, 1, 2],
+    [0, 1, 2],
   );
   r.stop();
   assert.equal(FakeES.last!.closed, true); // replay ES closed on error
@@ -569,11 +601,13 @@ test('a replay cut before the end reopens itself, asking only past what it holds
   // 0 is proven whole, so the reopen starts at 1 and the parent's 3791 earlier lines are not re-read.
   assert.equal(from, ':0', 'from the last parent line it holds WHOLE, not the last one it saw');
   // The server re-sends line 1 (the tab could not prove it held it), then the children the cut
-  // read never reached.
+  // read never reached. The re-sent line is DROPPED, not re-applied: the reducer would survive it,
+  // but the feed appends a second row, the Trace opens a duplicate span, and the toast rail
+  // announces a tool that ran minutes ago.
   FakeES.last!.emit('usage', ev(1, 2));
   FakeES.last!.emit('usage', { ...ev(0, 9), agentId: 'child1' });
   FakeES.last!.emit('replay-end', { sessionId: 'A' });
-  assert.deepEqual(got, [0, 1, 1, 0], 'the subagent history arrives; the unproven line is simply re-read');
+  assert.deepEqual(got, [0, 1, 0], 'every event reaches the tab exactly once');
   r.stop();
 });
 
@@ -604,8 +638,8 @@ test('a replay cut on an ACTIVE session does not resume from the live frontier',
   assert.equal(from, ':1', 'resumes from what the READ delivered whole, never from the live frontier');
   for (let seq = 2; seq <= 4; seq++) FakeES.last!.emit('usage', ev(seq, seq));
   FakeES.last!.emit('replay-end', { sessionId: 'A' });
-  // Line 2 comes back once — it was the line the read died on, so the tab could not claim it.
-  assert.deepEqual(got, [0, 1, 2, 2, 3, 4, 500], 'the middle arrives, then the held live line, in order');
+  // Line 2 comes back — the tab could not claim it — and is dropped as already held.
+  assert.deepEqual(got, [0, 1, 2, 3, 4, 500], 'the middle arrives, then the held live line, each once');
   r.stop();
 });
 
@@ -632,8 +666,8 @@ test('a line cut between two of its own events is re-read whole', async () => {
   FakeES.last!.emit('replay-end', { sessionId: 'A' });
   assert.deepEqual(
     got,
-    ['usage@0', 'attribution@0', 'tool-start@0', 'usage@1', 'usage@1', 'attribution@1', 'tool-start@1'],
-    'its head is replayed (the reducer is idempotent on it) and its tail is finally delivered',
+    ['usage@0', 'attribution@0', 'tool-start@0', 'usage@1', 'attribution@1', 'tool-start@1'],
+    'the head it already held is skipped by count, and only the missing tail is delivered',
   );
   r.stop();
 });

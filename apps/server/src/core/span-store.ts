@@ -718,7 +718,12 @@ export function createSpanStore(): SpanStore {
       const idx = ctx.turnIndex;
       if (idx != null) {
         const turn = turns.get(idx);
-        if (turn) {
+        // A CUTOFF closes only a round that did work — the same rule the reducer applies, which is
+        // what keeps a bare `/model` filed as a local command rather than promoted to an interrupted
+        // one. Asked of the spans, because this store has no call count of its own: a round that
+        // called nothing has no `api` span. An Esc is unconditional, exactly as it is there.
+        const worked = turn?.spans.some((s) => s.type === 'api') === true;
+        if (turn && (!e.cutoff || worked)) {
           turn.state = 'interrupted';
           mutated = true;
         }

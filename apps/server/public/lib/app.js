@@ -392,9 +392,9 @@ function createSessionTree(opts) {
       }
     } else if (e.type === "turn-interrupted") {
       if (owner === null && currentTurn && (!e.cutoff || currentTurn.apiCalls > 0)) {
-        currentTurn.state = "interrupted";
-        if (e.cutoff)
+        if (e.cutoff && currentTurn.state !== "interrupted")
           currentTurn.cutoff = true;
+        currentTurn.state = "interrupted";
       }
     } else if (e.type === "turn-result") {
       if (owner === null && currentTurn) {
@@ -2487,8 +2487,25 @@ function startReplay(sessionId, handler, deps) {
   let staleReopens = 0;
   let historyComplete = false;
   const frontier = new Map;
+  const readSeen = new Map;
   let floor = new Map;
-  let skip = new Map;
+  const applied = new Map;
+  function bump(map, key, seq, n = 1) {
+    let byLine = map.get(key);
+    if (!byLine)
+      map.set(key, byLine = new Map);
+    const next = (byLine.get(seq) ?? 0) + n;
+    byLine.set(seq, next);
+    return next;
+  }
+  function holdApplied(key, seq, n) {
+    if (n <= 0)
+      return;
+    let byLine = applied.get(key);
+    if (!byLine)
+      applied.set(key, byLine = new Map);
+    byLine.set(seq, Math.max(byLine.get(seq) ?? 0, n));
+  }
   const buffer = [];
   let unsubscribe = null;
   let es = null;
@@ -2516,11 +2533,9 @@ function startReplay(sessionId, handler, deps) {
         const f = floor.get(key);
         if (f !== undefined && e.seq <= f)
           return;
-        const s = skip.get(key);
-        if (s !== undefined && s.n > 0 && e.seq === s.seq) {
-          s.n--;
+        if (bump(readSeen, key, e.seq) <= (applied.get(key)?.get(e.seq) ?? 0))
           return;
-        }
+        bump(applied, key, e.seq);
         const at = frontier.get(key);
         if (at === undefined || e.seq > at) {
           if (at !== undefined && at > (covered.get(key) ?? -1)) {
@@ -2542,6 +2557,8 @@ function startReplay(sessionId, handler, deps) {
           liveMax.set(key, e.seq);
           liveSeen.set(key, 1);
         }
+        if (!historyComplete)
+          bump(applied, key, e.seq);
       }
     }
     handler(e);
@@ -2561,6 +2578,7 @@ function startReplay(sessionId, handler, deps) {
     sawEnd = false;
     progressed = false;
     frontier.clear();
+    readSeen.clear();
     lastFrameAt = now();
     const src = new deps.EventSourceImpl(urlFor(sessionId, from));
     es = src;
@@ -2584,6 +2602,7 @@ function startReplay(sessionId, handler, deps) {
       sawEnd = true;
       for (const [key, seq] of frontier)
         covered.set(key, Math.max(covered.get(key) ?? -1, seq));
+      applied.clear();
       finish();
     });
     src.addEventListener("error", () => {
@@ -2605,6 +2624,16 @@ function startReplay(sessionId, handler, deps) {
     inFlight = false;
     es?.close();
     es = null;
+    if (sawEnd)
+      historyComplete = true;
+    if (!stopped && resyncPending) {
+      resyncPending = false;
+      askedFromOutside();
+      if (sawEnd)
+        handOff();
+      doResync();
+      return;
+    }
     if (!sawEnd && !stopped) {
       staleReopens = progressed ? 0 : staleReopens + 1;
       if (staleReopens < MAX_STALE_REOPENS) {
@@ -2612,17 +2641,9 @@ function startReplay(sessionId, handler, deps) {
         return;
       }
     }
-    if (sawEnd)
-      historyComplete = true;
     handOff();
     if (stopped)
       return;
-    if (resyncPending) {
-      resyncPending = false;
-      askedFromOutside();
-      doResync();
-      return;
-    }
     nextRetryMs = baseRetryMs;
   }
   function handOff() {
@@ -2662,16 +2683,15 @@ function startReplay(sessionId, handler, deps) {
       retryTimer = null;
     }
     floor = new Map;
-    skip = new Map;
     const pairs = [];
-    for (const key of new Set([...covered.keys(), ...liveMax.keys()])) {
+    for (const key of new Set([...covered.keys(), ...liveMax.keys(), ...applied.keys()])) {
       const w = whole(key);
       if (w === undefined)
         continue;
       floor.set(key, w);
       const l = liveMax.get(key);
-      if (l !== undefined && l > w)
-        skip.set(key, { seq: l, n: liveSeen.get(key) ?? 0 });
+      if (historyComplete && l !== undefined && l > w)
+        holdApplied(key, l, liveSeen.get(key) ?? 0);
       if (w >= 0)
         pairs.push(`${key}:${w}`);
     }
@@ -4812,7 +4832,8 @@ function createSpanStore() {
       const idx = ctx.turnIndex;
       if (idx != null) {
         const turn = turns.get(idx);
-        if (turn) {
+        const worked = turn?.spans.some((s) => s.type === "api") === true;
+        if (turn && (!e.cutoff || worked)) {
           turn.state = "interrupted";
           mutated = true;
         }

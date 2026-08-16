@@ -91,7 +91,11 @@ Everything released before `0.20.0` — including the pre-publication developmen
   way it releases what it holds rather than keeping the loader up for a history that is never
   coming, and a tab that gave up keeps its live frontier untrusted so a later resync cannot ask
   past the middle it never read. An ask from outside — the live stream recovering, the session
-  being resumed — starts its own budget rather than inheriting the spent one.
+  being resumed — starts its own budget rather than inheriting the spent one. Nothing the tab
+  already holds is applied twice: a re-read arrives from the top of a line, and the tab skips
+  exactly the events it holds of it. The reducer would have survived the duplicates; the feed, the
+  Trace and the toast rail would not — a second row whose first never gets its duration, a span
+  stuck on `running`, and a toast for a tool that ran minutes ago.
 - **The Context card no longer empties itself on a line that never called a model.** Claude Code
   stamps `<synthetic>` on lines that reached none — the "No response requested." it writes when a
   killed session is resumed, and API-error lines — and gives them a `usage` block all the same,

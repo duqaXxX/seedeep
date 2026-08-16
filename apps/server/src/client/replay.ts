@@ -128,12 +128,46 @@ export function startReplay(
    * asks strictly PAST what is held — dropped its remaining events for good.
    */
   const frontier = new Map<string, number>();
+  /** Events of each line the CURRENT read has processed, per file — counted whether they were
+   * applied or skipped, since what it must answer is "how far into this line am I". Per read. */
+  const readSeen = new Map<string, Map<number, number>>();
   // What the tab held when the CURRENT connection was opened. A snapshot, because `covered`
   // advances as this very replay streams: measuring against a moving mark drops every event of
   // a line after its first. Empty for the initial replay, which holds nothing.
   let floor = new Map<string, number>();
-  // Head of the re-read frontier line already applied live, consumed as it comes back.
-  let skip = new Map<string, { seq: number; n: number }>();
+  /**
+   * How many events of each line the tab HOLDS, for lines above the mark it would resume from:
+   * file → line seq → count. `floor` cannot express this — it is a single boundary, and what has to
+   * be skipped is a scatter of lines above it: the head of the line a read died on, and, once the
+   * reopen has given up and released the buffer, every live line applied over the hole.
+   *
+   * A record of what is HELD, not a budget to spend: a read that skips a line still holds it, and
+   * the next read has to skip it again. Getting that backwards made the same line apply on every
+   * other round.
+   *
+   * It exists because re-delivery is not harmless. The reducer is idempotent on it — which is as
+   * far as this had been checked — but the FEED appends a second row (and re-points `byId`, so the
+   * first never gets its duration), the Trace opens a duplicate span stuck on `running`, and the
+   * toast rail, armed at the handoff, announces tools that ran minutes ago.
+   */
+  const applied = new Map<string, Map<number, number>>();
+  /** Count one more event of `seq` in `map` for `key`, and answer the new total. */
+  function bump(map: Map<string, Map<number, number>>, key: string, seq: number, n = 1): number {
+    let byLine = map.get(key);
+    if (!byLine) map.set(key, (byLine = new Map()));
+    const next = (byLine.get(seq) ?? 0) + n;
+    byLine.set(seq, next);
+    return next;
+  }
+  /** Record that at least `n` events of `seq` are held — for a debt stated by a running total
+   * (`liveSeen`) rather than event by event. Never lowers one, and never doubles it when the same
+   * resync is asked twice without the line coming back. */
+  function holdApplied(key: string, seq: number, n: number): void {
+    if (n <= 0) return;
+    let byLine = applied.get(key);
+    if (!byLine) applied.set(key, (byLine = new Map()));
+    byLine.set(seq, Math.max(byLine.get(seq) ?? 0, n));
+  }
   const buffer: NormalizedEvent[] = [];
   let unsubscribe: (() => void) | null = null;
   let es: EventSourceLike | null = null;
@@ -169,11 +203,10 @@ export function startReplay(
       if (source === 'replay') {
         const f = floor.get(key);
         if (f !== undefined && e.seq <= f) return; // held complete before this read opened
-        const s = skip.get(key);
-        if (s !== undefined && s.n > 0 && e.seq === s.seq) {
-          s.n--;
-          return;
-        } // already applied live
+        // How far into this line THIS read has come, against how much of it the tab already holds:
+        // the server re-sends a line from its top, so the head is skipped by count (see `applied`).
+        if (bump(readSeen, key, e.seq) <= (applied.get(key)?.get(e.seq) ?? 0)) return;
+        bump(applied, key, e.seq); // held from now on, for whatever read comes next
         const at = frontier.get(key);
         // A higher seq proves the line below it is complete — nothing more of it can arrive.
         if (at === undefined || e.seq > at) {
@@ -193,6 +226,11 @@ export function startReplay(
           liveMax.set(key, e.seq);
           liveSeen.set(key, 1);
         }
+        // Applied over a HOLE: the mark this tab will resume from sits below this line, so the
+        // re-read is going to send it again. Only while the history is incomplete — once a read has
+        // reached the end, `whole()` answers from the live frontier and the ordinary one-line
+        // handover below covers it, which is what keeps this map from growing with the session.
+        if (!historyComplete) bump(applied, key, e.seq);
       }
     }
     handler(e);
@@ -221,6 +259,7 @@ export function startReplay(
     // re-reads the line the last one died on would see its own seq as "not higher" and never
     // promote it to `covered`, so the read could gain ground without ever being able to say so.
     frontier.clear();
+    readSeen.clear();
     lastFrameAt = now(); // a fresh read starts its own window; the previous one's silence is spent
     const src = new deps.EventSourceImpl(urlFor(sessionId, from));
     es = src;
@@ -252,6 +291,9 @@ export function startReplay(
       // says the history is all here. Every line this read delivered is now known whole.
       sawEnd = true;
       for (const [key, seq] of frontier) covered.set(key, Math.max(covered.get(key) ?? -1, seq));
+      // Nothing is owed any more: this read went to the end, so every line the tab holds is either
+      // under `covered` or is the live tail the ordinary handover covers.
+      applied.clear();
       finish();
     });
     src.addEventListener('error', () => {
@@ -290,6 +332,17 @@ export function startReplay(
     // itself complete. The reader sees the loader a while longer, which is the truth.
     //
     // `stopped` flushes anyway: the tab is closing and there is no later read to wait for.
+    if (sawEnd) historyComplete = true;
+    // An ask from outside is owed its read NOW, and it is also the retry — consumed here rather
+    // than after the retry branch, where it survived to open a second, redundant read of the same
+    // tail once that retry finished.
+    if (!stopped && resyncPending) {
+      resyncPending = false;
+      askedFromOutside();
+      if (sawEnd) handOff(); // a complete read releases first; a cut one still owes its history
+      doResync();
+      return;
+    }
     if (!sawEnd && !stopped) {
       staleReopens = progressed ? 0 : staleReopens + 1;
       // Futility, not attempts (see MAX_STALE_REOPENS): a read that will never get further is not
@@ -299,18 +352,8 @@ export function startReplay(
         return;
       }
     }
-    if (sawEnd) historyComplete = true;
     handOff();
-    // A resync raised while this read was in flight is owed its tail now — after the buffer
-    // flush, so it asks from the tab's freshest position. Never once stopped: a closed tab
-    // must not resurrect its feed.
     if (stopped) return;
-    if (resyncPending) {
-      resyncPending = false;
-      askedFromOutside();
-      doResync();
-      return;
-    }
     nextRetryMs = baseRetryMs; // the path works; the next cut starts its backoff over
   }
 
@@ -354,6 +397,11 @@ export function startReplay(
       // it fires the same contentless `error` a dropped path does. The caller knows the difference
       // (it holds the roster), so it is asked. Giving up hands off what the tab has: holding the
       // loader for a history that is never coming is the one thing worse than showing it short.
+      // LIMIT: whichever way it gives up, the tab is left holding a history that is SHORT, with
+      // nothing on screen saying so — the state this mechanism exists to end, kept only for the
+      // case where no read can end it. What fills it afterwards is an ask from outside (a live
+      // stream recovering, a session resumed); failing that, the gap lasts until the tab is
+      // reopened. Saying so on screen is a product decision, deliberately not taken here.
       if (deps.stillExists && !deps.stillExists()) {
         handOff();
         return;
@@ -365,8 +413,7 @@ export function startReplay(
     (retryTimer as unknown as { unref?: () => void }).unref?.();
   }
 
-  // Ask for the tail of every file the tab has seen, from the last line it holds COMPLETE,
-  // and arm the skip for the frontier line that read will re-send.
+  // Ask for the tail of every file the tab has seen, from the last line it holds COMPLETE.
   function doResync(): void {
     // Whoever gets here is opening the read a queued retry was going to open. Leaving it armed
     // would open a second one over the same marks.
@@ -375,17 +422,22 @@ export function startReplay(
       retryTimer = null;
     }
     floor = new Map();
-    skip = new Map();
     // LIMIT: one `key:seq` pair per file the tab has seen, which for a Workflow run of ~100
     // subagents is ~1.4 KB of query string. Well inside any URL limit, but it does grow with
     // the run — a session with thousands of children would need a different carrier.
     const pairs: string[] = [];
-    for (const key of new Set([...covered.keys(), ...liveMax.keys()])) {
+    // `applied` keys too: a file the tab knows ONLY from the live feed — a subagent born after the
+    // reopen gave up — has no `covered` and no mark, so the server replays it whole (its contract:
+    // "a file absent from the map is replayed whole"). It must still be in this loop, or the lines
+    // it already holds of that child come back and are applied a second time.
+    for (const key of new Set([...covered.keys(), ...liveMax.keys(), ...applied.keys()])) {
       const w = whole(key);
       if (w === undefined) continue;
       floor.set(key, w);
+      // The live frontier's own head, for a tab whose history IS complete: below, the same debt is
+      // recorded event by event as it is applied, so recording it again here would double it.
       const l = liveMax.get(key);
-      if (l !== undefined && l > w) skip.set(key, { seq: l, n: liveSeen.get(key) ?? 0 });
+      if (historyComplete && l !== undefined && l > w) holdApplied(key, l, liveSeen.get(key) ?? 0);
       if (w >= 0) pairs.push(`${key}:${w}`); // nothing complete yet → let the server send it whole
     }
     open(pairs.join(',') || undefined);

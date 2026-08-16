@@ -1112,10 +1112,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       // `/model` — to the 0-call → done presentation, which is also what keeps `kindOf` filing it
       // as a local command. An Esc closes either way: the user stopped something.
       if (owner === null && currentTurn && (!e.cutoff || currentTurn.apiCalls > 0)) {
+        // Tested BEFORE the state moves, which is the whole of it: a round the user had already
+        // stopped by hand was still stopped by hand, and a crash that finds it already closed
+        // changes nothing about who closed it. Stamping `cutoff` there took a real Esc out of the
+        // accounting — the reachable shape being an Esc whose session dies before the user types
+        // again, so both marks land on the same round.
+        if (e.cutoff && currentTurn.state !== 'interrupted') currentTurn.cutoff = true;
         currentTurn.state = 'interrupted';
-        // Recorded only where it is TRUE, never cleared: a round the user had already stopped by
-        // hand, and which a later cutoff closes again, was still stopped by hand.
-        if (e.cutoff) currentTurn.cutoff = true;
       }
     } else if (e.type === 'turn-result') {
       if (owner === null && currentTurn) {

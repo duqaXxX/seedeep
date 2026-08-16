@@ -66,7 +66,9 @@ import { subagentStamp } from './subagent-files.ts';
 //        summarizer keeps closed work turns only. A value change, like v8 and v12, so an unchanged
 //        file must not keep its old summary. It also un-counts those turns from `esc`: an Esc is a
 //        correction the user made, and a crash is not one, so a v13 summary reports a session that
-//        died as tokens its user abandoned.
+//        died as tokens its user abandoned. And `apiCalls` moves with it, per turn and per file: a
+//        line that reached no model is no longer counted as a call, so a v13 summary of a session
+//        carrying one is high by one.
 const CACHE_VERSION = 14;
 
 const DAY_MS = 24 * 3600 * 1000;
