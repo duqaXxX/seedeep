@@ -4,6 +4,18 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**Windows is one platform in the docs, not two architectures.** A third session (2026-08-16) drove
+the x64 server and the x64 tray installer through the same lifecycle the arm64 ones had already
+answered, so the per-architecture scoring the README, `CONTRIBUTING.md`, `docs/install.md`,
+`docs/tray.md` and `docs/features.md` carried no longer records a difference in what was used —
+it only made the reader work out which half applied to them. The platform table now holds one
+Windows column, *Running it on Windows* stops asking for the contribution nobody could make, and
+the tray's known limits no longer name an untouched build. Two things go with it: the animated
+icon's CPU cost disappears from the docs entirely, macOS measurements included, and the
+first-launch warnings in `install.md` keep the way through without quoting each dialog verbatim.
+What stays split is what is still genuinely two things — the file you download and the two runners
+that build it.
+
 ## 0.28.1 (2026-08-16)
 
 **0.28.0 was tagged and never published**, so this is the version that ships what it carried. The

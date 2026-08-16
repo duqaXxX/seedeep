@@ -4,9 +4,8 @@
 a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows arm64 build has been used twice**, in a VM (2026-08-14 and 2026-08-15),
-> which found six defects between them, all since fixed; the **x64** build is started by
-> CI on a runner of its own architecture and has never been used in front of a person.
+> **The Windows build has been used three times**, in a VM (2026-08-14, 2026-08-15 and
+> 2026-08-16), which found six defects between them, all since fixed.
 > The Linux arm64 build was used on Ubuntu 24 in a VM (2026-08-14); its x64 build has
 > been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
@@ -398,14 +397,13 @@ on another one. The server is what has to run where Claude Code runs.
 certificate behind these builds; that is the state `seedeep` ships in today, and each
 system says so in its own way:
 
-- **macOS** — the first double-click says *"Apple could not verify
-  "seedeep-tray.app" is free of malware…"*. The way through is **System Settings →
+- **macOS** — the first double-click is refused. The way through is **System Settings →
   Privacy & Security → Security → Open Anyway**, then your login password. Apple
   offers that button for about an hour after the attempt that was refused, so open
   the app first and go to Settings second.
-- **Windows** — SmartScreen shows *"Windows protected your PC"*; the way through is
-  **More info → Run anyway**. The installer installs for the current user only, so it
-  never asks for Administrator rights.
+- **Windows** — SmartScreen stops the installer. The way through is **More info → Run
+  anyway**. The installer installs for the current user only, so it never asks for
+  Administrator rights.
 
 Both warnings are the honest cost of an unsigned build, not a sign that something
 went wrong. Signing becomes a real decision when there is a release worth signing.

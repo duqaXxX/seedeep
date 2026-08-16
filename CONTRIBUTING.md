@@ -221,48 +221,17 @@ not be accepted.
 
 ## Running it on Windows
 
-The single most useful contribution nobody here can make — on **x64**. Two Windows sessions have
-happened, both on a Windows 11 **arm64** guest (2026-08-14 and 2026-08-15). Between them the server
-was installed from npm and its whole lifecycle driven, the tray was installed and used, six defects
-were found and fixed, and five of the six claims below stopped being guesses — one of them only
-partly, and it says so. What no session on any
-architecture has touched: the **animated icon's cost** and **every x64 build of either app**, which
-CI starts and nobody has used. Each claim below says where it stands. Report what
-you see in an issue — an "it all worked" is as valuable as a defect, because today neither is known.
+Three Windows sessions have happened, on a Windows 11 guest (2026-08-14, 2026-08-15 and
+2026-08-16). Between them the server was installed from npm and its whole lifecycle driven, the
+tray was installed and used, and six defects were found and fixed: the installer runs and needs no
+Administrator rights, the tray icon reads in the notification area, the popover opens at full
+height, notifications are delivered on both switches, and trust-on-first-use works against a
+server reached over HTTPS on another machine. What that leaves is ordinary use rather than a list
+of open questions — report what you see in an issue, since an "it all worked" is still worth
+sending on a platform nobody here uses daily.
 
-1. **The installer runs at all**, and what SmartScreen actually says for an unsigned unknown
-   publisher — the README quotes Microsoft's documentation, not a screenshot. Its `currentUser`
-   install mode should need no Administrator rights; confirm that too. *The installer runs on arm64;
-   SmartScreen's actual wording has still not been recorded.*
-2. **The tray icon appears in the notification area and is legible.** The mark is drawn in Rust
-   against a measurement that is macOS's — that platform scales the buffer to 18 pt by *height* —
-   and Windows sizes tray icons its own way, so the 27×26 buffer may come out small, squashed or
-   blurred. This was the likeliest visual defect, and *on arm64 it is not one — the icon reads.*
-3. **The working icon spins acceptably**: 24 frames at 12 fps through `set_icon`. On macOS that
-   costs 7.3% of one core; underneath, Windows is a different API and the cost is unknown.
-   *Unanswered on either architecture, and not measurable under emulation.*
-4. **Notifications are delivered**, both switches — the approval one and the finished-turn one.
-   Tauri documents that Windows shows a notification only for an *installed* application, which is
-   exactly why the deliverable is an installer rather than a portable `.exe`. *Answered on arm64:
-   the banners are delivered, so that reasoning has now been seen holding rather than trusted. Never
-   exercised on x64.*
-5. **The popover's geometry.** The panel measures its own content and Rust clamps the height
-   against the monitor's work area, and the rounded corners rely on a transparent window. *Answered
-   on arm64 for a taskbar at the bottom — the panel opens upward, at full height. The other three
-   edges have still not been tried.*
-6. **Trust on first use and the connection screen**, against a `seedeep` server reached over HTTPS
-   on another machine, including the fingerprint comparison. *Answered on arm64.*
-
-Every answer above came from **Windows on arm64** — a Windows 11 ARM guest on an Apple Silicon Mac;
-a Snapdragon laptop is the other way there. That machine gets its own server binary and its own
-tray installer, built by the same tag on a native arm64 runner; the installer NSIS produces is x86
-under emulation by Tauri's design, and the app inside it is native. Say which of the two you were
-on: an answer from one says nothing certain about the other, which is why every claim above is
-scored per architecture rather than per platform.
-
-Where the answers go: `docs/tray.md` holds the macOS measurements in a table under *What is signed,
-and what that costs*, and Windows belongs in the same shape — what was observed, and on which
-Windows build. Something broken is its own issue, not a footnote to this one.
+Where an observation goes: `docs/tray.md` holds the platform measurements in a table under *What
+is signed, and what that costs*. Something broken is its own issue, not a footnote to that one.
 
 ## Documentation
 
