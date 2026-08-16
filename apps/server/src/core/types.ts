@@ -351,13 +351,31 @@ export interface UsageEvent extends EventBase {
   /**
    * The call FAILED: Claude Code wrote it as an assistant line flagged `isApiErrorMessage`
    * (rate limit, auth, overloaded, prompt too long, connection dropped). Absent on a normal
-   * call. Keyed on that flag and NOT on `apiErrorStatus`, which only 27 of 63 real error
-   * lines carry — the statusless ones ("Not logged in", "Prompt is too long", "Connection
-   * closed mid-response") are the ones a user most needs to see. `message.model` on these
-   * lines is always `<synthetic>`, but the reverse does not hold: synthetic lines that are
-   * NOT errors exist (76 measured), so the model can never stand in for the flag.
+   * call. Keyed on that flag and NOT on `apiErrorStatus`, which fewer than half of them carry —
+   * the statusless ones ("Not logged in", "Prompt is too long", "Connection closed mid-response")
+   * are the ones a user most needs to see. `message.model` on these lines is always `<synthetic>`,
+   * but the reverse does not hold: synthetic lines that are NOT errors exist (see `noCall`), so
+   * the model can never stand in for the flag.
+   *
+   * Measured 2026-08-16 over 866 transcripts (528 sessions and their children): 9 error lines, 4
+   * carrying a status, all 9 `<synthetic>`. An earlier, undated count in this file read 63 and 27 —
+   * a bigger corpus than this machine now holds, which is why the RULES above are stated without
+   * leaning on either figure.
    */
   apiError?: { status: string | null; message: string };
+  /**
+   * NO call was made: Claude Code answered "No response requested." to a message that needed no
+   * answer — the `isMeta` "Continue from where you left off." it injects when it re-enters a
+   * session whose last round never finished. The line is `<synthetic>` and carries a full usage
+   * block, all zeros, so nothing about its shape says it is not a call.
+   *
+   * A FAILED call never carries this: it reached the API and is counted (see `apiError`). The two
+   * are told apart by `isApiErrorMessage`, which is structural — measured 2026-08-16 over 866
+   * transcripts (528 sessions and their children): 12 non-error synthetic lines, every one reading
+   * "No response requested.", every one followed by a new user message rather than by any further
+   * work, and all 21 synthetic lines of either kind carrying a zero usage block.
+   */
+  noCall?: true;
 }
 
 export interface AttributionEvent extends EventBase {
@@ -395,6 +413,14 @@ export interface TurnEndEvent extends EventBase {
 // (verified across real sessions), so it can link nothing — only its PRESENCE is the signal.
 export interface TurnInterruptedEvent extends EventBase {
   type: 'turn-interrupted';
+  /**
+   * The round was CUT OFF rather than interrupted by hand: Claude Code's auto-continue receipt (see
+   * `UsageEvent.noCall`), not an Esc. Same fact — this round is over — but not the same claim about
+   * an entry that never called anything: an Esc says the user stopped something, while a killed
+   * session says only that nothing more is coming. So a cutoff closes only a round that did work,
+   * exactly as a superseding prompt does, and leaves a bare `/model` to the 0-call presentation.
+   */
+  cutoff?: true;
 }
 
 // Main-session assistant line with stop_reason "end_turn": the turn's conclusion.

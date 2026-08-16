@@ -399,6 +399,11 @@ function openTab(record: SessionRecord, { activate = true }: { activate?: boolea
     stream,
     EventSourceImpl: AuthEventSource,
     onLive,
+    // A read that was cut reopens itself; this is what stops it reopening forever against a
+    // session that no longer exists (deleted, project moved), which answers 404 and looks to an
+    // EventSource exactly like a dropped path. Before the first poll lands the roster is empty and
+    // knows nothing — say yes, so a tab opened at boot is never abandoned on no evidence.
+    stillExists: () => roster.readings() === 0 || roster.current().some((r) => r.sessionId === sessionId),
   });
   openTabs.set(sessionId, { view, panel, stopReplay, ended: !open, label: tabLabel(record) });
   // Handing out a tab IS the offer, whoever asked for it — auto, picker or restore. Recorded

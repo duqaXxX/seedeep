@@ -61,7 +61,13 @@ import { subagentStamp } from './subagent-files.ts';
 //        unchanged file must not keep its old summary. 8 of 721 local sessions are affected; the
 //        cost of the bump is one recomputation, since a vanished transcript is dropped from the
 //        aggregate on every refresh anyway.
-const CACHE_VERSION = 13;
+//   v14: a round CUT OFF by a dead session now closes as `interrupted` instead of staying `live`
+//        for ever, so a v13 summary of such a session is missing that turn entirely — the
+//        summarizer keeps closed work turns only. A value change, like v8 and v12, so an unchanged
+//        file must not keep its old summary. It also un-counts those turns from `esc`: an Esc is a
+//        correction the user made, and a crash is not one, so a v13 summary reports a session that
+//        died as tokens its user abandoned.
+const CACHE_VERSION = 14;
 
 const DAY_MS = 24 * 3600 * 1000;
 // The share of a session's billable tokens spent re-entering its context at which Claude Code's
@@ -219,7 +225,10 @@ export function summarizeTree(tree: ReturnType<typeof createSessionTree>): Sessi
           0,
         ),
         apiCalls: t.apiCalls,
-        esc: t.state === 'interrupted',
+        // An Esc is a CORRECTION the user made — which a round cut off by a dead session is not,
+        // however interrupted it was. Reading the state alone reported a crash as tokens the user
+        // had abandoned, in a retrospective whose whole subject is how the user works.
+        esc: t.state === 'interrupted' && !t.cutoff,
         escStreak: has('esc'),
         context: has('context'),
         compaction: has('compaction'),

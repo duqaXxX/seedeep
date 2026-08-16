@@ -232,6 +232,15 @@ export interface TurnNode {
   // token. Otherwise a /model — which opens an entry and never calls the model — would sit
   // there pulsing green until the next prompt.
   state: 'done' | 'interrupted' | 'live';
+  /**
+   * The round was CUT OFF, not stopped by hand — the session died and Claude Code's auto-continue
+   * receipt closed it on re-entry (see `TurnInterruptedEvent.cutoff`). Only meaningful alongside
+   * `state: 'interrupted'`, which is true of both: the round ended without finishing either way.
+   * What differs is WHO ended it, and everything that reads an interruption as the user's
+   * CORRECTION has to ask — the retrospective's "abandoned to Esc" and the verdict's "second
+   * correction in a row" are claims about a person, and a crash is not a correction.
+   */
+  cutoff: boolean;
   durationMs: number | null;
   messageCount: number | null;
   apiCalls: number;
@@ -484,6 +493,7 @@ interface TurnAcc {
   command: string | null;
   startedAt: string | null;
   state: 'done' | 'interrupted' | 'live';
+  cutoff: boolean; // interrupted by a dead session rather than by the user — see TurnNode.cutoff
   durationMs: number | null;
   messageCount: number | null;
   apiCalls: number;
@@ -610,6 +620,27 @@ function resolveVolByModel(
     merged.set(key, (merged.get(key) ?? 0) + t);
   }
   return [...merged.entries()].map(([model, tokens]) => ({ model, tokens })).sort((x, y) => y.tokens - x.tokens);
+}
+
+/**
+ * Whether a usage event describes a call that reached a model — the only kind that can say how
+ * full a window is right now.
+ *
+ * Claude Code stamps `<synthetic>` (which the parser reads as no model) on lines that reached
+ * none: the "No response requested." it writes when a killed session is resumed, and API-error
+ * lines. It gives them a `message.usage` block all the same — structurally a call's, and all
+ * zeros. Folded in as last-call state, that zero BECAME the window: the Context card read
+ * 0 / 1.0M · 0%, with the denominator intact (the model is guarded), until the next real call
+ * arrived. On a session resumed and then left idle, that is until the user types again.
+ *
+ * BOTH conditions, never `model === null` alone: a real call can arrive on a line that names no
+ * model (its tokens are resolved to the agent's own model rather than dropped — see
+ * `resolveVolByModel`), and a real call always reads at least its system prompt, so it can never
+ * report a zero window. The sums are deliberately left outside this guard: an all-zero line adds
+ * nothing to them, and it IS an API call as far as the call count is concerned.
+ */
+function reportsWindow(e: { model?: string | null; fill: number }): boolean {
+  return Boolean(e.model) || e.fill > 0;
 }
 
 /**
@@ -882,11 +913,14 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       if (owner === null) {
         // Last-call state: set-shaped, therefore idempotent — a re-sent line rewrites the same
         // values. `breakdown` is the window's composition RIGHT NOW, so the last call is exactly
-        // what it must hold; do not turn it into a sum (see CacheTotals).
-        mainFill = e.fill;
-        breakdown.input = e.delta.input;
-        breakdown.cacheRead = e.delta.cacheRead;
-        breakdown.cacheCreation = e.delta.cacheCreation;
+        // what it must hold; do not turn it into a sum (see CacheTotals). Only a line that reached
+        // a model gets to write it (see `reportsWindow`).
+        if (reportsWindow(e)) {
+          mainFill = e.fill;
+          breakdown.input = e.delta.input;
+          breakdown.cacheRead = e.delta.cacheRead;
+          breakdown.cacheCreation = e.delta.cacheCreation;
+        }
         // The model is last-call state like the fill above, and for the same reason: it is
         // what the window is measured against RIGHT NOW. Idempotent — a re-sent line rewrites
         // the same value and `mainModels` refuses the duplicate.
@@ -895,22 +929,34 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           if (!mainModels.includes(e.model)) mainModels.push(e.model);
         }
         if (currentTurn) {
-          currentTurn.fillEnd = e.fill;
-          currentTurn.breakdown = {
-            input: e.delta.input,
-            cacheRead: e.delta.cacheRead,
-            cacheCreation: e.delta.cacheCreation,
-          };
+          // The turn's own copy of the same state, under the same rule: `fillEnd` feeds the
+          // timeline's per-turn delta, so a zero here reads as a turn that FREED the whole window.
+          if (reportsWindow(e)) {
+            currentTurn.fillEnd = e.fill;
+            currentTurn.breakdown = {
+              input: e.delta.input,
+              cacheRead: e.delta.cacheRead,
+              cacheCreation: e.delta.cacheCreation,
+            };
+          }
           if (e.model) currentTurn.models.add(e.model);
           if (e.effort) currentTurn.efforts.add(e.effort);
         }
         // Everything SUMMED below is NOT idempotent, and the same usage arrives more than once
         // for two independent reasons: a call is written one line per content block (all
         // repeating its usage), and the stream re-sends the high-water line after a reconnect
-        // (stream.ts guards with `seq <`). Keying on the call id folds both away; the seq
-        // fallback keeps synthetic lines (no message.id) counted once each.
+        // (stream.ts guards with `seq <`). Keying on the call id folds both away; the seq fallback
+        // covers a line that carries no `message.id`. Synthetic lines are NOT that case — measured
+        // 2026-08-16 over 866 transcripts, all 21 carry one (a bare UUID rather than a `msg_…`) —
+        // so the fallback is for lines seedeep synthesises itself, not for Claude Code's.
         const key = e.callId ?? `seq:${e.seq}`;
-        usageNewCall = !appliedUsageKeys.has(key);
+        // `!e.noCall` is the whole of the receipt's exclusion, and it belongs HERE rather than on
+        // the counter: `newCall` is the one signal that says a fresh API call happened, and three
+        // surfaces read it — the header's count, the feed's row, the Trace's `api` span (plus the
+        // latency `usageCallMs`, measured from an anchor to a line that never called anything).
+        // Excluding it from the counter alone left them disagreeing on screen. A FAILED call is
+        // still a call and still raises all three; it reached the API.
+        usageNewCall = !appliedUsageKeys.has(key) && !e.noCall;
         if (usageNewCall) {
           appliedUsageKeys.add(key);
           apiCalls++;
@@ -957,10 +1003,15 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         // above, so the two are comparable. Same per-call dedup as the main branch: one call is
         // written one line per content block, and the stream re-sends the high-water on reconnect.
         const a = agentFor(owner);
-        a.fill = e.fill;
+        // Same rule as the main branch, on the branch that draws the subagent's own context bar:
+        // a child transcript ending on a synthetic line showed the agent at 0%.
+        if (reportsWindow(e)) a.fill = e.fill;
         if (e.effort) a.efforts.add(e.effort);
         const key = e.callId ?? `seq:${e.seq}`;
-        usageNewCall = !a.appliedVolumeKeys.has(key);
+        // `!e.noCall` for the same reason as the main branch above, on the branch that owns the
+        // child's lane: `newCall` drives the Trace span, the feed row and the latency there too,
+        // and a receipt written into a child transcript is no more a call than one in the parent.
+        usageNewCall = !a.appliedVolumeKeys.has(key) && !e.noCall;
         if (usageNewCall) {
           a.appliedVolumeKeys.add(key);
           a.volIn += e.delta.input;
@@ -1020,6 +1071,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           command: e.command ?? null,
           startedAt: e.timestamp || null,
           state: 'live',
+          cutoff: false,
           durationMs: null,
           messageCount: null,
           apiCalls: 0,
@@ -1055,7 +1107,16 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         currentTurn.state = 'done';
       }
     } else if (e.type === 'turn-interrupted') {
-      if (owner === null && currentTurn) currentTurn.state = 'interrupted';
+      // A CUTOFF answers to the supersede path's rule (see where a new prompt closes the previous
+      // turn): it closes a round that did work, and leaves one that called nothing — a bare
+      // `/model` — to the 0-call → done presentation, which is also what keeps `kindOf` filing it
+      // as a local command. An Esc closes either way: the user stopped something.
+      if (owner === null && currentTurn && (!e.cutoff || currentTurn.apiCalls > 0)) {
+        currentTurn.state = 'interrupted';
+        // Recorded only where it is TRUE, never cleared: a round the user had already stopped by
+        // hand, and which a later cutoff closes again, was still stopped by hand.
+        if (e.cutoff) currentTurn.cutoff = true;
+      }
     } else if (e.type === 'turn-result') {
       if (owner === null && currentTurn) {
         currentTurn.result = e.outputFull; // last wins
@@ -1654,6 +1715,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         kind: kindOf(t, agentsByTurn.has(t.index)),
         startedAt: t.startedAt,
         state,
+        cutoff: t.cutoff,
         durationMs: t.durationMs,
         messageCount: t.messageCount,
         apiCalls: t.apiCalls,

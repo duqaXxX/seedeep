@@ -356,7 +356,9 @@ function verdictFrom(turn: TurnNode, ev: TurnEvidence, ctx: TurnContext): TurnVe
   // the old rule penalised correct usage on 72% of its own hits. Looking only BACKWARD is
   // deliberate: a turn that is the first of a streak IS a lone Esc at the moment it closes, and a
   // forward-looking rule would make a finding appear retroactively on a turn already rendered.
-  if (turn.state === 'interrupted' && ctx.prevInterrupted) {
+  // `!turn.cutoff`: the finding names a CORRECTION the user made twice running, and a session that
+  // died mid-round corrected nothing. `prevInterrupted` answers to the same rule, one level up.
+  if (turn.state === 'interrupted' && !turn.cutoff && ctx.prevInterrupted) {
     // No `cost` either, for the opposite reason: the abandoned tokens ARE the whole turn, not a
     // portion of it, so adding them to any other finding's cost double-counts the same spend.
     findings.push({
@@ -469,7 +471,9 @@ function contexts(snap: TreeSnapshot, evidence: Map<number, TurnEvidence>): Map<
   let checkedBefore = false;
   for (let i = 0; i < work.length; i++) {
     out.set(work[i]!.index, {
-      prevInterrupted: work[i - 1]?.state === 'interrupted',
+      // Same rule as the finding it feeds: only a correction the USER made counts as the first of
+      // a pair, so a round the previous session death cut off is not one.
+      prevInterrupted: work[i - 1]?.state === 'interrupted' && !work[i - 1]?.cutoff,
       next: work[i + 1] ?? null,
       checkedBefore,
     });

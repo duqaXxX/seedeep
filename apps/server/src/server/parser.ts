@@ -297,6 +297,12 @@ export function parseLine(
   if (IGNORED.has(type)) return [];
 
   if (type === 'assistant') {
+    // A line Claude Code produced without calling a model, and that did not fail: `<synthetic>` and
+    // NOT an API error. Told from a failed call by `isApiErrorMessage` alone — both are
+    // `<synthetic>` and both carry an all-zero usage block, so neither the model nor the tokens can
+    // separate them. What follows from the marker alone is only what it MEANS: no model wrote this,
+    // so it is not a call and it is not the model's stated intent.
+    const noAnswer = d.message?.model === '<synthetic>' && d.isApiErrorMessage !== true;
     const usage = d.message?.usage;
     if (usage && typeof usage === 'object') {
       const delta: TokenCounts = {
@@ -336,6 +342,7 @@ export function parseLine(
               : null;
         ev.apiError = { status, message: anon(renderedText(d.message?.content), 300) };
       }
+      if (noAnswer) ev.noCall = true;
       out.push(ev);
     }
 
@@ -394,7 +401,21 @@ export function parseLine(
         .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
         .map((b: any) => b.text)
         .join('');
-      if (text) {
+      // The round this line closes is over, and THIS text is the whole of the evidence for it:
+      // measured 2026-08-16 over 866 transcripts, every non-error `<synthetic>` line reads exactly
+      // this, and every one is followed by a new user message rather than by any further work.
+      // The claim is read off the text and not off the marker, because the marker cannot carry it:
+      // a future notice Claude Code writes the same way would close a turn that is still working,
+      // reporting a busy session as idle. Same event as an Esc — the same fact by another route —
+      // and emitted after the usage above, so the turn's numbers are folded in before it closes.
+      if (noAnswer && agentId === null && text.trim() === 'No response requested.') {
+        out.push({ type: 'turn-interrupted', ...base, cutoff: true });
+      }
+      // `!noAnswer`: a line no model wrote is not the model saying what it is about to do. As a
+      // narration it became the session's INTENT — the panel that answers "what is this session
+      // doing" reading a sentence no model ever wrote, held for as long as the session stayed
+      // idle. An API-error line is NOT suppressed here: its text is what the user was actually told.
+      if (text && !noAnswer) {
         if (d.message?.stop_reason === 'end_turn') {
           const full = anon(text, 20000);
           if (agentId !== null) {
