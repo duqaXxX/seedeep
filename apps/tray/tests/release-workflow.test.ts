@@ -25,7 +25,13 @@ function job(name: string): string {
 // Everything that writes to the repository is gated on the ref TYPE, and that is what keeps a
 // manual run a rehearsal: it builds the same artifacts and attaches them to the workflow run.
 test('only a tag can write to the repository', () => {
-  const writers = [...WORKFLOW.matchAll(/gh release (create|upload|edit)/g)].map((m) => m[1]).sort();
+  // Comments stripped first: a writing site is a COMMAND, and this counted prose too — a comment
+  // that merely names `gh release upload` while explaining why a tag run must not be cancelled was
+  // enough to fail it, which is a false red about a file that writes exactly as much as before.
+  const commands = WORKFLOW.split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  const writers = [...commands.matchAll(/gh release (create|upload|edit)/g)].map((m) => m[1]).sort();
   assert.deepEqual(writers, ['create', 'edit', 'upload', 'upload'], 'the draft, both halves, the flip');
   // Each writing site carries the gate on its own step, or on the job around it — `publish` is
   // gated once for the whole job, and the npm job likewise. This used to count the gates in the
@@ -175,13 +181,28 @@ test('only the emulated leg is allowed to fail, and only its steps say so', () =
 // skipped.
 test('the release gates rehearse on the pull request that bumps the version', () => {
   const triggers = WORKFLOW.slice(0, WORKFLOW.indexOf('\njobs:'));
-  assert.match(triggers, /pull_request:\n\s+paths: \['package\.json'\]/);
-  // And the rehearsal must stay a rehearsal: an attestation on a build nobody ships would put a
-  // provenance record in a public transparency log for an artifact that never existed.
-  const attestations = [
-    ...WORKFLOW.matchAll(/- if: github\.ref_type == 'tag'\n\s+uses: actions\/attest-build-provenance/g),
-  ];
-  assert.equal(attestations.length, 2, 'both attestations stay tag-only');
+  const paths = /pull_request:\n\s+paths: \[(.+)\]/.exec(triggers)?.[1] ?? '';
+  // The version's own file, and the machinery that gates it — the v0.28.0 defect was in a script,
+  // and a script change merged after the bump's run would otherwise reach the tag unrehearsed.
+  for (const p of ['package.json', 'release.yml', '.github/scripts']) {
+    assert.ok(paths.includes(p), `the rehearsal does not fire on ${p}: ${paths}`);
+  }
+  // A pull request run must be cancellable and a tag run must NOT: cancelling a tag halfway through
+  // `gh release upload` leaves a half-populated draft.
+  assert.match(triggers, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+});
+
+// A rehearsal must stay a rehearsal: an attestation records, in a PUBLIC transparency log, that a
+// file was built from a commit — doing that for a build nobody ships publishes provenance for an
+// artifact that never existed. Walked per step rather than matched as one regex, for the reason the
+// gate-counting test above gives: a `name:` or a compound condition must not turn this red while the
+// gate is still right.
+test('provenance is attested only on a tag', () => {
+  const steps = WORKFLOW.split(/\n {6}- /).filter((s) => s.includes('attest-build-provenance'));
+  assert.equal(steps.length, 2, 'the server binaries and the tray installers');
+  for (const step of steps) {
+    assert.match(step, /if: github\.ref_type == 'tag'/, `an attestation runs off a tag:\n${step}`);
+  }
 });
 
 // The step after a failure is where the second finding lives: a binary that dies on its own is worth
