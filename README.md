@@ -159,7 +159,7 @@ Ubuntu, Fedora and derivatives) — Alpine and other musl-based distributions ar
 not supported.
 
 The **menu-bar tray** is a separate, optional download from the same release: a
-universal `.dmg` for macOS, a `-setup.exe` per architecture for Windows. It is a pure client — the
+universal `.dmg` for macOS, a `-setup.exe` for Windows. It is a pure client — the
 server is what has to run where Claude Code runs. **Both are unsigned**, so macOS and
 Windows each show a first-launch warning.
 
@@ -172,7 +172,7 @@ the GUI, stops the server, or reports what the current session cost.
 
 Everything above was checked by hand on **macOS**, on the machine `seedeep` is
 developed on. **Linux has been used once**, in a VM, on arm64. **Windows has been
-used twice**, in a VM, and on arm64 both times — the table says exactly how far
+used three times**, in a VM — the table says exactly how far
 each got, and what each found. Building for three systems is not the same as having
 used three, and this section is that difference written down rather than left for you
 to find.
@@ -186,16 +186,13 @@ a person on that machine.
 
 | | macOS | Windows | Linux |
 | -- | -- | -- | -- |
-| **Server** — download or npm | Used daily; every claim above was checked here | **arm64: used on Windows 11 in a VM** (2026-08-14, then again on 2026-08-15) — installed from npm on a native arm64 Node, server started and served its API against a real Claude Code session, `status`, `stop`, `restart` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Six defects the two sessions found are fixed: a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, unreadable punctuation, a panel button that swallowed about one click in ten, and a burst of console windows on a portal refresh. Four of them were driven again on that machine after the fix — the restart, the popover, the tray's console window and the button; the punctuation and the console burst were not re-checked there. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)). **x64: exercised on every release, never used by a person** — started, left idle and driven through its whole lifecycle on native x64 hardware, but nobody has opened the GUI on one. On a Windows-on-arm machine, where an x64 Node makes npm resolve it, it dies within seconds of starting — which is the emulator, not the build: install an arm64 Node so npm resolves the native one | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: exercised on every release, never used by a person** — started, left idle and driven through the full lifecycle in CI, and version-checked on Docker; never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
-| **Tray** | Used daily on a real menu bar | **arm64: installed and used on Windows 11 in a VM** (2026-08-15) — the installer runs, the icon reads in the notification area, the popover opens upward at full height against a taskbar at the bottom, trust-on-first-use and the connection screen work, the panel's buttons respond, notifications are delivered, and no console window appears. Still unexercised there: the animation's cost and a taskbar on the other three edges. **x64: never run** — its installer is built on every tag and nothing has opened it | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
+| **Server** — download or npm | Used daily; every claim above was checked here | **Used on Windows 11 in a VM** (2026-08-14, 2026-08-15 and 2026-08-16) — installed from npm, server started and served its API against a real Claude Code session, `status`, `stop`, `restart` and `install-command` confirmed, and ten consecutive cold starts measured without a failure. Six defects those sessions found are fixed: a `restart` that left no replacement running, a popover off the bottom of the screen, a console window the tray had no reason to open, unreadable punctuation, a panel button that swallowed about one click in ten, and a burst of console windows on a portal refresh. Four of them were driven again on that machine after the fix — the restart, the popover, the tray's console window and the button; the punctuation and the console burst were not re-checked there. `/seedeep` there needs one line of configuration ([`install.md`](docs/install.md#seedeep-inside-claude-code)) | **arm64: used on Ubuntu 24 in a VM** (2026-08-14) — GUI opened against a real Claude Code session, lifecycle and `install-command` confirmed. **x64: exercised on every release, never used by a person** — started, left idle and driven through the full lifecycle in CI, and version-checked on Docker; never run in front of a person. Both builds require glibc; Alpine/musl is not supported. |
+| **Tray** | Used daily on a real menu bar | **Installed and used on Windows 11 in a VM** (2026-08-15 and 2026-08-16) — the installer runs, the icon reads in the notification area, the popover opens at full height, trust-on-first-use and the connection screen work, the panel's buttons respond, notifications are delivered, and no console window appears | **Not a target**, deliberately: Tauri emits no tray click event on Linux, so the panel could not open — see [`docs/tray.md`](docs/tray.md) |
 
-Concretely: on **Windows x64**, on **Linux x64**, and on the **Windows x64 tray**,
-you are the first to use it. A defect there is expected rather than surprising, and
-[an issue](../../issues) saying what you saw is the most useful thing you can send.
-The two Windows sessions behind the table above found six defects, all of them on one
-architecture, which is the honest estimate of what the untouched squares still hold; if
-you use Windows, [`CONTRIBUTING.md`](CONTRIBUTING.md#running-it-on-windows) lists what a
-session on that machine would settle next.
+Concretely: on **Linux x64** you are the first to use it. A defect there is expected
+rather than surprising, and [an issue](../../issues) saying what you saw is the most
+useful thing you can send. The three Windows sessions behind the table above found six
+defects, which is the honest estimate of what an untouched square still holds.
 
 ## Design principles
 

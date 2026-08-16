@@ -15,7 +15,8 @@ changes the endpoint.
 > certificate, polls the digest, shows the three bands, drives its icon from what it reads, notifies
 > when a session stops on you, has the settings surface that turns that off, and a tag builds its
 > installers ([Packaging and releases](#packaging-and-releases)). All three have been built by CI and
-> inspected, and the Windows arm64 one has additionally been installed and used (2026-08-15).
+> inspected, and the Windows ones have additionally been installed and used (2026-08-15 and
+> 2026-08-16).
 >
 > What has been checked on a real menu bar, not only by its tests: the icon renders and reads at
 > menu-bar size, the popover opens anchored under it and inside the screen, and it closes. The
@@ -218,14 +219,6 @@ Three facts fix the motion, and each was decided by rendering it at 18 pt rather
   what buys that, not the rate: halving the frames to keep a one-second pass would double the step,
   which is where a moving mark starts to read as a stutter. The frames are rasterised ONCE at
   startup (24 × 2.6 KB) and cycled — a mark re-rendered on every frame forever would be work that never stops.
-- **The rate is chosen by what it costs, and the cost is the platform's, not ours.** Every frame is
-  a `set_icon`, which on macOS redraws the menu bar item. Measured on the bundled app with the panel
-  closed, one session working, as 30 s samples of process CPU time: **24 fps → 10.9% of one core
-  (one sample), 12 fps → 7.3% (7.3 / 7.3 / 7.7 over three), nothing working → 0.3%** — the idle
-  figure being the tray's ordinary poll. 12 fps is the maintainer's call, made on those numbers, and the
-  motion at 12 is the same 15° step. **Halving the rate did not halve the cost**: part of what a
-  repaint costs is paid per second whatever the rate, so smoothness is cheaper to buy back than the
-  first measurement implied, and a further cut has less to win.
 - **The spin has its own loop, and it costs nothing while nothing is working.** The poll's cadence
   is how often the server is asked; this one is how smooth a spinner looks, and tying the window to
   the poll would give one step a second. While no session is working the task holds on a `Notify` —
@@ -383,11 +376,11 @@ it hangs off the edge of the screen.
 **Which way it opens is read off the icon, never off the platform.** If the icon's centre falls in
 the lower half of that work area the panel grows **upward**, with its BOTTOM edge flush above the
 icon; otherwise it grows downward from just below it, as it always has. A macOS menu bar is always
-the top strip, so the icon is always in the upper half and the direction there cannot change. A
-Windows taskbar sits on any edge, and on three of the four its icons are in the lower half —
-anchoring below them put the panel's top edge at the bottom of the screen, which left it off-screen
-and, since the room below was then a few pixels, collapsed it to the 90 pt floor with the content
-scrolling inside. One cause, both symptoms, observed on Windows 11 arm64 on 2026-08-14.
+the top strip, so the icon is always in the upper half and the direction there cannot change. On
+Windows the icon can sit in the lower half, and anchoring below it put the panel's top edge at the
+bottom of the screen, which left it off-screen and, since the room below was then a few pixels,
+collapsed it to the 90 pt floor with the content scrolling inside. One cause, both symptoms,
+observed on Windows 11 on 2026-08-14.
 
 Two consequences worth naming, because both were defects in earlier attempts at this. The anchored
 edge is the icon's, not the window's: growing downward the top never moves, while growing upward the
@@ -1143,17 +1136,15 @@ has given to something else, and picking either would be a signal sent to an unr
 
 Known limits, none of them silent:
 
-- **Windows has been used on arm64 only** — opened on 2026-08-14, then installed and driven on
-  2026-08-15. The first look found two defects, both since fixed — the popover opened off the bottom
-  of the screen, and the crate had no `windows_subsystem` attribute, so launching it left a console
-  window open; fixing the second turned up a third by reading, two of the three spawn sites missing
-  `CREATE_NO_WINDOW`. The second session found one more — a panel button that swallowed about one
-  click in ten, the live view being replaced under the press — and answered the rest: the installer
-  runs, the icon reads at notification-area size, the popover opens upward at full
-  height against a taskbar at the bottom, trust-on-first-use and the connection screen work,
-  notifications are delivered, and every button responds. What remains unexercised there is the
-  animation's cost, a taskbar on the other three edges, and the entire x64 build, whose installer has
-  never been opened.
+- **Windows has been used in a VM, not on a daily machine** — opened on 2026-08-14, then installed
+  and driven on 2026-08-15 and 2026-08-16. The first look found two defects, both since fixed — the
+  popover opened off the bottom of the screen, and the crate had no `windows_subsystem` attribute,
+  so launching it left a console window open; fixing the second turned up a third by reading, two of
+  the three spawn sites missing `CREATE_NO_WINDOW`. The later sessions found one more — a panel
+  button that swallowed about one click in ten, the live view being replaced under the press — and
+  answered the rest: the installer runs, the icon reads at notification-area size, the popover opens
+  at full height, trust-on-first-use and the connection screen work, notifications are delivered,
+  and every button responds.
 - `taskkill /F` is a hard stop — the server never runs its shutdown path, so its record is left for
   the next start's sweep. Marked `// LIMIT:` at both sites. The lookup there also has a rule this
   platform does not need: `npm i -g` installs three shims and `where.exe` lists the extensionless sh
@@ -1657,9 +1648,10 @@ Nothing. The bundle carries only the linker's ad-hoc signature, and both systems
   was `open` over an SSH session, which is not a gesture any user performs. Two conclusions, and the
   second is the reusable one: a shell over SSH cannot answer a question about a GUI decision, and
   *"I could not reproduce the block"* is not *"there is no block"*.
-- **Nothing about Windows is measured**: no Windows desktop is used here, and neither installer has
-  been opened on one. The SmartScreen wording in the README is Microsoft's documented behaviour, not
-  an observation.
+- **Windows was seen, not measured**: the installer has been run on a Windows 11 VM (2026-08-15 and
+  2026-08-16) — SmartScreen stops an unsigned unknown publisher, *More info → Run anyway* is the way
+  through, and the `currentUser` install mode asked for no Administrator rights. No Windows desktop
+  is used here daily, so nothing beyond that is timed or sampled.
 
 Signing and notarization stay out of scope until there is a release worth signing (EPIC 4).
 
