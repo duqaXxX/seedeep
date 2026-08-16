@@ -4,6 +4,19 @@ All notable structural changes to seedeep are recorded here, newest first.
 
 ## Unreleased
 
+**The rehearsal became a check the merge actually waits for.** It ran on every release pull request
+already, and nothing required it: a pull request could be merged with the gates red, which is the
+same hole the rehearsal was built to close, one step up. The obstacle was the path filter — a
+workflow a `paths:` trigger keeps from starting reports NOTHING, and a required check that is never
+reported sits at *Pending* and blocks the pull request forever, so requiring the matrix legs would
+have frozen every unrelated pull request. A job skipped by its own `if:` reports success instead.
+
+So the filter moved off the trigger and into a first job, `changes`, which reads the diff and
+decides; `server` (and through it `smoke` and `windows`) runs only when it says so. One summary job
+with a fixed name, **`Release rehearsal`**, reads their results and is the single check the ruleset
+requires — the matrix legs cannot be required directly, since their names carry the matrix and would
+break the day a target is added.
+
 **The release gates now rehearse on the pull request that bumps the version, and the Windows
 assertion they got wrong is fixed.** v0.28.0 was tagged, built, and never published: `stop` was
 asserted to remove the server's run-state record, which is true on POSIX and false on Windows —

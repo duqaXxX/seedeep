@@ -159,8 +159,17 @@ the whole matrix is provable without cutting a release.
 ruleset forbids moving or deleting one, so a gate that first runs *after* the tag spends a version
 number every time it catches something — v0.28.0 was exactly that: the gate worked, the release
 stayed a draft, nobody could download anything, and the number was burnt anyway. So `release.yml`
-also runs on a **pull request that touches `package.json`**, which is the file a release bumps and
-the only place the version lives. That run builds every executable and puts them through the same
+also runs on **every pull request**, and a first job (`changes`) decides from the diff whether the
+rest of it is needed — `package.json`, which is the file a release bumps and the only place the
+version lives, plus `release.yml` and `.github/scripts/**`, because the v0.28.0 defect was in a gate
+script and a change to the machinery merged after a bump's run would otherwise reach the tag having
+been rehearsed by nothing. **The filter is a job and not a `paths:` trigger for one reason**: a
+workflow a path filter keeps from starting reports nothing at all, and a required check that is
+never reported sits at *Pending* and blocks the pull request forever, while a job skipped by its own
+`if:` reports success. That difference is what lets one check — **`Release rehearsal`**, a summary
+job with a fixed name that reads the results of `server`, `smoke` and `windows` — be the one thing
+the `main` ruleset requires. The matrix legs cannot be required directly: their names carry the
+matrix, so the ruleset would break the day a target is added or renamed. That run builds every executable and puts them through the same
 gates, and publishes nothing: every writing step and both attestations are `if: ref_type == 'tag'`.
 `workflow_dispatch` offers the same rehearsal on demand — this makes it automatic, since the version
 that depended on somebody remembering to run it is the one that got skipped. **The rehearsal builds
