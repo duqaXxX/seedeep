@@ -187,7 +187,8 @@ export function updateAdvice(
   }
   lines.push(
     '',
-    'Asking npm is the only thing seedeep asks the network, and at most once an hour.',
+    'Asking npm is the only thing seedeep asks the network. A verb you type asks it now; every',
+    'other surface reads the answer it leaves behind, at most once an hour.',
     'A running server keeps the old code until `seedeep restart`.',
   );
   return `${lines.join('\n')}\n`;

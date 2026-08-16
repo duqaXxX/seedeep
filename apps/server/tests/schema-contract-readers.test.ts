@@ -33,7 +33,12 @@ test('every claim names a file that exists', () => {
   assert.deepEqual(missing, [], 'these claims name a source file that is not there');
 });
 
-test('every symbol a claim names appears in the file it names', () => {
+// A DECLARATION, not a mention: a symbol renamed in the code but left behind in a comment, a
+// string or an import would keep a `\bsymbol\b` grep green, which is the rot this format replaced.
+const declares = (source: string, symbol: string): boolean =>
+  new RegExp(`\\b(function|const|let|class|interface|type|enum)\\s+${symbol}\\b`).test(source);
+
+test('every symbol a claim names is DECLARED in the file it names', () => {
   const missing: string[] = [];
   for (const claim of CLAIMS) {
     for (const part of claim.reader.split(',')) {
@@ -41,15 +46,11 @@ test('every symbol a claim names appears in the file it names', () => {
       if (!symbol) continue;
       const file = join(SRC, path);
       if (!existsSync(file)) continue; // reported by the test above
-      if (!new RegExp(`\\b${symbol}\\b`).test(readFileSync(file, 'utf8'))) {
-        missing.push(`${claim.id} → ${path}:${symbol}`);
-      }
+      if (!declares(readFileSync(file, 'utf8'), symbol)) missing.push(`${claim.id} → ${path}:${symbol}`);
     }
   }
-  assert.deepEqual(missing, [], 'these claims name a symbol their file no longer defines');
+  assert.deepEqual(missing, [], 'these claims name a symbol their file no longer declares');
 });
 
-test('every claim id is unique', () => {
-  const ids = CLAIMS.map((c) => c.id);
-  assert.equal(new Set(ids).size, ids.length, `duplicate claim id in ${ids.join(', ')}`);
-});
+// The claim table's other invariants — unique ids, the reader FORMAT, an actionable `investigate`
+// — are asserted in `schema-contract.test.ts`. This file only answers "do these paths resolve".

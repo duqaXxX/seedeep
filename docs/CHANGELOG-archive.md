@@ -1,10 +1,14 @@
 # Changelog archive — everything before 0.20.0
 
-This is the record of every seedeep release up to and including `0.19.0`, kept **unedited**. The
-entries below are exactly as they were written at the time: internal narrative, implementation
-detail and all. They have deliberately *not* been rewritten into the grouped, user-facing form
-that [`CHANGELOG.md`](CHANGELOG.md) now uses for `0.20.0` onward — rewriting a historical record
-is how it stops being one.
+This is the record of every seedeep release up to and including `0.19.0`. The entries below are as
+they were written at the time: internal narrative, implementation detail and all. They have
+deliberately *not* been rewritten into the grouped, user-facing form that
+[`CHANGELOG.md`](CHANGELOG.md) now uses for `0.20.0` onward — rewriting a historical record is how
+it stops being one.
+
+Three lines were changed when this file was split out, and nothing else: a pair of real process ids
+was removed (this file is public), and two links were repointed at the documents their sections had
+moved to.
 
 Almost all of it sits under a single heading. **`## 0.13.0` is the pre-publication development
 diary**: several hundred dated `### Title (YYYY-MM-DD)` entries written while seedeep was built

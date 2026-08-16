@@ -63,7 +63,7 @@ const fake = (over: Partial<Claim>): Claim => ({
   id: 'CX',
   scene: 99,
   describe: 'a test claim',
-  reader: 'parser.ts:1',
+  reader: 'server/parser.ts:parseLine',
   investigate: 'look here',
   kind: 'gesture',
   provoked: () => true,
@@ -194,7 +194,7 @@ test('everything the probe could not prove becomes an actionable manual checklis
   const text = manualChecklist(r);
   assert.match(text, /TEST THESE BY HAND/);
   assert.match(text, /open a session and click the subagent/);
-  assert.match(text, /parser\.ts:1/);
+  assert.match(text, /server\/parser\.ts:parseLine/);
 });
 
 test('a fully-proven run has an empty manual checklist', () => {

@@ -55,9 +55,10 @@ reached only from the client today and stays in `core/` because it is pure, whil
 hold the line (`apps/server/tests/layering.test.ts`), both walking the import graph rather
 than the directory listing.
 
-`docs/` stays at the root deliberately: `architecture.md`, `trace.md`,
-`claude-code-upgrades.md`, `search.md` and `tray.md` describe the product, and a second
-app would otherwise bury half the reference inside its own directory.
+`docs/` stays at the root deliberately: `architecture.md`, `api.md`, `configuration.md`,
+`features.md`, `trace.md`, `search.md`, `session-output.md`, `claude-code-upgrades.md`,
+`install.md` and `tray.md` describe the product, and a second app would otherwise bury half the
+reference inside its own directory.
 
 **The tray shares no code with the server** — it reaches it over HTTP only, through four
 endpoints: `/api/digest`, `/api/stream`, `/api/config` and `/api/update` (`docs/tray.md`).

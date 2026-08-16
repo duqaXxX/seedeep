@@ -18,7 +18,7 @@ seedeep code and reads only these.
 | `GET /api/stream` | tray |
 | `GET /api/update` | tray |
 
-The other seventeen are consumed by the browser GUI shipped in the same executable. They are
+The other sixteen are consumed by the browser GUI shipped in the same executable. They are
 documented here because they are reachable and useful, **not** because they are frozen: treat them
 as internal to the GUI and expect them to change with it. There is no `/v1` prefix, no version
 negotiation and no deprecation window — the server's version is in `GET /api/config`, and every
@@ -74,7 +74,8 @@ The API answers with **two different error shapes**, and which one you get depen
 | `415` | JSON — `{"error":"Content-Type must be application/json"}` | `POST /api/config` without the JSON content type |
 
 A missing required query parameter is not a `400`: the route looks up the empty string, finds
-nothing and answers `404`.
+nothing and answers `404`. `GET /api/search` is the exception — an absent `q` is an empty query,
+not a bad request, and it answers `200` with no rows.
 
 ## Caching
 
@@ -107,7 +108,7 @@ session. A browser-based client has to be served by seedeep itself.
 | `GET` | `/api/baseline` | — | `Baseline` — the user's per-turn token baseline |
 | `GET` | `/api/retro` | — | `Retrospective` — the corpus retrospective |
 | `GET` | `/api/compare` | — | `Comparison` — session weight by time window |
-| `GET` | `/api/search` | `q` | `SearchResponse` |
+| `GET` | `/api/search` | — (`q` carries the query) | `SearchResponse` |
 | `GET` | `/api/stream` | — | SSE, every session, live |
 | `GET` | `/api/replay` | `sessionId` | SSE, one session's history |
 | `GET` | `/api/tool-output` | `sessionId`, `toolUseId` | `ToolOutput` |
@@ -249,7 +250,7 @@ weighted by the kind of token and the model that spent it — never a cost in cu
 
 | Parameter | Required | Meaning |
 |---|---|---|
-| `q` | yes | the words; every word narrows |
+| `q` | no, in effect | the words; every word narrows. Absent or empty answers `200` with no rows rather than an error |
 
 Returns `SearchResponse` (`core/types.ts`): `{ terms, rows, ms }`. An empty or absent `q` is not an
 error — it answers `{"terms":[],"rows":[],"ms":0}`.
@@ -295,8 +296,9 @@ restart; the bound-at-startup settings are the ones `restart_pending` names.
 
 ### `GET /api/update`
 
-What npm says is current, from a cache that refreshes once an hour. Every surface reads this one
-endpoint, so the tray, the portal and the CLI can never disagree.
+What npm says is current, from a cache that refreshes once an hour. It is how a REMOTE client — the
+tray, or the portal in a browser — learns the version of the server it is pointed at. The local CLI
+does not use it: `seedeep update` reads the same cache directly, and forces a fetch.
 
 Returns `UpdateStatus` (`server/update-check.ts`) plus:
 

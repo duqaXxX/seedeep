@@ -151,8 +151,9 @@ ENTRY rather than on its path. That is the whole invalidation strategy: an entry
 change — a changed file becomes a new entry — so a stale derivation is unreachable, and nothing has
 to be invalidated by hand from inside the refresh loop.
 
-The query is a substring scan per term. **Do not** add an inverted or trigram index; nothing
-measured asks for one.
+The query is a substring scan per term. **Do not** add an inverted or trigram index: nothing
+measured asks for one, and the measurement that says so is kept next to the code it constrains
+(`search-index.ts`, above `createSearchIndex`) — where a change to the index has to read it.
 
 ## Privacy
 

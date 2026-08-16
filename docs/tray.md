@@ -202,7 +202,7 @@ it. After every render the panel measures its own natural height and hands it to
   only ever measure the window. Nothing is painted between the two writes, so the class is invisible.
 - The measurement is the **rect, never `scrollHeight`**, which answers in whole pixels and rounds a
   fractional surface down — a number smaller than the content clips the last row.
-- The clamp is a **pure function** (`panel_height`, unit-tested) because neither of its failure modes
+- The clamp is a **pure function** (`panel_geometry`/`fitted_height` in `main.rs`, unit-tested) because neither of its failure modes
   can be seen from an SSH shell: a window taller than the screen puts the bottom of the list out of
   reach — a popover cannot be dragged — and a window of zero height cannot be clicked to recover.
   A webview that has not laid out yet reports `0`, which is why there is a floor.
@@ -370,7 +370,7 @@ talking to a seedeep.
 
 ## Reaching the server
 
-Everything the tray knows arrives through one Rust module and one endpoint. **The webview never
+Everything the tray knows arrives through one Rust module, over four endpoints. **The webview never
 fetches**, and that is not a style choice: Tauri's JS HTTP API can only *disable* certificate
 verification (`acceptInvalidCerts`), never pin, and disabling it would void the reason the server has
 TLS at all. So `src/client.rs` owns the client, `src/pin.rs` owns the verifier, and the panel reaches
