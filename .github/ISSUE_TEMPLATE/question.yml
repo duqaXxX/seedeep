@@ -1,0 +1,27 @@
+name: Question
+description: Ask how something in seedeep works, or why it behaves the way it does.
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Privacy notice:** seedeep reads your Claude Code session logs, which contain real file paths, project names, and prompt content. Redact any such information from screenshots and pasted output. Replace real paths with placeholders like `/home/dev/myproject` and real project names with generic ones.
+
+        seedeep is maintained by one person outside working hours, so an answer may take a while — see [CONTRIBUTING.md](https://github.com/duqaXxX/seedeep/blob/main/CONTRIBUTING.md#how-we-work-together).
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to understand? If seedeep showed you something you did not expect, say what it showed and what you thought it meant.
+      placeholder: "The context bar keeps growing after a compaction. Is that the same window being re-counted, or does compaction not shrink it?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything that helps answer it
+      description: Optional. The seedeep version (`seedeep --version`), your OS, or what you were doing at the time — only if it is relevant to the question.
+      placeholder: "seedeep 0.28.0 on macOS, watching a live session."
