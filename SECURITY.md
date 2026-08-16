@@ -25,7 +25,7 @@ and credit in the published advisory unless you would rather not be named. If a 
 sits untouched for a couple of weeks, a comment on the same advisory is welcome — it
 means I missed it, not that I decided against it.
 
-**Only the latest release is supported.** Everything — the server binaries, the six npm
+**Only the latest release is supported.** Everything — the server binaries, the seven npm
 packages, the tray installers — ships from one version tag, so a fix goes out as a new
 release and there are no backports.
 

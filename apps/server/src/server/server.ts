@@ -1159,9 +1159,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
         return json(req, await commitsForSession(rec, all));
       }
 
-      // The files this session changed, from all three witnesses (ledger, its commits, and — live
-      // only — the working tree). Needs every session: the others' ledgers are what stop a shared
-      // commit from crediting this one with their files.
+      // The files this session delivered, read from the commits it produced — plus the scratchpad
+      // rows the /rewind ledger is still the only witness for, and the pages it published
+      // (`session-files.ts`). Needs every session: attribution compares them to decide which one a
+      // shared commit belongs to.
       if (pathname === '/api/files') {
         const sessionId = new URL(req.url).searchParams.get('sessionId') ?? '';
         const all = await deps.discover();

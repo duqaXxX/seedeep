@@ -352,7 +352,7 @@ export const CLAIMS: Claim[] = [
     id: 'C16c',
     scene: 4,
     describe: "the child's end_turn text = the subagent's RETURNED OUTPUT",
-    reader: 'parser.ts:194',
+    reader: 'parser.ts:401',
     investigate:
       "seedeep's differentiator. If this line stops being written, every subagent renders output-less while everything else still 'works'.",
     manual:

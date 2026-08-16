@@ -27,7 +27,10 @@ switch it off within a week.
 
 Everything below follows from that asymmetry.
 
-## Two mechanisms, two different jobs
+## Three mechanisms, three different jobs
+
+The radar and the probe are below; the third, **evidence**, needs nobody to run it and is
+described in [The rest closes itself](#the-rest-closes-itself).
 
 ### The radar — `bun test`
 

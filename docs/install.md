@@ -64,7 +64,7 @@ It is the same executable either way, and it is what a headless box reached over
 SSH needs. macOS refuses an unsigned download on first launch: the way through is
 **System Settings → Privacy & Security → Security → Open Anyway**, then your login
 password — the same gesture the tray needs, described in
-[`tray.md`](tray.md#what-is-signed-and-what-that-costs). The Linux builds need glibc
+[`tray.md`](tray.md#packaging-and-releases). The Linux builds need glibc
 (Debian, Ubuntu, Fedora…), not musl.
 
 ### Checking a download came from here
@@ -74,7 +74,7 @@ provenance attestation — a public, tamper-evident record that this exact file 
 by seedeep's release workflow from the tagged commit, and by nothing else:
 
 ```sh
-gh attestation verify seedeep-server_0.20.0_macos-arm64 -R duqaXxX/seedeep
+gh attestation verify seedeep-server_<version>_macos-arm64 -R duqaXxX/seedeep
 ```
 
 It answers with the workflow and the commit that produced the file, or it fails. That is
@@ -372,7 +372,7 @@ promising a recovery that will not come.
 deliberately not its job: use an SSH port-forward
 (`ssh -L 44842:127.0.0.1:44842 user@host`, which leaves the server on loopback and
 makes the tunnel the authentication), or a VPN you already run. The security model in
-full is in [`architecture.md`](architecture.md#security-model).
+full is in [`configuration.md`](configuration.md#security-model).
 
 ## Installing the tray
 

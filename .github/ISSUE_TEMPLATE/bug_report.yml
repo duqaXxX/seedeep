@@ -1,0 +1,89 @@
+name: Bug report
+description: Something in seedeep is not working correctly.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Privacy notice:** seedeep reads your Claude Code session logs, which contain real file paths, project names, and prompt content. Before submitting, redact any such information from screenshots, pasted output, and steps below. Replace real paths with placeholders like `/home/dev/myproject` and real project names with generic ones.
+
+  - type: input
+    id: version
+    attributes:
+      label: seedeep version
+      description: Run `seedeep --version` and paste the output.
+      placeholder: "0.28.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - "npm (npm i -g seedeep)"
+        - "Downloaded binary (from GitHub releases)"
+        - "Built from source"
+        - "Tray installer (DMG or setup.exe)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.5 arm64 / Windows 11 x64 / Ubuntu 24 arm64"
+    validations:
+      required: true
+
+  - type: input
+    id: claude-code-version
+    attributes:
+      label: Claude Code version
+      description: Run `claude --version` and paste the output.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: session-type
+    attributes:
+      label: Live session or replay?
+      description: Was seedeep watching a Claude Code session that was actively running, or were you viewing a session that had already ended?
+      options:
+        - "Live (Claude Code was running at the time)"
+        - "Replay (session had already ended)"
+        - "Not applicable"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe? Paste any relevant console output or error messages — redacted of real paths and project names.
+      placeholder: "The timeline stopped updating after the first tool call. The browser console showed: ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: "The timeline should have continued filling in as the session ran."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence of actions that triggers the bug.
+      placeholder: |
+        1. Start a Claude Code session.
+        2. Run `seedeep`.
+        3. Send a prompt that spawns a subagent.
+        4. Observe the Trace panel.
+    validations:
+      required: true

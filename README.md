@@ -200,7 +200,10 @@ defects, which is the honest estimate of what an untouched square still holds.
   modifies, proxies, or intercepts your session.
 - **Live, not post-hoc.** The point is watching a turn *as it happens*, not analyzing
   spend after the fact.
-- **Runtime-agnostic core.** Built on standard APIs, so it runs on Bun or Node.
+- **Runtime-agnostic core.** The reducer and every rule it applies are built on standard
+  APIs alone — no runtime builtins — so they run and are tested anywhere. The server
+  around them is Bun, and ships with it embedded: you never install a runtime to run
+  `seedeep`.
 - **Local by default.** Nothing leaves the machine unless you ask for it, and asking
   for it turns on TLS and a token in the same move.
 - **Visual is the point.** The number is the message; the picture is what makes it
@@ -231,12 +234,15 @@ send a change.
 | -- | -- |
 | [`features.md`](docs/features.md) | every surface, and the reasoning behind the rules |
 | [`install.md`](docs/install.md) | installing, running, updating, remote access, removal |
-| [`architecture.md`](docs/architecture.md) | the pipeline, the endpoints, the security model |
+| [`architecture.md`](docs/architecture.md) | the pipeline, and why it has the shape it does |
+| [`api.md`](docs/api.md) | the HTTP reference: every route, its parameters and its responses |
+| [`configuration.md`](docs/configuration.md) | the config file, precedence, TLS, auth, the Settings panel |
 | [`trace.md`](docs/trace.md) · [`search.md`](docs/search.md) · [`tray.md`](docs/tray.md) | the three surfaces with rules of their own |
 | [`commits.md`](docs/commits.md) · [`cards.md`](docs/cards.md) · [`changed-files.md`](docs/changed-files.md) | what a session shipped, worked on, and touched |
 | [`claude-code-upgrades.md`](docs/claude-code-upgrades.md) | how seedeep survives a Claude Code release |
 | [`CHANGELOG.md`](docs/CHANGELOG.md) | what changed, newest first |
 | [`SECURITY.md`](SECURITY.md) | found a vulnerability? report it privately, never as an issue |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | community standards and how violations are handled |
 
 ## License
 

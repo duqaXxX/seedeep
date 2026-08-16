@@ -22,8 +22,7 @@ The README is the short version. The design behind these surfaces is in
 > that invalidate it, so `bun run doc-shots:check` can name the ones a change may
 > have made false. Nothing else can: no test looks at a PNG. What it names are
 > **candidates, not verdicts**: the map is per-file and `client/graph.ts` draws every
-> widget, so a single edit there names most of them at once (measured on a
-> three-line change: 15 named, 20 re-cut, 18 byte-identical). Whether a figure really
+> widget, so a single edit there names most of them at once. Whether a figure really
 > went false is the author's call — did what it *shows* change? — and
 > `bun run doc-shots` re-cuts it — `--ids <shot>` for one figure, nothing for all.
 > `--verify` settles it by re-cutting the suspects and **comparing the pixels**, but it
@@ -199,11 +198,10 @@ commits that session produced, so the number is one you can reproduce with
 `git show --stat`. Its description names the commits it counted, and a session that
 has not committed says so rather than showing a figure nothing can back.
 
-Counting Claude Code's own file-history ledger instead would under-report by half:
+Counting Claude Code's own file-history ledger instead would under-report badly:
 it records only what CC's own editing tools wrote, so a file rewritten by a shell
-command or produced by a build is invisible to it (measured on one commit: 8 of 16
-files). And which session made a shell write is recorded nowhere at all, so it is
-never guessed. The ledger is still read for the one thing git cannot see — the
+command or produced by a build is invisible to it. And which session made a shell
+write is recorded nowhere at all, so it is never guessed. The ledger is still read for the one thing git cannot see — the
 per-session scratchpad Claude Code uses for throwaway scripts, which lives outside
 your repository and gets its own row instead of inflating the total. A page the
 session published with the Artifact tool gets a row of the same kind: it is not a
@@ -254,10 +252,10 @@ own empty state instead.
   offering a link that would 404. The hash is the proof: it is the one the session's
   own `git commit` printed.*
 - **Cards** — the tracker cards the session touched, each opening on its tracker.
-  Read from the calls that named them, never from a key typed in a prompt: of the
-  36 key-shaped prefixes appearing in prompts across a real corpus, 27 name no
-  tracker at all (`GPT-4`, `UTF-8`). A row says whether the session **changed** the
-  card or only **read** it. Full rules: [`cards.md`](cards.md).
+  Read from the calls that named them, never from a key typed in a prompt, where
+  most key-shaped strings name no tracker at all (`GPT-4`, `UTF-8`). A row says
+  whether the session **changed** the card or only **read** it. Full rules:
+  [`cards.md`](cards.md).
 
   <img src="assets/shots/tracker-cards.png" width="344" alt="The Cards card: two tracker cards with their titles, one badged read, the other changed by the session">
 
@@ -294,9 +292,8 @@ the grid with the ~100 it spawns.
 #### Background commands share that card
 
 A session launches shell commands into the background as readily as it launches
-subagents, and they used to have no catalogue at all — only a live list of the ones
-still running. So a command that **failed** disappeared from every count the moment
-it failed, which is the one thing you needed to be told.
+subagents, and each one gets a catalogue row that outlives it — so a command that
+**failed** is still there to be found, which is the one thing you needed to be told.
 
 The card holds both lists behind two tabs, and it grows them **only when both have
 something in them**: with commands and no subagents (or the reverse) it is simply
@@ -315,7 +312,7 @@ A command reaches the background three ways, and the rows say which when it is n
 the obvious one: the agent asked for it, **the call's own timeout** promoted a
 foreground command that was still running (two minutes by default, and the agent can
 ask for up to ten), or **you** pressed `Ctrl+B` and took it away from the agent. The first is what a background command already means to a
-reader — it is 88% of them — so its rows stay bare; the other two carry a chip,
+reader, and it is much the commonest, so its rows stay bare; the other two carry a chip,
 `auto-backgrounded` and `backgrounded by you`, on the live row, on the catalogue row
 it becomes, and in the drawer both open. A command whose receipt is too old to say
 which it was reads as the bare case: an omitted chip, never a wrong one.
@@ -329,42 +326,34 @@ ticking, exactly as the live row above does: one command described two ways on o
 screen was a discrepancy, not a nuance.
 The row's duration is never the launch call's, which closes in milliseconds and
 measures nothing — and never the SECOND copy of the notification either: Claude
-Code writes it twice, and the later copy is written when its queue drains, up to 76
-minutes after the command actually stopped.
+Code writes it twice, and the later copy is written when its queue drains, long
+after the command actually stopped.
 
-**A `Monitor` is one of these commands**, and for a long time it was the one thing
-in the session you could not see at all. It is Claude Code's watcher — a `tail -f`
+**A `Monitor` is one of these commands.** It is Claude Code's watcher — a `tail -f`
 on a build log, a poll of a CI run — and it behaves like any background command:
-armed once, running for as long as it watches, ended by a notification. What told
-it apart was a field name. A background shell command names its task
-`backgroundTaskId`; a monitor names the same thing `taskId`, so the gate that
-recognises one never fired for the other. Everything downstream followed: the call
-closed on its 0.1s receipt, it never entered this catalogue, never reached the chip
-that says the session is still waiting on something, and never reached the tray.
-Meanwhile the console counted it in the status line and seedeep said nothing.
+armed once, running for as long as it watches, ended by a notification.
 
 **What ends a monitor is not what ends a shell command.** A background `Bash`
 announces its own death twice over — a notification, and the moment it lets go of
 its output file, which is what seedeep asks the machine when the notification never
-comes. A monitor does neither: it holds no file open (measured on one that was
-demonstrably alive), and stopping it writes no notification at all. What it does
-write is the `TaskStop` itself — *"Successfully stopped task: …"*, naming the task —
+comes. A monitor does neither: it holds no file open, and stopping it writes no
+notification at all. What it does write is the `TaskStop` itself —
+*"Successfully stopped task: …"*, naming the task —
 and that sentence is what closes the row. Without it a monitor you stopped would go
 on calling itself *still running* for the rest of the session.
 
 A monitor also does something no other command does: it **reports while it runs**.
 Every line its script emits is an event, and the row says how many have arrived and
-shows the latest one under the title. Only the latest: one measured session
-forwarded 74 events, and putting a stream into the activity feed would have left
-room for nothing else there. The count is what tells a monitor that is working from
-one that has been silent since it was armed.
+shows the latest one under the title. Only the latest: a monitor's stream in the
+activity feed would leave room for nothing else there. The count is what tells a
+monitor that is working from one that has been silent since it was armed.
 
 Its drawer adds the full command, the sentence Claude Code wrote when it ended (the
 only place the exit code exists) and the **output file** — the path where the
 command's output was written. The notification that ends a command carries it in a
 tag of its own, and the launch receipt carries the same path in prose (`Output is
-being written to: …`) — on 198 of 198 background launches measured locally, which
-is what makes it readable for a command whose end is never written at all.
+being written to: …`), which is what makes it readable for a command whose end is
+never written at all.
 
 **A scheduled wakeup shares the band, and it is not a command.** When a session paces
 itself (a `/loop` with no interval), it arranges to wake itself up later — nothing
@@ -379,24 +368,21 @@ never that it happened. A countdown running into the negative would be claiming 
 that is over; saying "fired" would be claiming knowledge that is not on disk.
 
 A command whose end **Claude Code never wrote** is the one row seedeep cannot read
-off the transcript: 23 of 198 launches measured locally get no notification ever,
-and the rule "launched, nothing said" means *still running* for as long as the
-session stays open. seedeep asks the machine instead — nothing holding its output
-file open means the process is gone — and the row reads **`unknown`** with its
-duration as a bound (`≥ 4m 20s`, the last instant it was seen alive). Never `done`:
-the check learns that something stopped, not what it stopped with. The mechanism,
-and the two sources that were measured and refuted before it, are in
+off the transcript: some launches get no notification ever, and the rule "launched,
+nothing said" means *still running* for as long as the session stays open. seedeep
+asks the machine instead — nothing holding its output file open means the process
+is gone — and the row reads **`unknown`** with its duration as a bound
+(`≥ 4m 20s`, the last instant it was seen alive). Never `done`: the check learns
+that something stopped, not what it stopped with. The mechanism is in
 [`docs/architecture.md`](architecture.md#is-a-background-command-still-alive).
 
 The cockpit above keeps its half of the job, and only that half: it draws **what is
 still running**, and nothing else. A command that failed or was never reported is
 *counted* there and never drawn — the line reads `2 commands failed below · 1 never
 reported below`, the same way that card already points at a subagent that has
-finished. Rows for the dead were tried and refused:
-on a session whose commands had all ended, a card headed LIVE listed two corpses,
-which is the same kind of lie as the disappearance this feature exists to fix. The
-count is what keeps the failure from vanishing in silence; the catalogue below is
-where it is actually stated.
+finished. A card headed LIVE must never list the dead. The count is what keeps the
+failure from vanishing in silence; the catalogue below is where it is actually
+stated.
 
 Every entity — subagent, tool call, tool type, API call, skill — opens a **detail
 drawer**; drill-down clicks (e.g. a tool inside a subagent's drawer) show a
@@ -437,13 +423,12 @@ changed nothing, or code **committed with no check** run anywhere in the session
 
 Every check quotes the public Claude Code documentation that justifies it —
 including the one that says a *single* Esc is the recommended behaviour, not waste.
-No check compares a turn to your other turns: one did, and measuring showed it
-reported how BIG a turn was, which is not the same as waste.
+No check compares a turn to your other turns: how BIG a turn was is not the same
+as waste.
 
 The resume check is the one that separates *what a turn did* from *what it paid to
 come back*: a turn re-opened long after the cache went cold re-creates its whole
-prompt before doing anything — measured on a real corpus, that is a quarter of
-every token spent, and it used to be reported as if the turn had done the work.
+prompt before doing anything, and that is charged to the resume, not to the work.
 
 The verdict also names what a turn did RIGHT: ran a check before committing,
 delegated the exploration to a subagent, had its work reviewed by one. A wasteful
@@ -503,8 +488,8 @@ is why a stopped session looks exactly like a thinking one everywhere else.*
 
 An API call that fails — an expired login, a session limit, an overloaded server —
 ends the turn and leaves the session sitting there. It is the quietest failure
-there is: measured over 1830 real transcripts, 39 of 47 failed calls were the last
-model line their session ever wrote, and nothing on screen says so.
+there is: a failed call is usually the last model line its session ever writes,
+and nothing on screen says so.
 
 seedeep makes it a state rather than a passing message: the tab dot turns **red**,
 the menu-bar icon turns red above every other signal, the tray panel files the
@@ -537,11 +522,10 @@ and the call after it succeeded, which is why this is a badge and not a session 
 Hooks and plugins can attach text to a session, and it is text nobody generated for
 your benefit twice: a security plugin objecting to what was just written to a file, a
 background review reporting what it found. In the transcript it lands among the
-bookkeeping every tool produces, and seedeep used to drop all of it — which meant a
-real warning about a real file could pass through a session and leave no mark on any
-surface.
+bookkeeping every tool produces, where a real warning about a real file would
+otherwise pass through a session and leave no mark on any surface.
 
-It now shows up where it belongs, and *where* depends on what it is about:
+seedeep shows it where it belongs, and *where* depends on what it is about:
 
 - **A note about one call** — the common case, and the security plugin about a `Write`
   or an `Edit` is nearly all of it — marks that call. A ⚑ on its Trace block, a chip in
@@ -575,10 +559,10 @@ and the two can be true of the same row at once.
 
 ## Nothing is hidden from you
 
-The Live activity card streams the most recent events, but it can only hold a
-dozen — and on real sessions that is the *median* turn, so about half of them have
-more. **Expand all** opens the complete list: every prompt, API call, tool, skill
-and spawn in the order it happened, with each subagent's own work indented under
+The Live activity card streams the most recent events, but it can only hold
+thirteen, which an ordinary turn already exceeds. **Expand all** opens the
+complete list: every prompt, API call, tool, skill and spawn in the order it
+happened, with each subagent's own work indented under
 the spawn that launched it, filterable, and scoped to whatever turn you have
 selected. Every row opens the same detail drawer as the rest of the app.
 
@@ -610,8 +594,8 @@ can see them. The teal block IS the spawn of three parallel subagents, the red e
 on the first chapter is the failed step inside it, and the row above says `1 failed
 step` so a failure folded into a group is still visible from outside.*
 
-Built to stay readable at real scale (a p99 turn has ~200 steps): consecutive
-rounds of work fold into **chapters** you expand in place, while the landmarks —
+Built to stay readable at real scale (a turn can hold hundreds of steps):
+consecutive rounds of work fold into **chapters** you expand in place, while the landmarks —
 spawns, skills, replies — always stay visible. Live, the newest block glows and the
 view follows it; a spawn block IS its subagent (launch intent, tools, real
 duration) and unfolds the child's own flow as a parallel lane below, filling
@@ -669,8 +653,8 @@ your median and p95 marked on it, and underneath, where the waste came from.*
 The menu's second surface ranks your sessions against each other over a time
 window (`7d / 30d / all`), in tokens **weighted by model** rather than counted
 flat: an Opus token and a Haiku token are not the same thing, and the raw total is
-97% cache re-reads, so an unweighted ranking just sorts by how long a session
-stayed open.
+overwhelmingly cache re-reads, so an unweighted ranking just sorts by how long a
+session stayed open.
 
 A row is three stacked lines — the prompt, every fact about the session on one line
 (project, the model its main thread ran on, when it ran, API calls, the complete token
@@ -713,11 +697,11 @@ number the row prints.
 Paste a **commit hash** instead and the search also asks git which session produced
 it — the hash of a commit lives in the output of the command that made it, which
 the dialogue index excludes, so the session that did the work is exactly the one
-text search misses (measured: 29% of commits). Same rows, same order, only more of
-them. A **tracker id** (`ABC-12`, `#42`) works the same way and for the same
+text search misses. Same rows, same order, only more of them.
+A **tracker id** (`ABC-12`, `#42`) works the same way and for the same
 reason: a session can work a card for an hour without ever typing its key, because
-the id lives in the tool call. That one is answered from its own index — 68 ms over
-716 sessions — and a text search never pays for it.
+the id lives in the tool call. That one is answered from its own index, and a text
+search never pays for it.
 
 Each row shows the passages that matched, attributed to **you** or **claude** and
 highlighted, and carries two ways out: **open the session in a tab**, or take its
@@ -857,7 +841,7 @@ command awaiting approval, not the error text, not what the turn did. You cannot
 on a banner anyway (approving still means going back to the terminal), a banner
 truncates that second line first, and all of it is one click away in the panel. It
 also keeps the webhook honest: that is the one channel whose payload leaves your
-machine, and it now carries no more than the banner beside you does.
+machine, and it carries no more than the banner beside you does.
 
 A turn that ends says **`Turn finished`**, not "finished" — the session has not
 ended, it has become yours again. A turn **you** interrupted is never announced:

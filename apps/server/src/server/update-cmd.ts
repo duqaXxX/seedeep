@@ -1,11 +1,12 @@
 /**
  * `seedeep update` — say which version is out there, how THIS installation is updated, and stop.
  *
- * **It reads the same cached check every other surface reads** ({@link updateStatus}): the tray,
- * the portal and this command cannot disagree about which version is current, and running it
- * twice in a minute asks npm nothing the second time. `--offline` skips the check entirely, and a
- * registry that answered yesterday but not today still gets its version reported — the advice
- * never depends on the network being up right now.
+ * **It asks npm, and leaves the answer in the cache every other surface reads**
+ * ({@link updateStatus} with `force`): the reason to type this is usually having just heard there
+ * is a new version, and an answer from earlier in the hour would say you are current when you are
+ * not. The fresh answer replaces the cache, so the tray and the portal do not re-ask after it.
+ * `--offline` skips the check entirely, and a registry that answered yesterday but not today still
+ * gets its version reported — the advice never depends on the network being up right now.
  *
  * **It does not run the install**, and that is a separate decision from the network one. Under
  * `/seedeep` the shell runs inside Claude Code's preprocessing, which blocks the turn and captures

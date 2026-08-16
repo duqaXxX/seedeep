@@ -5,36 +5,32 @@ tracker card was it working on** — and, from Search, which sessions worked on 
 document states the CURRENT rules. Code: `apps/server/src/core/tracker-cards.ts` (pure),
 `apps/server/src/server/transcript-scan.ts` (the one pass over a transcript),
 `apps/server/src/server/session-cards.ts` (the join), `apps/server/src/client/cards-view.ts`
-(card + drawer), `GET /api/cards`.
+(card + drawer).
 
 ## The signal is an ACTION, never a mention
 
-A tracker key typed in a prompt is the widest signal and the weakest evidence. Measured over the
-whole local corpus, of the 36 `[A-Z]{2,6}-\d+` prefixes appearing in user prompts, **27 name no
-tracker at all** — `GPT-4`, `RSA-2048`, `UTF-8`, `CVE-…`, `ISO-8601`. An early measurement that
-read ids out of a call's JSON body put `SHA-256` among the top four "cards".
+A tracker key typed in a prompt is the widest signal and the weakest evidence: most of what looks
+like one names no tracker at all — `GPT-4`, `RSA-2048`, `UTF-8`, `CVE-…`, `ISO-8601`.
 
 So no text is read. A card is attributed only when a **tool call named it**, and the id comes from
 the call's own id FIELD (`input.id`, `input.issueId`), never from its body:
 
 | Evidence | What it means | Where it comes from |
 |---|---|---|
-| `wrote` | the session CHANGED the card | `save_…`, `create_…`, `update_…`, `delete_…`, `comment_…` MCP verbs; a `gh issue close/comment/edit/reopen/create/…`; a closing keyword in a commit message |
-| `read` | it only looked | `get_…`, `list_…` MCP verbs; `gh issue view` |
+| `wrote` | the session CHANGED the card | `save_…`, `create_…`, `update_…`, `delete_…`, `add_…`, `remove_…`, `assign_…`, `move_…`, `archive_…`, `comment_…` MCP verbs; a `gh issue close/comment/edit/reopen/create/…`; a closing keyword in a commit message |
+| `read` | it only looked | any tracker call that is not one of those write verbs (`get_…`, `list_…`, …); `gh issue view` |
 
 Merged per card, a write anywhere wins: a session that edits a card also read it, and the edit is
-what makes the link real. Measured locally: 415 (session, card) rows over 141 sessions, **80%
-written**.
+what makes the link real.
 
-Unlike a commit, the relation is **many-to-many** — 17% of cards were touched by more than one
-session. Nothing here claims exclusivity, and the card never says "the" session.
+Unlike a commit, the relation is **many-to-many** — one card can be touched by several sessions.
+Nothing here claims exclusivity, and the card never says "the" session.
 
 ## Title and link come back for free, offline
 
-Both are read out of the tool_result of the call that touched the card. Per call they are there
-71% of the time; merged per card — a comment carries neither, the read or write beside it carries
-both — coverage is **99%** (411 of 415 rows). A card with no title renders as its bare id, which is
-a true row, not a broken one.
+Both are read out of the tool_result of the call that touched the card. A single call may carry
+neither — a comment does not — but merged per card, the read or write beside it supplies both. A
+card with no title renders as its bare id, which is a true row, not a broken one.
 
 The MCP link is **never constructed**: it is the `url` the tracker itself returned, accepted only
 when it names that same card (a description can hold any number of links). So no tracker host is
@@ -56,25 +52,16 @@ exactly the class of false positives the id-field rule removes.
 
 `gh issue close 42` is a `tool_use` naming its issue the way `git commit` names its repository, so
 it needs nothing new: the repository comes from the session's cwd through the same `resolveRepo` +
-`origin` path the commit link uses, and `#42` is keyed by repo (`owner/repo#42`) because a number is
-unique only there. `-R/--repo owner/repo` overrides that — most reads in a real corpus are OTHER
-projects' issues, read as documentation, and scoping them to the session's own repo would key them
-wrongly and link to a page that does not exist.
+`origin` path the commit link uses, and `#42` is keyed by repository (`host/owner/repo#42`) because
+a number is unique only there. That identity has ONE definition (`repoSlug`), so an issue reached
+both from the cwd and from `--repo` is one row, not two. `-R/--repo owner/repo` overrides the cwd —
+most reads in a real corpus are OTHER projects' issues, read as documentation, and scoping them to
+the session's own repo would key them wrongly and link to a page that does not exist.
 
 A command counts only where a shell would really start one (line start, or after `;`, `&&`, `||`,
-`|`, `$(`), only for a REAL subcommand, and its arguments stop at its line. All three rules exist
-because prose broke the earlier ones: a printed sentence containing "gh issue has 19 calls" filed
-issue #19 under a session that never touched one, and a heredoc writing a command as data ran it.
-
-**Verification status**: the write path was exercised end to end against a real repository —
-`create` (number recovered from the url gh prints), `view`, `comment` and `close` — and the four
-touches merged into one row, linked correctly. `Closes #N` in a commit message remains unit-tested
-only.
-
-That live run is what found two defects no fixture could: a repository keyed two different ways
-(`owner/repo` from the cwd, `host/owner/repo` from `--repo`) rendering ONE issue as two rows, and a
-chained call (`gh issue comment 2 …; gh issue close 2`) counting as a single touch because only the
-first command in it was read.
+`|`, `$(`), only for a REAL subcommand, and its arguments stop at its line. Each rule keeps prose
+out: a printed sentence naming `gh issue` is not a command, and a heredoc writing one as data does
+not run it. A chained line (`gh issue comment 2 …; gh issue close 2`) is two touches, not one.
 
 LIMIT: when `--repo` gives no host, the link assumes `github.com`, since the transcript does not
 record `GH_HOST`. The key is right either way; only the link would point at the wrong forge.
@@ -97,8 +84,8 @@ card in scope yet.` and hides its **Expand all**, which would open an empty draw
 
 Each row: the id, a `read` chip when the session only looked, the title, and a click that opens the
 card on its tracker. A row with no link says so instead of doing nothing. The card shows the newest
-4 (median is 2, max measured 30) and defers the rest to the drawer, where every card is listed with how
-many calls named it (`4 tool calls`) — spelled out, since a bare `×4` reads as a count of cards, and
+4 and defers the rest to the drawer, where every card is listed with how many calls named it
+(`4 tool calls`) — spelled out, since a bare `×4` reads as a count of cards, and
 named `tool calls` because everywhere else on the page a bare `calls` now means a call to the model.
 
 ## The inverse: search by card id
@@ -110,27 +97,15 @@ said. Same row shape as any other result, with zero hits, honestly (see `docs/se
 The query test is permissive on purpose: `GPT-4` reaches the lookup and finds nothing, because the
 answer comes from ids observed in tool calls, never from text.
 
-The lookup is answered from an **index**, not by reading the corpus. That was not always true, and
-the reason is worth keeping: git is an index that already exists, so the commit-hash inverse asks
-three subprocesses which repository holds the object and opens only the sessions bracketing it.
-Nothing indexes a tracker id, so the first implementation read every transcript on every query —
-2.9 s cold and 2.2 s WARM, peaking near 1 GB of RSS. A cache the query cannot use is not a cache.
+The lookup is answered from an **index**, not by reading the corpus. The commit-hash inverse can
+skip one: git is an index that already exists, so it asks which repository holds the object and
+opens only the sessions bracketing it. Nothing indexes a tracker id, so reading every transcript on
+every query is the only alternative — and a cache the query cannot use is not a cache.
 
 `apps/server/src/server/cards-index.ts` is that index: same shape as session search's
 (`search-index.ts`), its own file (`~/.seedeep/cards-index.jsonl`), a header plus one line per
-session, a `(size, mtime)` staleness stamp, incremental refresh, atomic rename. Measured over 716
-sessions / 719 MB:
-
-| | Time |
-|---|---|
-| First build (reads the corpus once) | 1.4 s |
-| Refresh, nothing changed | **7 ms** |
-| Refresh after a restart (loads the file) | **6 ms** |
-| The query itself | **<1 ms** |
-| — for reference, a commit hash | 118 ms warm |
-
-The index file is 0.3 MB. It is refreshed only when the query looks like a card id: a text search
-must not pay for an index it cannot use.
+session, a `(size, mtime)` staleness stamp, incremental refresh, atomic rename. It is refreshed only
+when the query looks like a card id: a text search must not pay for an index it cannot use.
 
 LIMIT: staleness is stamped from the PARENT transcript, so a subagent sidecar that grew without its
 parent being written would not be re-indexed. In practice the parent carries both the spawn and the
@@ -142,3 +117,6 @@ Nothing new is read. `transcript-scan.ts` makes ONE pass per transcript, cached 
 size+mtime, and both the commits join and this one consume it — so a session that already rendered
 its Commits card pays nothing to render its Cards card. Subagent sidecars are included: a
 subagent's card is its parent session's card.
+
+**Endpoint:** `GET /api/cards` — its full contract is in
+[`api.md`](api.md#get-apicommits-get-apifiles-get-apicards).
