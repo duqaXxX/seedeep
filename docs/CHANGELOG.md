@@ -9,6 +9,17 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Changed
+
+- The landing copy states what is missing rather than complaining about it. The README opened on
+  *"A Claude Code turn tells you nothing while it runs"*, which is refutable in one reply — the
+  terminal does show the tools it runs and the text it writes. What it does not show is the work:
+  how many calls, how much of the context is being read again, what each subagent is spending. The
+  opening is now **"A Claude Code turn shows you its output, not its work."**, and the paragraph
+  under it no longer claims there is "no account of what it cost", since `/cost` gives one.
+- The npm page said seedeep makes visible what a session **hides**, which reads as an accusation of
+  intent. It says `does not show you` — the same fact, with nothing attributed to anyone.
+
 ## 0.30.0 (2026-08-17)
 
 ### Added
