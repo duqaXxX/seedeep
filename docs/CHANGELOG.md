@@ -24,6 +24,15 @@ Everything released before `0.20.0` — including the pre-publication developmen
   user scope in the capture's throwaway profile: Claude Code asks for approval before using a
   project-scoped `.mcp.json`, and an unattended recording has nobody to answer.
 
+### Changed
+
+- The tagline is now **"See deep into what Claude Code is doing."**, in the README, on the npm page
+  and in `seedeep --help`. It replaces *"See deep into your agent's context"*, and both halves of
+  that are deliberate. *Context* went because the context window is one surface of the tool rather
+  than its perimeter — what the tool shows is what Claude Code is doing at each moment, and the
+  window filling is a consequence of that. *Your agent* went because seedeep reads Claude Code's own
+  session files and works with nothing else, so the wider word promised more than it does.
+
 ### Fixed
 
 - The privacy claim is now exact on the three surfaces a newcomer meets first. The README, the npm
