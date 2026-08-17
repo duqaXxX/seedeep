@@ -9,6 +9,8 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.30.1 (2026-08-17)
+
 ### Changed
 
 - The landing copy states what is missing rather than complaining about it. The README opened on
