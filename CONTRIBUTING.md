@@ -392,6 +392,31 @@ false when the code grows around it rather than when someone edits the sentence.
   window rather than from its content — a drawer is `height: 100%`, so at the run's
   shared height the settings panel was cropped with 45% of the figure empty under
   its last row. Everything that grows with its content leaves it out.
+- **The launch clip is a fifth verb, `capture-demo.ts social`**, and it shares the recorded bundle
+  with `shoot` while keeping its own camera moves — the take `shoot` records is what the README
+  figures are cut from, and a change made for a clip must not silently re-frame five published
+  figures. It films the session's LAST turn, so the page it opens onto already has a history behind
+  it, then scrolls through what the earlier turns produced, clicks into the background-commands tab
+  and closes on the Trace, in one continuous shot with no cut. The same run also writes
+  `docs/assets/launch-poster.png`, the still a reader may be shown instead of the clip — taken
+  during the dwell rather than anywhere in the tour, because that is the one moment every live
+  surface is on screen at once, and a real screenshot rather than a frame pulled out of the video,
+  which would carry the recording's compression. Three things it does are not cosmetic, and each
+  exists because the surface refuses to be faked:
+  - **The commits are re-dated onto the replay's clock.** seedeep only reads commits authored inside
+    the session's own span, and a replay rewrites every transcript timestamp to now — so a commit
+    still carrying the recording's date is never even fetched. `--amend` reaches only the last one,
+    which is why a session that committed twice once showed one; the stage rebases from the seed
+    commit so every commit the session made moves.
+  - **The background command's output file is held open for real.** Nothing ever writes that a
+    background command stopped, so the server asks the machine — `lsof` — and a file nobody holds
+    open marks the command vanished rather than running. A `tail -f` started by the capture makes
+    the frame true rather than staged.
+  - **The tracker is the capture's own.** A card is recognised only from an MCP tool whose name
+    carries `issue`, so `apps/server/scripts/demo-tracker-mcp.ts` serves three invented issues over
+    stdio, registered at USER scope in the throwaway profile — a project `.mcp.json` would be the
+    obvious home and is the wrong one, because Claude Code asks for approval before using one and an
+    unattended recording has nobody to answer.
 
 ## How a release is built
 
