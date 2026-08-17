@@ -10,12 +10,12 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![for Claude Code](https://img.shields.io/badge/for-Claude%20Code-d97757)
 
-**A Claude Code turn tells you nothing while it runs, and no more when it ends.**
+**A Claude Code turn shows you its output, not its work.**
 
 You send a prompt and the terminal shows a spinner. Behind it the window fills,
 subagents spawn and spend it on models of their own, the same context is read
-again on every call, and a compaction quietly deflates the lot. Minutes later an
-answer arrives, with no account of what it cost or which part of it was waste.
+again on every call, and a compaction deflates the lot. Minutes later an answer
+arrives, and what it took to get there is not on screen.
 
 `seedeep` records the whole chain **while it is still running** — your prompt,
 every call to the model with its latency and its own input and output, every tool
