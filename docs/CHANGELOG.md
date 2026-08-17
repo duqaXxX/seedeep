@@ -26,6 +26,12 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- The privacy claim is now exact on the three surfaces a newcomer meets first. The README, the npm
+  page and the repository description each said that nothing is sent anywhere, while seedeep does
+  make one outbound request on its own — the update check against `registry.npmjs.org`. What never
+  leaves the machine is the session content, which is what the claim was about; the check, and the
+  `seedeep update --offline` that skips it, are now named beside it. `SECURITY.md` and
+  `docs/install.md` already stated it precisely, and their wording is what the three borrow.
 - A recorded scene now waits for the marker of its OWN prompt. A background task finishing injects a
   `<task-notification>` user line, which is a turn carrying its own `turn_duration`, and a wait
   keyed on the next marker was satisfied by it — so a scene was declared finished while it was still

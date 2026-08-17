@@ -22,8 +22,8 @@ every call to the model with its latency and its own input and output, every too
 it fired and what came back, each subagent's work folded under the spawn that
 launched it, down to the answer you read. One continuous flow, live during the
 turn and still there to walk through afterwards. All of it from the logs Claude
-Code already writes on your machine: **read-only, no proxy, no daemon, nothing
-sent anywhere.**
+Code already writes on your machine: **read-only, no proxy, no daemon, no session
+content sent anywhere.**
 
 ![The context window filling live while six subagents run on three models](docs/assets/hero.gif)
 
@@ -202,8 +202,10 @@ honest estimate of what an untouched square still holds.
   APIs alone — no runtime builtins — so they run and are tested anywhere. The server
   around them is Bun, and ships with it embedded: you never install a runtime to run
   `seedeep`.
-- **Local by default.** Nothing leaves the machine unless you ask for it, and asking
-  for it turns on TLS and a token in the same move.
+- **Local by default.** Your session content never leaves the machine unless you ask for
+  it, and asking for it turns on TLS and a token in the same move. The only outbound
+  request seedeep makes on its own is the update check against `registry.npmjs.org`, and
+  `seedeep update --offline` skips it.
 - **Visual is the point.** The number is the message; the picture is what makes it
   click.
 
