@@ -1,6 +1,6 @@
 # seedeep
 
-### *See deep into your agent's context.*
+### *See deep into what Claude Code is doing.*
 
 `seedeep` makes visible what a Claude Code session hides: **how the context window
 fills, live, during a turn** — and what the subagents are doing while it happens.

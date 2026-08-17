@@ -4,7 +4,7 @@
 
 # seedeep
 
-### *See deep into your agent's context.*
+### *See deep into what Claude Code is doing.*
 
 [![npm](https://img.shields.io/badge/npm-seedeep-cb3837)](https://www.npmjs.com/package/seedeep)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
