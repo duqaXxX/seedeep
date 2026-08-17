@@ -4,8 +4,10 @@
 
 `seedeep` makes visible what a Claude Code session hides: **how the context window
 fills, live, during a turn** — and what the subagents are doing while it happens.
-It reads the session logs Claude Code already writes on your machine. Nothing is
-sent anywhere, nothing is written back.
+It reads the session logs Claude Code already writes on your machine. No session
+content is sent anywhere and nothing is written back — the only outbound request it
+makes on its own is the update check against npm, which `seedeep update --offline`
+skips.
 
 ![The context window filling live while six subagents run on three models](https://raw.githubusercontent.com/duqaXxX/seedeep/v{{VERSION}}/docs/assets/hero.gif)
 
