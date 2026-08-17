@@ -9,6 +9,31 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- `capture-demo.ts social` — the launch clip: one continuous shot of a session's last turn running,
+  the page scrolled through what the turns before it produced, and the Trace. A verb of its own
+  rather than another cut inside `shoot`, so a change made for a clip cannot re-frame the five
+  published README figures; the recorded bundle and the replay are shared.
+- `docs/assets/launch-poster.png` — the clip's poster, cut by the same run at the one moment every
+  live surface is on screen at once: the window climbing, the subagents running with their own
+  windows and models, a background command still going. A real screenshot rather than a frame pulled
+  out of the video, which carries the recording's compression.
+- `apps/server/scripts/demo-tracker-mcp.ts` — a tracker that does not exist, three invented issues
+  served over stdio, so the Cards surface can be captured from a synthetic session. Registered at
+  user scope in the capture's throwaway profile: Claude Code asks for approval before using a
+  project-scoped `.mcp.json`, and an unattended recording has nobody to answer.
+
+### Fixed
+
+- A recorded scene now waits for the marker of its OWN prompt. A background task finishing injects a
+  `<task-notification>` user line, which is a turn carrying its own `turn_duration`, and a wait
+  keyed on the next marker was satisfied by it — so a scene was declared finished while it was still
+  working, the following prompt landed in a busy session, and one prompt disappeared entirely with
+  its steps drawn inside the turn before it.
+- `Scene` was used in `capture-demo.ts` and never imported — a type error carried unseen because
+  `apps/server/scripts` is not in the tsconfig `include`.
+
 ## 0.29.0 (2026-08-17)
 
 ### Added
