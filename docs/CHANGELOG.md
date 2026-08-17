@@ -9,6 +9,8 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.30.0 (2026-08-17)
+
 ### Added
 
 - `capture-demo.ts social` — the launch clip: one continuous shot of a session's last turn running,
