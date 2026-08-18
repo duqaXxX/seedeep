@@ -285,7 +285,15 @@ test('the REAL watcher advancing a growing file still equals the whole-file repl
     intervalMs: 10,
     discover: async () => [rec],
     openSessions: async () => [
-      { pid: 1, sessionId: rec.sessionId, cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: rec.sessionId,
+        cwd: '/w',
+        status: null,
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   const trees = createLiveTrees({ watcher });

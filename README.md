@@ -192,6 +192,13 @@ rather than surprising, and [an issue](../../issues) saying what you saw is the 
 useful thing you can send — every Windows session so far found several, which is the
 honest estimate of what an untouched square still holds.
 
+**And which Claude Code hosts.** Terminal sessions and the desktop app's **Code** tab
+are both watched live. One signal is missing on the desktop app: a session stopped at a
+**tool approval** reads as working rather than amber, because only a terminal session
+publishes that state and a transcript cannot tell a call awaiting your yes from one that
+is running. A question the model asks you does light amber there
+([what each surface shows](docs/features.md#when-a-session-is-waiting-for-you)).
+
 ## Design principles
 
 - **Read-only.** `seedeep` only reads what Claude Code already writes. It never

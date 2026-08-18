@@ -4130,3 +4130,133 @@ test('golden transcript: a background command whose notification lands BEFORE it
   const tool = snap.mainTools.find((t) => t.id === 'toolu_bg')!;
   assert.ok(tool.outcome, 'and the row carries the outcome Claude Code reported');
 });
+
+// ── A session hosted OUTSIDE the terminal ────────────────────────────────────────────────────
+// The desktop app's Code tab drives Claude Code over stream-json rather than the terminal REPL,
+// and that path writes NO `system/turn_duration`: measured on a real desktop transcript, the only
+// system line it carries is `stop_hook_summary`. The shapes below are that file's, field for
+// field — an assistant line repeats its call's `stop_reason` on every block it writes, and the
+// host sprinkles `attachment` / `custom-title` lines around the turn.
+const desktopTyped = (uuid: string, text: string, ts = '2026-07-14T10:00:00.000Z') =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: ts,
+    origin: { kind: 'human' },
+    promptSource: 'typed',
+    entrypoint: 'claude-desktop',
+    isSidechain: false,
+    message: { role: 'user', content: text },
+  });
+const desktopAssistant = (
+  uuid: string,
+  block: { type: 'text'; text: string } | { type: 'thinking'; thinking: string },
+  stopReason: 'end_turn' | 'tool_use',
+  fill = 5000,
+  ts = '2026-07-14T10:00:05.000Z',
+) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    timestamp: ts,
+    requestId: 'req_' + uuid,
+    entrypoint: 'claude-desktop',
+    isSidechain: false,
+    message: {
+      role: 'assistant',
+      model: 'claude-opus-4-8',
+      content: [block],
+      stop_reason: stopReason,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 100,
+        cache_read_input_tokens: fill - 10,
+        cache_creation_input_tokens: 0,
+      },
+    },
+  });
+// Two of the line types only this host writes. Neither says anything about a turn, and both land
+// AFTER the assistant line that ended one — which is why the tail reader must skip them.
+const desktopAttachment = (uuid: string) =>
+  JSON.stringify({
+    type: 'attachment',
+    uuid,
+    parentUuid: null,
+    isSidechain: false,
+    timestamp: '2026-07-14T10:00:06.000Z',
+    userType: 'external',
+    entrypoint: 'claude-desktop',
+    attachment: { type: 'queued_command', text: '/status' },
+  });
+const desktopCustomTitle = (title: string) => JSON.stringify({ type: 'custom-title', customTitle: title });
+
+test('golden transcript: a desktop-hosted turn closes on its own end_turn, with no turn_duration ever written', () => {
+  // What this catches: with `turn_duration` as the only close, every finished turn of such a
+  // session was superseded while still `live` and filed as INTERRUPTED — measured on a real
+  // desktop transcript, four of its five turns, none of them ever stopped by the user.
+  const snap = timelineOf([
+    desktopTyped('u1', 'first request'),
+    desktopAssistant('a1', { type: 'text', text: 'done' }, 'end_turn'),
+    desktopAttachment('at1'),
+    desktopCustomTitle('a session'),
+    desktopTyped('u2', 'second request', '2026-07-14T10:01:00.000Z'),
+    desktopAssistant('a2', { type: 'thinking', thinking: '…' }, 'tool_use', 6000, '2026-07-14T10:01:02.000Z'),
+    desktopAssistant('a3', { type: 'text', text: 'done again' }, 'end_turn', 6100, '2026-07-14T10:01:09.000Z'),
+  ]);
+  const turns = snap.turnList;
+  assert.equal(turns.length, 2);
+  assert.deepEqual(
+    turns.map((t) => t.state),
+    ['done', 'done'],
+    'both turns finished — neither was interrupted, and neither is stuck live',
+  );
+  assert.deepEqual(
+    turns.map((t) => t.durationMs),
+    [null, null],
+    'and no duration is invented: only Claude Code’s own marker carries one',
+  );
+});
+
+test('golden transcript: work after a turn closed on end_turn reopens it', () => {
+  // The close above is a GUESS, and a Stop hook can send the model straight back in — measured on
+  // 9 of 1048 real turns, an assistant line lands after an end_turn and before the turn's end
+  // marker. A turn that keeps calling is not over, whatever the last stop_reason said.
+  const snap = timelineOf([
+    desktopTyped('u1', 'first request'),
+    desktopAssistant('a1', { type: 'text', text: 'done' }, 'end_turn'),
+    desktopAssistant('a2', { type: 'thinking', thinking: 'actually…' }, 'tool_use', 7000, '2026-07-14T10:00:11.000Z'),
+  ]);
+  assert.equal(snap.turnList.at(-1)!.state, 'live', 'the turn is working again, not closed');
+});
+
+test('golden transcript: the Trace closes a desktop-hosted turn too, not only the timeline', () => {
+  // The Trace keeps its OWN turn state, so closing the turn in the reducer alone left every
+  // finished turn of such a session drawn as still running, with the live tail pulsing on a turn
+  // that ended minutes ago — the same bug, surviving on the surface it was fixed for.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  tree.onEvent((e, c) => store.apply(e, c));
+  let seq = 0;
+  for (const l of [
+    desktopTyped('u1', 'first request'),
+    desktopAssistant('a1', { type: 'text', text: 'done' }, 'end_turn'),
+    desktopTyped('u2', 'second request', '2026-07-14T10:01:00.000Z'),
+    desktopAssistant('a2', { type: 'thinking', thinking: '…' }, 'tool_use', 6000, '2026-07-14T10:01:02.000Z'),
+  ])
+    for (const ev of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(ev);
+
+  const traceTurns = store.snapshot().turns;
+  assert.deepEqual(
+    traceTurns.map((t) => [t.index, t.state]),
+    [
+      [1, 'done'],
+      [2, 'live'],
+    ],
+    'the finished turn is closed on the Trace as well, and only the open one is live',
+  );
+  assert.deepEqual(
+    tree.snapshot().turnList.map((t) => t.state),
+    traceTurns.map((t) => t.state),
+    'and the two surfaces never disagree about a turn',
+  );
+});

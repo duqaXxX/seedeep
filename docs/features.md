@@ -477,6 +477,12 @@ reads it from Claude Code's own live session state and shows it: the tab dot tur
 it is waiting to approve and for how long — clearing itself the moment you answer.
 seedeep only *shows* it; it never answers for you.
 
+A session whose host publishes no state of its own — the desktop app's
+**Code** tab, a headless run — has this read off its transcript instead. That
+reaches a question the model asked you, and not a tool waiting for your
+approval: a call awaiting a yes and a call that is running are the same line,
+so such a session reads as working rather than amber.
+
 ![The NOW panel in amber: waiting for your approval in the terminal, 5s ago](assets/shots/waiting-on-you.png)
 
 *Amber means the session cannot move until you do, and the age keeps counting so a

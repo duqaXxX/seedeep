@@ -73,7 +73,15 @@ test('replay and watcher assign the SAME seq to the same line, across a blank li
   const w = new Watcher({
     discover: async () => [rec],
     openSessions: async () => [
-      { pid: 1, sessionId: rec.sessionId, cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: rec.sessionId,
+        cwd: '/w',
+        status: null,
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   w.on('event', (e: NormalizedEvent) => {

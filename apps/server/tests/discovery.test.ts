@@ -69,7 +69,15 @@ test('a session in the open set is isOpen with its status; others are not', asyn
     roots: [root],
     now: Date.now(),
     openSessions: [
-      { pid: 1, sessionId: openId, cwd: '/home/dev/project', status: 'busy', waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: openId,
+        cwd: '/home/dev/project',
+        status: 'busy',
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   const open = recs.find((r) => r.sessionId === openId)!;

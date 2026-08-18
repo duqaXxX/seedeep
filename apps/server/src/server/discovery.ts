@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { anon } from '../core/text.ts';
 import { ACTIVE_WINDOW_MS, type Root, type SessionRecord } from '../core/types.ts';
+import { deriveStatus } from './derived-status.ts';
 import { listOpenSessions, type OpenSession } from './open-sessions.ts';
 import { CONTROL_COMMANDS, userLineIntent } from './parser.ts';
 import { cliRoot, slugToProject } from './roots.ts';
@@ -153,6 +154,11 @@ async function recordFor(
   const sessionId = meta.sessionId ?? basename(path).replace(/\.jsonl$/, '');
   const project = meta.cwd ? basename(meta.cwd) : slugToProject(basename(join(path, '..')));
   const open = openById?.get(sessionId) ?? null;
+  // A host that publishes no status of its own leaves every live surface with nothing to say
+  // while the session works — so read the answer off the transcript instead, and ONLY for those.
+  // A session that publishes one owns its state: its own word stands even when the value is one
+  // seedeep does not recognise, which is why the test is `publishesStatus` and not `status`.
+  const derived = open !== null && !open.publishesStatus ? await deriveStatus(path, st.size) : null;
   return {
     sessionId,
     project,
@@ -164,9 +170,11 @@ async function recordFor(
     // means closed. Consumers read it through `isLive`, whose mtime fallback exists for
     // exactly this case.
     isOpen: openById ? open !== null : null,
-    status: open?.status ?? null,
-    waitingFor: open?.waitingFor ?? null,
-    waitingSince: open?.waitingSince ?? null,
+    status: open?.status ?? derived?.status ?? null,
+    // A derived wait carries Claude Code's own vocabulary, so `pendingInput` and every surface
+    // downstream read it exactly as they read a published one — there is no second rule.
+    waitingFor: open?.waitingFor ?? derived?.waitingFor ?? null,
+    waitingSince: open?.waitingSince ?? derived?.waitingSince ?? null,
     subject: meta.subject ?? null,
     entrypoint: meta.entrypoint ?? null,
     root,

@@ -206,9 +206,12 @@ export interface SessionRecord {
   // one human-readable label that lets the picker be read at a glance. Null when
   // no such line was found in the scanned head (e.g. an aborted session).
   subject: string | null;
-  // How the session was launched: 'cli' = interactive TUI; 'sdk-cli'/'sdk-py' =
-  // headless/programmatic (git-hook `claude -p`, scripts). Lets the GUI badge the
-  // non-interactive ones instead of passing them off as normal sessions.
+  // How the session was launched: 'cli' = interactive TUI; 'claude-desktop' = the desktop app's
+  // Code tab; 'sdk-cli'/'sdk-py' = headless/programmatic (git-hook `claude -p`, scripts). Lets the
+  // GUI badge the non-interactive ones instead of passing them off as normal sessions — which the
+  // desktop app is NOT: somebody is sitting at it, and `isAutomated` (client/sessions.ts) files it
+  // with the interactive ones. What it shares with the headless runs is only that Claude Code is
+  // driven over stream-json there, which is why neither publishes a status (see statusDerived).
   entrypoint: string | null;
   root: Root;
   path: string;

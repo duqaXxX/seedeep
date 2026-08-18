@@ -9,6 +9,27 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- Sessions hosted outside the terminal — the desktop app's **Code** tab, and headless runs — now
+  carry a live state. Those hosts drive Claude Code over its stream-json interface rather than the
+  terminal REPL, and that path publishes no session state at all, so every live surface had nothing
+  to say about them: no working band, no tray notification, no sign that one had stopped on you.
+  The state is now read off the transcript, for those sessions alone — a session that publishes its
+  own is never second-guessed, even when the value is one seedeep does not recognise. A session
+  reads the same on screen whichever host it runs under, because the claim is the same claim. It
+  reaches *working*, *idle*, and a question the model asked you; a tool waiting for your approval
+  stays invisible, because a call awaiting a yes and a call that is running are the same line, and
+  that limit is documented rather than drawn.
+
+### Fixed
+
+- A turn now closes on the model's own end of turn when its host writes no end-of-turn marker.
+  Sessions from the desktop app and from headless runs never write one, so each of their finished
+  turns was superseded while still open and filed as *interrupted* — the mark that says you pressed
+  Esc — and none carried a duration. The close is provisional: work arriving afterwards reopens the
+  turn, and Claude Code's own marker still overrides it with the real duration when it comes.
+
 ## 0.30.1 (2026-08-17)
 
 ### Changed

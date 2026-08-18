@@ -25,6 +25,8 @@ function watcherOver(recs: SessionRecord[], opts: WatcherOptions = {}): Watcher 
           status: r.status,
           waitingFor: null,
           waitingSince: null,
+          // The mechanism answered for this session, whatever the test declared its state to be.
+          publishesStatus: true,
         })),
     ...opts,
   });
@@ -488,7 +490,7 @@ test('an open session is located once, not on every tick', async () => {
       return [rec('P', p, true)];
     },
     openSessions: async () => [
-      { pid: 1, sessionId: 'P', cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      { pid: 1, sessionId: 'P', cwd: '/w', status: null, waitingFor: null, waitingSince: null, publishesStatus: true },
     ],
   });
   const fills: number[] = [];
@@ -514,7 +516,15 @@ test('an open session with no transcript yet does not rescan every tick', async 
       return [];
     }, // the id is nowhere on disk
     openSessions: async () => [
-      { pid: 1, sessionId: 'GHOST', cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: 'GHOST',
+        cwd: '/w',
+        status: null,
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   await w.tick();

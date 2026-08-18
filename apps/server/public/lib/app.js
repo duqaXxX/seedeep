@@ -304,6 +304,8 @@ function createSessionTree(opts) {
             mainWeightedByModel.set(e.model, (mainWeightedByModel.get(e.model) ?? 0) + w);
           }
           if (currentTurn) {
+            if (currentTurn.closedByResult && currentTurn.state === "done")
+              currentTurn.state = "live";
             currentTurn.inputTotal += e.delta.input;
             currentTurn.out += e.delta.output;
             currentTurn.apiCalls++;
@@ -361,6 +363,7 @@ function createSessionTree(opts) {
           durationMs: null,
           messageCount: null,
           apiCalls: 0,
+          closedByResult: false,
           fillEnd: mainFill,
           breakdown: { ...breakdown },
           cacheTotals: { read: 0, created: 0 },
@@ -389,6 +392,7 @@ function createSessionTree(opts) {
         currentTurn.durationMs = e.durationMs;
         currentTurn.messageCount = e.messageCount;
         currentTurn.state = "done";
+        currentTurn.closedByResult = false;
       }
     } else if (e.type === "turn-interrupted") {
       if (owner === null && currentTurn && (!e.cutoff || currentTurn.apiCalls > 0)) {
@@ -398,6 +402,10 @@ function createSessionTree(opts) {
       }
     } else if (e.type === "turn-result") {
       if (owner === null && currentTurn) {
+        if (currentTurn.state === "live") {
+          currentTurn.state = "done";
+          currentTurn.closedByResult = true;
+        }
         currentTurn.result = e.outputFull;
         currentTurn.lastWordTs = e.timestamp;
         dirtyGroups.add(currentTurn.index);
@@ -4396,6 +4404,7 @@ function tsOrFallback(ts, fallback) {
 }
 function createSpanStore() {
   const turns = new Map;
+  const closedByResult = new Set;
   const openToolSpans = new Map;
   const backgroundSpans = new Map;
   const pendingBgOutcome = new Map;
@@ -4591,6 +4600,8 @@ function createSpanStore() {
           turn.spans.push(span);
           if (t1 > turn.t1)
             turn.t1 = t1;
+          if (closedByResult.has(idx) && turn.state === "done")
+            turn.state = "live";
           mutated = true;
         }
       }
@@ -4815,6 +4826,10 @@ function createSpanStore() {
           turn.spans.push(span);
           if (ts > turn.t1)
             turn.t1 = ts;
+          if (turn.state === "live") {
+            turn.state = "done";
+            closedByResult.add(idx);
+          }
           mutated = true;
         }
       }
@@ -4825,6 +4840,7 @@ function createSpanStore() {
         if (turn) {
           turn.t1 = ts;
           turn.state = "done";
+          closedByResult.delete(idx);
           mutated = true;
         }
       }
