@@ -128,7 +128,6 @@ test('the server really emits a notification on the stream when a session stops 
     status,
     waitingFor: status === 'waiting' ? 'permission prompt' : null,
     waitingSince: null,
-    statusDerived: false,
     subject: 'add a retry to the uploader',
     entrypoint: 'cli',
     root: 'cli',

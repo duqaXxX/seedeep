@@ -123,6 +123,9 @@ function tsOrFallback(ts: string | null | undefined, fallback: number): number {
 export function createSpanStore(): SpanStore {
   // Keyed by turn index (1-based, matching the reducer's TurnAcc.index).
   const turns = new Map<number, TraceTurn>();
+  // Turns this store closed on the model's own end of turn rather than on Claude Code's marker —
+  // a guess, and the only kind of close that a later call is allowed to undo.
+  const closedByResult = new Set<number>();
   // Open tool spans awaiting a tool-end, keyed by toolUseId.
   const openToolSpans = new Map<string, TraceSpan>();
   // Spans of tool calls that LAUNCHED a background command, kept after they close because their
@@ -391,6 +394,7 @@ export function createSpanStore(): SpanStore {
           };
           turn.spans.push(span);
           if (t1 > turn.t1) turn.t1 = t1;
+          if (closedByResult.has(idx) && turn.state === 'done') turn.state = 'live';
           mutated = true;
         }
       }
@@ -700,6 +704,16 @@ export function createSpanStore(): SpanStore {
           };
           turn.spans.push(span);
           if (ts > turn.t1) turn.t1 = ts;
+          // The model stopped for the user, which is the only end-of-turn evidence a session gets
+          // when its host writes no `turn_duration` — the desktop app's Code tab, any headless run.
+          // Held HERE as well as in the session tree because the Trace keeps its own turn state:
+          // fixed there alone, every finished turn of such a session still drew as running, with
+          // the live tail pulsing on a turn that ended minutes ago. Provisional, like the other:
+          // the call below reopens it, and `turn-end` overrides it.
+          if (turn.state === 'live') {
+            turn.state = 'done';
+            closedByResult.add(idx);
+          }
           mutated = true;
         }
       }
@@ -710,6 +724,7 @@ export function createSpanStore(): SpanStore {
         if (turn) {
           turn.t1 = ts;
           turn.state = 'done';
+          closedByResult.delete(idx); // Claude Code's own marker: not a guess, and never reopened
           mutated = true;
         }
       }

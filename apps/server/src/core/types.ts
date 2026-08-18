@@ -196,19 +196,6 @@ export interface SessionRecord {
   // from the open session file — `shell` while a background command it launched is still running
   // (see OpenSession). Raw: each surface decides what claim it makes on screen.
   status: 'busy' | 'idle' | 'waiting' | 'shell' | null;
-  /**
-   * The status above was DERIVED from the transcript rather than read from Claude Code's own
-   * session file. True only for a session whose host publishes none: the desktop app's Code tab
-   * and every headless run drive Claude Code over its stream-json interface instead of the
-   * terminal REPL, and that path writes no status at all.
-   *
-   * A derived status reaches `busy`, `idle`, and the half of `waiting` a transcript can prove: an
-   * unanswered `AskUserQuestion`. A pending tool APPROVAL stays invisible — it reaches no log at
-   * all, and from the transcript it looks exactly like a tool that is still running. Surfaces that
-   * NAME the state say it is derived; the bands and the icons read `status` itself and do not care
-   * where it came from.
-   */
-  statusDerived: boolean;
   // Set only while `status` is 'waiting': Claude Code's own label for what the session is
   // blocked on (see OpenSession), and the instant it stopped there. The GUI turns the pair
   // into the pending-approval signal and its ticking age.

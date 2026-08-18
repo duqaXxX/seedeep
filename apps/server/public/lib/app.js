@@ -1608,7 +1608,6 @@ function ended(c, pidVisible, now) {
     isActive: now - lastActivity <= ACTIVE_WINDOW_MS,
     isOpen: pidVisible ? false : null,
     status: null,
-    statusDerived: false,
     waitingFor: null,
     waitingSince: null
   };
@@ -3760,19 +3759,14 @@ function createTabBar(container, { onSwitch, onClose }) {
     for (const [id, t] of tabs)
       t.el.classList.toggle("active", id === activeId);
   }
-  const titleFor = (label, ended2, waiting = null, failed = false, derived = false) => label + (ended2 ? " — ended" : failed ? " — its last API call failed" : waiting === "permission" ? " — waiting for your approval" : waiting === "input" ? " — waiting for your answer" : derived ? " — state derived from the transcript: this session publishes none" : "");
+  const titleFor = (label, ended2, waiting = null, failed = false) => label + (ended2 ? " — ended" : failed ? " — its last API call failed" : waiting === "permission" ? " — waiting for your approval" : waiting === "input" ? " — waiting for your answer" : "");
   return {
-    add(sessionId, {
-      label,
-      ended: ended2,
-      busy: isBusy,
-      derived = false
-    }) {
+    add(sessionId, { label, ended: ended2, busy: isBusy }) {
       if (tabs.has(sessionId))
         return;
       const el5 = document.createElement("div");
       el5.className = "tab" + (ended2 ? " ended" : "");
-      el5.title = titleFor(label, ended2, null, false, derived);
+      el5.title = titleFor(label, ended2);
       const busy = document.createElement("span");
       busy.className = "tab-busy" + (isBusy && !ended2 ? " on" : "");
       const name = document.createElement("span");
@@ -3787,7 +3781,7 @@ function createTabBar(container, { onSwitch, onClose }) {
       el5.onclick = () => onSwitch(sessionId);
       el5.append(busy, name, closeEl);
       container.append(el5);
-      tabs.set(sessionId, { el: el5, busy, name, label, waiting: null, failed: false, derived });
+      tabs.set(sessionId, { el: el5, busy, name, label, waiting: null, failed: false });
       render();
     },
     setEnded(sessionId) {
@@ -3806,18 +3800,12 @@ function createTabBar(container, { onSwitch, onClose }) {
       if (!t)
         return;
       t.el.classList.remove("ended");
-      t.el.title = titleFor(t.label, false, t.waiting, t.failed, t.derived);
+      t.el.title = titleFor(t.label, false, t.waiting, t.failed);
     },
-    setBusy(sessionId, busy, derived = false) {
+    setBusy(sessionId, busy) {
       const t = tabs.get(sessionId);
-      if (!t)
-        return;
-      t.busy.classList.toggle("on", busy);
-      if (t.derived !== derived) {
-        t.derived = derived;
-        if (!t.el.classList.contains("ended"))
-          t.el.title = titleFor(t.label, false, t.waiting, t.failed, derived);
-      }
+      if (t)
+        t.busy.classList.toggle("on", busy);
     },
     setWaiting(sessionId, waiting) {
       const t = tabs.get(sessionId);
@@ -3825,7 +3813,7 @@ function createTabBar(container, { onSwitch, onClose }) {
         return;
       t.waiting = waiting;
       t.busy.classList.toggle("wait", waiting !== null);
-      t.el.title = titleFor(t.label, false, waiting, t.failed, t.derived);
+      t.el.title = titleFor(t.label, false, waiting, t.failed);
     },
     setFailed(sessionId, failed) {
       const t = tabs.get(sessionId);
@@ -3835,7 +3823,7 @@ function createTabBar(container, { onSwitch, onClose }) {
         return;
       t.failed = failed;
       t.busy.classList.toggle("err", failed);
-      t.el.title = titleFor(t.label, false, t.waiting, failed, t.derived);
+      t.el.title = titleFor(t.label, false, t.waiting, failed);
     },
     setLabel(sessionId, label) {
       const t = tabs.get(sessionId);
@@ -3843,7 +3831,7 @@ function createTabBar(container, { onSwitch, onClose }) {
         return;
       t.label = label;
       t.name.textContent = label;
-      t.el.title = titleFor(label, t.el.classList.contains("ended"), t.waiting, t.failed, t.derived);
+      t.el.title = titleFor(label, t.el.classList.contains("ended"), t.waiting, t.failed);
     },
     setActive(sessionId) {
       activeId = sessionId;
@@ -4416,6 +4404,7 @@ function tsOrFallback(ts, fallback) {
 }
 function createSpanStore() {
   const turns = new Map;
+  const closedByResult = new Set;
   const openToolSpans = new Map;
   const backgroundSpans = new Map;
   const pendingBgOutcome = new Map;
@@ -4611,6 +4600,8 @@ function createSpanStore() {
           turn.spans.push(span);
           if (t1 > turn.t1)
             turn.t1 = t1;
+          if (closedByResult.has(idx) && turn.state === "done")
+            turn.state = "live";
           mutated = true;
         }
       }
@@ -4835,6 +4826,10 @@ function createSpanStore() {
           turn.spans.push(span);
           if (ts > turn.t1)
             turn.t1 = ts;
+          if (turn.state === "live") {
+            turn.state = "done";
+            closedByResult.add(idx);
+          }
           mutated = true;
         }
       }
@@ -4845,6 +4840,7 @@ function createSpanStore() {
         if (turn) {
           turn.t1 = ts;
           turn.state = "done";
+          closedByResult.delete(idx);
           mutated = true;
         }
       }
@@ -10214,12 +10210,7 @@ function openTab(record, { activate = true } = {}) {
     ended: !open,
     sessionId
   });
-  tabBar.add(sessionId, {
-    label: tabLabel(record),
-    ended: !open,
-    busy: isWorking(record),
-    derived: record.statusDerived
-  });
+  tabBar.add(sessionId, { label: tabLabel(record), ended: !open, busy: isWorking(record) });
   const waitingAtOpen = open ? pendingInput(record) : null;
   tabBar.setWaiting(sessionId, waitingAtOpen);
   view.setWaiting(waitingAtOpen, waitingAtOpen ? record.waitingSince : null);
@@ -10304,7 +10295,7 @@ roster.onChange((rows) => {
     if (t.ended && open)
       revive(row.sessionId);
     if (!t.ended) {
-      tabBar.setBusy(row.sessionId, isWorking(row), row.statusDerived);
+      tabBar.setBusy(row.sessionId, isWorking(row));
       t.view.setBusy(isModelBusy(row));
       const waiting = pendingInput(row);
       tabBar.setWaiting(row.sessionId, waiting);

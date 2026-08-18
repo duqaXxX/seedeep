@@ -856,16 +856,3 @@ test('a stale server is named above the bands, and only when it is stale', () =>
 test('a server honouring its config says nothing about it', () => {
   assert.equal(find(mount(live([entry()])).node, 'bands-stale').length, 0);
 });
-
-// A session hosted outside the terminal publishes no state of its own, so the server derives one
-// from its transcript. The band is the same band — the claim is the same claim — but the row says
-// where it came from, because a state nobody published is one a person may need to distrust.
-test('a row whose state was derived says so, and still sits in its band', () => {
-  const derived = entry({ sessionId: 'a', status: 'busy', statusDerived: true });
-  const published = entry({ sessionId: 'b', status: 'busy' });
-  assert.equal(bandOf(derived), 'working', 'a derived state moves nothing');
-  const { node } = mount(retain([], [derived, published]));
-  const marks = find(node, 'row-derived');
-  assert.equal(marks.length, 1, 'exactly one row is marked — the published one is not');
-  assert.equal(text(marks[0]), 'derived');
-});

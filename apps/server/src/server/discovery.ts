@@ -171,7 +171,6 @@ async function recordFor(
     // exactly this case.
     isOpen: openById ? open !== null : null,
     status: open?.status ?? derived?.status ?? null,
-    statusDerived: derived !== null,
     // A derived wait carries Claude Code's own vocabulary, so `pendingInput` and every surface
     // downstream read it exactly as they read a published one — there is no second rule.
     waitingFor: open?.waitingFor ?? derived?.waitingFor ?? null,

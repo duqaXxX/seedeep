@@ -108,9 +108,6 @@ export interface DigestEntry {
    */
   seq: number;
   status: SessionRecord['status'];
-  /** The status was derived from the transcript, because this session's host publishes none —
-   * see SessionRecord. A surface that NAMES the state says so; the bands read `status` alone. */
-  statusDerived: boolean;
   waitingFor: string | null;
   waitingSince: number | null;
   /** Epoch ms of the transcript's last write. What an IDLE session has instead of activity —
@@ -306,7 +303,6 @@ export function digestEntry(
     entrypoint: rec.entrypoint,
     seq: snap.seq,
     status: rec.status,
-    statusDerived: rec.statusDerived,
     waitingFor: rec.waitingFor,
     waitingSince: rec.waitingSince,
     lastActivity: rec.lastActivity,

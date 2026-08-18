@@ -1,5 +1,6 @@
 import { open } from 'node:fs/promises';
 import { StringDecoder } from 'node:string_decoder';
+import { CONTROL_COMMANDS, userLineIntent } from './parser.ts';
 
 /**
  * What the transcript alone can say about a session's state.
@@ -23,10 +24,13 @@ export interface DerivedState {
 const BUSY: DerivedState = { status: 'busy', waitingFor: null, waitingSince: null };
 const IDLE: DerivedState = { status: 'idle', waitingFor: null, waitingSince: null };
 
-// One read covers the tail in the common case. A single line CAN be larger (a tool result is
-// capped at 1 MB), and then this window holds no complete line and the answer is null — the same
-// "no claim" a session without the mechanism gets, never a guess.
+// One read covers the tail in the common case; a single line CAN be larger, and then the window
+// holds no complete line at all. Measured over 300 local sessions (2026-08-18), 0.52% of lines are
+// bigger than this and 138 of those sessions hold at least one — a big tool result at the tail is
+// an ordinary moment, not a pathology, and answering null there drops a working session into Idle.
+// So the read escalates once, to the cap a single line cannot exceed. Same shape as the head scan.
 const TAIL_CHUNK = 65536;
+const TAIL_MAX_SCAN = 1_048_576;
 
 // Keyed by path: the tail can only change when the file grows, so a size that has not moved
 // answers from here instead of re-reading. The watcher re-discovers every ~300ms, and without
@@ -61,7 +65,15 @@ export async function deriveStatus(path: string, size: number): Promise<DerivedS
 
 async function readTailStatus(path: string, size: number): Promise<DerivedState | null> {
   if (size <= 0) return null;
-  const want = Math.min(size, TAIL_CHUNK);
+  for (const window of [TAIL_CHUNK, TAIL_MAX_SCAN]) {
+    const state = await scanTail(path, size, Math.min(size, window));
+    if (state) return state;
+    if (window >= size) break; // the whole file was read: a wider one holds nothing new
+  }
+  return null;
+}
+
+async function scanTail(path: string, size: number, want: number): Promise<DerivedState | null> {
   let text: string;
   try {
     const fh = await open(path, 'r');
@@ -116,9 +128,19 @@ async function readTailStatus(path: string, size: number): Promise<DerivedState 
       return last?.type === 'text' ? IDLE : BUSY;
     }
     if (d?.type === 'user') {
-      // A prompt or a tool result — an answered question included: either way the model owes a
-      // reply. The exception is the row an Esc writes, which carries the id of what it stopped.
-      return d.interruptedMessageId ? IDLE : BUSY;
+      // The row an Esc writes carries the id of what it stopped: the session is at rest.
+      if (d.interruptedMessageId) return IDLE;
+      const content = d.message?.content;
+      // A tool result — an answered question included: the model owes a reply.
+      if (Array.isArray(content) && content.some((b: any) => b?.type === 'tool_result')) return BUSY;
+      const intent = userLineIntent(d);
+      // Not a prompt at all: a local command's stdout, an injected skill body, a meta line. Nobody
+      // owes it an answer, so it says nothing and the line before it decides. Read as work, four of
+      // 300 real sessions ended on one of these and would have stayed green until the next prompt.
+      if (!intent) continue;
+      // A control command manages the session rather than asking for work (`/model`, `/clear`).
+      if (intent.command !== null && CONTROL_COMMANDS.has(intent.command)) continue;
+      return BUSY;
     }
     // Everything else says nothing about who is working: the desktop app alone writes
     // `attachment`, `queue-operation`, `last-prompt`, `custom-title` and `mode` lines around a

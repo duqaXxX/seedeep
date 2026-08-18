@@ -71,7 +71,6 @@ const record = (path: string, sessionId = 'sess-1'): SessionRecord => ({
   status: null,
   waitingFor: null,
   waitingSince: null,
-  statusDerived: false,
   subject: null,
   entrypoint: null,
   root: 'cli',

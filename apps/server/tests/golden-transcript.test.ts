@@ -4228,3 +4228,35 @@ test('golden transcript: work after a turn closed on end_turn reopens it', () =>
   ]);
   assert.equal(snap.turnList.at(-1)!.state, 'live', 'the turn is working again, not closed');
 });
+
+test('golden transcript: the Trace closes a desktop-hosted turn too, not only the timeline', () => {
+  // The Trace keeps its OWN turn state, so closing the turn in the reducer alone left every
+  // finished turn of such a session drawn as still running, with the live tail pulsing on a turn
+  // that ended minutes ago — the same bug, surviving on the surface it was fixed for.
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  const store = createSpanStore();
+  tree.onEvent((e, c) => store.apply(e, c));
+  let seq = 0;
+  for (const l of [
+    desktopTyped('u1', 'first request'),
+    desktopAssistant('a1', { type: 'text', text: 'done' }, 'end_turn'),
+    desktopTyped('u2', 'second request', '2026-07-14T10:01:00.000Z'),
+    desktopAssistant('a2', { type: 'thinking', thinking: '…' }, 'tool_use', 6000, '2026-07-14T10:01:02.000Z'),
+  ])
+    for (const ev of parseLine(l, { ...ctx, seq: seq++ }) as NormalizedEvent[]) tree.apply(ev);
+
+  const traceTurns = store.snapshot().turns;
+  assert.deepEqual(
+    traceTurns.map((t) => [t.index, t.state]),
+    [
+      [1, 'done'],
+      [2, 'live'],
+    ],
+    'the finished turn is closed on the Trace as well, and only the open one is live',
+  );
+  assert.deepEqual(
+    tree.snapshot().turnList.map((t) => t.state),
+    traceTurns.map((t) => t.state),
+    'and the two surfaces never disagree about a turn',
+  );
+});

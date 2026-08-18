@@ -18,12 +18,16 @@ const assistant = (block: string, stopReason: string | null, uuid = 'a1') =>
     isSidechain: false,
     message: { role: 'assistant', model: 'claude-opus-4-8', content: [{ type: block }], stop_reason: stopReason },
   });
+// A typed prompt as Claude Code really writes it: `origin.kind: 'human'` and `promptSource`, which
+// is what tells it apart from the user lines nobody answers (a command's stdout, an injected body).
 const user = (extra: Record<string, unknown> = {}) =>
   JSON.stringify({
     type: 'user',
     uuid: 'u1',
     timestamp: '2026-07-14T10:00:00.000Z',
     isSidechain: false,
+    origin: { kind: 'human' },
+    promptSource: 'typed',
     message: { role: 'user', content: 'do the thing' },
     ...extra,
   });
@@ -127,6 +131,49 @@ test('a subagent’s line is never read as the session’s own state', async () 
   assert.equal(await statusOf([user(), assistant('tool_use', 'tool_use'), child]), 'busy');
 });
 
+// A local command writes user lines nobody answers: the tagged `<command-name>` shape, the caveat
+// Claude Code injects, and the command's own stdout. Shapes taken from real transcripts.
+const localCommand = (name: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid: 'u-cmd',
+    timestamp: '2026-07-14T10:05:00.000Z',
+    isSidechain: false,
+    message: {
+      role: 'user',
+      content: `<command-name>/${name}</command-name>\n<command-message>${name}</command-message>`,
+    },
+  });
+const localStdout = JSON.stringify({
+  type: 'user',
+  uuid: 'u-out',
+  timestamp: '2026-07-14T10:05:01.000Z',
+  isSidechain: false,
+  isMeta: true,
+  message: { role: 'user', content: '<local-command-stdout>Set model to Opus</local-command-stdout>' },
+});
+
+test('a session left on a local command is not working', async () => {
+  // Measured over 300 real sessions: 4 end on one of these lines. Read as a prompt awaiting an
+  // answer, such a session showed a lit dot and a Working band until its user typed again.
+  assert.equal(await statusOf([user(), assistant('text', 'end_turn'), localCommand('model'), localStdout]), 'idle');
+  assert.equal(await statusOf([user(), assistant('tool_use', 'tool_use'), localStdout]), 'busy');
+});
+
+test('a tail line too big for the first window is still read', async () => {
+  // A tool result of a megabyte is an ordinary moment, not a pathology: 0.52% of real lines are
+  // bigger than the first window, and answering "no claim" there dropped a working session into
+  // Idle, which no surface tells apart from a real one.
+  const huge = JSON.stringify({
+    type: 'user',
+    uuid: 'u-big',
+    timestamp: '2026-07-14T10:00:00.000Z',
+    isSidechain: false,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(200_000) }] },
+  });
+  assert.equal(await statusOf([user(), assistant('tool_use', 'tool_use'), huge]), 'busy');
+});
+
 test('a transcript with nothing decisive makes no claim', async () => {
   assert.equal(await statusOf([customTitle, attachment]), null);
   assert.equal(await deriveStatus(join(tmpdir(), 'seedeep-nope-' + Date.now() + '.jsonl'), 10), null);
@@ -176,7 +223,7 @@ const openSession = (publishesStatus: boolean, status: 'busy' | 'idle' | null = 
   publishesStatus,
 });
 
-test('a session whose host publishes no status gets one derived, and says so', async () => {
+test('a session whose host publishes no status gets one derived', async () => {
   const recs = await discoverSessions({
     roots: [rootWith([user(), assistant('tool_use', 'tool_use')])],
     now: Date.now(),
@@ -184,7 +231,6 @@ test('a session whose host publishes no status gets one derived, and says so', a
   });
   const rec = recs.find((r) => r.sessionId === SID)!;
   assert.equal(rec.status, 'busy');
-  assert.equal(rec.statusDerived, true);
 });
 
 test('a derived wait reaches the record in Claude Code’s own words', async () => {
@@ -212,7 +258,6 @@ test('a session that publishes its own status is never overridden', async () => 
   });
   const rec = recs.find((r) => r.sessionId === SID)!;
   assert.equal(rec.status, 'idle', 'the session’s own word stands, even against a busy-looking tail');
-  assert.equal(rec.statusDerived, false);
 });
 
 test('an unrecognised published status stays "no claim" rather than becoming a derived one', async () => {
@@ -223,7 +268,6 @@ test('an unrecognised published status stays "no claim" rather than becoming a d
   });
   const rec = recs.find((r) => r.sessionId === SID)!;
   assert.equal(rec.status, null);
-  assert.equal(rec.statusDerived, false);
 });
 
 test('a session nobody is running is never derived', async () => {
@@ -234,5 +278,4 @@ test('a session nobody is running is never derived', async () => {
   });
   const rec = recs.find((r) => r.sessionId === SID)!;
   assert.equal(rec.status, null);
-  assert.equal(rec.statusDerived, false);
 });

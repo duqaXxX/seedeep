@@ -130,7 +130,6 @@ function recordFor(path: string): SessionRecord {
     status: 'busy',
     waitingFor: null,
     waitingSince: null,
-    statusDerived: false,
     subject: 'first prompt',
     entrypoint: 'cli',
     root: 'cli',

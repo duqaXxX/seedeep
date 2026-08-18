@@ -25,9 +25,6 @@ interface Tab {
   label: string;
   waiting: PendingKind | null;
   failed: boolean;
-  /** The dot's busy state is a DERIVED one — this session's host publishes no state of its own
-   * (see SessionRecord.statusDerived). The dot behaves identically; only the title says so. */
-  derived: boolean;
 }
 
 /**
@@ -48,13 +45,7 @@ export function createTabBar(
   // A class is never the only channel — the state is spelled out on hover and to assistive tech.
   // Failed comes first for the same reason it wins in the CSS: it is the more serious answer to
   // the one question the strip asks.
-  const titleFor = (
-    label: string,
-    ended: boolean | undefined,
-    waiting: PendingKind | null = null,
-    failed = false,
-    derived = false,
-  ) =>
+  const titleFor = (label: string, ended: boolean | undefined, waiting: PendingKind | null = null, failed = false) =>
     label +
     (ended
       ? ' — ended'
@@ -64,25 +55,13 @@ export function createTabBar(
           ? ' — waiting for your approval'
           : waiting === 'input'
             ? ' — waiting for your answer'
-            : // Said only here, where the state is put in WORDS: the dot itself behaves exactly as
-              // it does for a session that publishes its state, because the claim is the same one.
-              derived
-              ? ' — state derived from the transcript: this session publishes none'
-              : '');
+            : '');
   return {
-    add(
-      sessionId: string,
-      {
-        label,
-        ended,
-        busy: isBusy,
-        derived = false,
-      }: { label: string; ended?: boolean; busy?: boolean; derived?: boolean },
-    ) {
+    add(sessionId: string, { label, ended, busy: isBusy }: { label: string; ended?: boolean; busy?: boolean }) {
       if (tabs.has(sessionId)) return;
       const el = document.createElement('div');
       el.className = 'tab' + (ended ? ' ended' : '');
-      el.title = titleFor(label, ended, null, false, derived);
+      el.title = titleFor(label, ended);
       const busy = document.createElement('span');
       busy.className = 'tab-busy' + (isBusy && !ended ? ' on' : ''); // lit while the session generates
       const name = document.createElement('span');
@@ -97,7 +76,7 @@ export function createTabBar(
       el.onclick = () => onSwitch(sessionId);
       el.append(busy, name, closeEl);
       container.append(el);
-      tabs.set(sessionId, { el, busy, name, label, waiting: null, failed: false, derived });
+      tabs.set(sessionId, { el, busy, name, label, waiting: null, failed: false });
       render();
     },
     setEnded(sessionId: string) {
@@ -122,18 +101,11 @@ export function createTabBar(
       const t = tabs.get(sessionId);
       if (!t) return;
       t.el.classList.remove('ended');
-      t.el.title = titleFor(t.label, false, t.waiting, t.failed, t.derived);
+      t.el.title = titleFor(t.label, false, t.waiting, t.failed);
     },
-    setBusy(sessionId: string, busy: boolean, derived = false) {
+    setBusy(sessionId: string, busy: boolean) {
       const t = tabs.get(sessionId);
-      if (!t) return;
-      t.busy.classList.toggle('on', busy);
-      // Called on every roster poll, so an unchanged value must cost nothing — the same rule
-      // `setFailed` states below, for the same reason.
-      if (t.derived !== derived) {
-        t.derived = derived;
-        if (!t.el.classList.contains('ended')) t.el.title = titleFor(t.label, false, t.waiting, t.failed, derived);
-      }
+      if (t) t.busy.classList.toggle('on', busy);
     },
     /**
      * The session is blocked on the user (or no longer is). Survives a tab switch, unlike
@@ -144,7 +116,7 @@ export function createTabBar(
       if (!t || t.el.classList.contains('ended')) return;
       t.waiting = waiting;
       t.busy.classList.toggle('wait', waiting !== null);
-      t.el.title = titleFor(t.label, false, waiting, t.failed, t.derived);
+      t.el.title = titleFor(t.label, false, waiting, t.failed);
     },
     /**
      * The session's last model call failed (or one has since succeeded). Like `setWaiting`, this
@@ -161,7 +133,7 @@ export function createTabBar(
       if (t.failed === failed) return;
       t.failed = failed;
       t.busy.classList.toggle('err', failed);
-      t.el.title = titleFor(t.label, false, t.waiting, failed, t.derived);
+      t.el.title = titleFor(t.label, false, t.waiting, failed);
     },
     /** Update the tab label when the session subject becomes available after the initial open. */
     setLabel(sessionId: string, label: string) {
@@ -169,7 +141,7 @@ export function createTabBar(
       if (!t || t.label === label) return;
       t.label = label;
       t.name.textContent = label;
-      t.el.title = titleFor(label, t.el.classList.contains('ended'), t.waiting, t.failed, t.derived);
+      t.el.title = titleFor(label, t.el.classList.contains('ended'), t.waiting, t.failed);
     },
     setActive(sessionId: string) {
       activeId = sessionId;

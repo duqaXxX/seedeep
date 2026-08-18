@@ -238,13 +238,6 @@ parts have anything to say.
 | **Working** | project · subject, the turn's prompt quoted, **NOW** — the one thing to say about the turn — **how many background commands it has launched** and any **still running**, **how many subagents it has launched**, the agents at work, and the context block, which carries model · effort |
 | **Idle** | the same, minus what a settled session does not have: project · subject · how long it has been quiet, **NOW**, **how many background commands it launched** and any **still running**, **how many subagents it launched**, and the context block |
 
-**A row whose state was DERIVED says so**, with a `derived` mark beside project · subject. Only a
-terminal session publishes what it is doing; a session hosted elsewhere — the desktop app's Code
-tab, a headless run — has its state read off its transcript by the server, and the mark is where
-that is said. The bands treat it identically, because the claim is the same claim: a derived
-*Working* row is a working row. The icon carries no such mark — it answers for the whole machine
-and has one claim to make.
-
 **NOW is one rule, computed once, drawn by both surfaces.** `turn.now` in the digest is `nowLine`'s
 answer (`core/activity-line.ts`), the SAME function the browser's NOW panel calls on the same inputs:
 a block on the user first, then what the turn has DONE since it last spoke, then the agent's own

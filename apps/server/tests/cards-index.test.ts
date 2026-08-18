@@ -42,7 +42,6 @@ function session(root: string, name: string, body = 'x'): SessionRecord {
     status: null,
     waitingFor: null,
     waitingSince: null,
-    statusDerived: false,
     subject: null,
     entrypoint: null,
     root: 'cli',

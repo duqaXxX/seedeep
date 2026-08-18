@@ -42,7 +42,6 @@ const roster = (path: string): SessionRecord[] => [
     status: null,
     waitingFor: null,
     waitingSince: null,
-    statusDerived: false,
     subject: null,
     entrypoint: null,
     root: 'cli',
