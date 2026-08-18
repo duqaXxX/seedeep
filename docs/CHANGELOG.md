@@ -9,6 +9,8 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.31.0 (2026-08-19)
+
 ### Added
 
 - Sessions hosted outside the terminal — the desktop app's **Code** tab, and headless runs — now
