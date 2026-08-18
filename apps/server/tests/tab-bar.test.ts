@@ -246,3 +246,24 @@ test('setFailed with the value it already has touches nothing', () => {
   bar.setFailed('s1', false);
   assert.equal(writes, 1, 'a real change still does');
 });
+
+test('a session whose state was derived says so in the title, and its dot behaves the same', () => {
+  // The dot is deliberately identical: the claim ("this session is working") is the same claim.
+  // What differs is that nobody published it — said in the one place the strip uses WORDS.
+  const { container, bar } = mountBar();
+  bar.add('s1', { label: 'desktop', ended: false, busy: true, derived: true });
+  bar.add('s2', { label: 'terminal', ended: false, busy: true });
+  const [t1, t2] = container.children;
+  assert.equal(t1.title, 'desktop — state derived from the transcript: this session publishes none');
+  assert.equal(t2.title, 'terminal', 'a published state is not qualified');
+  assert.ok(t1.children[0].classList.contains('on'), 'the derived row still pulses');
+
+  // It follows the roster, both ways, and an approval outranks it: the session is stopped on the
+  // user, which is the more urgent thing to say — and it is never a derived claim anyway.
+  bar.setBusy('s2', true, true);
+  assert.equal(t2.title, 'terminal — state derived from the transcript: this session publishes none');
+  bar.setWaiting('s2', 'permission');
+  assert.equal(t2.title, 'terminal — waiting for your approval');
+  bar.setBusy('s1', false, false);
+  assert.equal(t1.title, 'desktop');
+});

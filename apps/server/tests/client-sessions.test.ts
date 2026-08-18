@@ -21,6 +21,7 @@ const rec = (id: string, isActive: boolean, over: Partial<SessionRecord> = {}): 
   status: null,
   waitingFor: null,
   waitingSince: null,
+  statusDerived: false,
   subject: null,
   entrypoint: null,
   root: 'cli',

@@ -180,6 +180,17 @@
   text-transform: uppercase;
 }
 
+.row-derived {
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  text-transform: uppercase;
+}
+
 .row-ask {
   color: var(--warn);
 }

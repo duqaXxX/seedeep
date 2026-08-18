@@ -20,6 +20,10 @@ export interface DigestEntry {
   /** Claude Code's own word. `shell` = the turn is over but a command it launched in the background
    * is still running — see {@link bandOf}. */
   status: 'busy' | 'idle' | 'waiting' | 'shell' | null;
+  /** That status was DERIVED from the transcript, because this session's host publishes none —
+   * the desktop app's Code tab, any headless run. Optional: a server older than this field
+   * simply omits it, and an absent flag must read as "published", never as a marked row. */
+  statusDerived?: boolean;
   waitingFor: string | null;
   waitingSince: number | null;
   lastActivity: number;
@@ -284,6 +288,14 @@ function head(row: Row, trailing?: HTMLElement): HTMLElement {
   if (row.entry.subject) wrap.append(el('span', 'row-subject', row.entry.subject));
   // Said, not merely dimmed: a greyed row is indistinguishable from a row the theme greys.
   if (row.ended) wrap.append(el('span', 'row-ended', 'ended'));
+  // The band this row sits in was decided from a DERIVED state: its host publishes none. Marked
+  // here, where the band's word applies to one session, and nowhere else — the menu-bar icon
+  // carries a single claim for the whole machine and cannot hold the qualifier.
+  if (row.entry.statusDerived) {
+    const mark = el('span', 'row-derived', 'derived');
+    mark.title = 'State derived from the transcript: this session publishes none';
+    wrap.append(mark);
+  }
   if (trailing) wrap.append(trailing);
   return wrap;
 }

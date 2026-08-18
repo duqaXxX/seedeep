@@ -14,6 +14,7 @@ export const rec = (over: Partial<SessionRecord> = {}): SessionRecord => ({
   status: null,
   waitingFor: null,
   waitingSince: null,
+  statusDerived: false,
   subject: 'do the thing',
   entrypoint: 'cli',
   root: 'cli',

@@ -196,6 +196,19 @@ export interface SessionRecord {
   // from the open session file — `shell` while a background command it launched is still running
   // (see OpenSession). Raw: each surface decides what claim it makes on screen.
   status: 'busy' | 'idle' | 'waiting' | 'shell' | null;
+  /**
+   * The status above was DERIVED from the transcript rather than read from Claude Code's own
+   * session file. True only for a session whose host publishes none: the desktop app's Code tab
+   * and every headless run drive Claude Code over its stream-json interface instead of the
+   * terminal REPL, and that path writes no status at all.
+   *
+   * A derived status reaches `busy`, `idle`, and the half of `waiting` a transcript can prove: an
+   * unanswered `AskUserQuestion`. A pending tool APPROVAL stays invisible — it reaches no log at
+   * all, and from the transcript it looks exactly like a tool that is still running. Surfaces that
+   * NAME the state say it is derived; the bands and the icons read `status` itself and do not care
+   * where it came from.
+   */
+  statusDerived: boolean;
   // Set only while `status` is 'waiting': Claude Code's own label for what the session is
   // blocked on (see OpenSession), and the instant it stopped there. The GUI turns the pair
   // into the pending-approval signal and its ticking age.
@@ -206,9 +219,12 @@ export interface SessionRecord {
   // one human-readable label that lets the picker be read at a glance. Null when
   // no such line was found in the scanned head (e.g. an aborted session).
   subject: string | null;
-  // How the session was launched: 'cli' = interactive TUI; 'sdk-cli'/'sdk-py' =
-  // headless/programmatic (git-hook `claude -p`, scripts). Lets the GUI badge the
-  // non-interactive ones instead of passing them off as normal sessions.
+  // How the session was launched: 'cli' = interactive TUI; 'claude-desktop' = the desktop app's
+  // Code tab; 'sdk-cli'/'sdk-py' = headless/programmatic (git-hook `claude -p`, scripts). Lets the
+  // GUI badge the non-interactive ones instead of passing them off as normal sessions — which the
+  // desktop app is NOT: somebody is sitting at it, and `isAutomated` (client/sessions.ts) files it
+  // with the interactive ones. What it shares with the headless runs is only that Claude Code is
+  // driven over stream-json there, which is why neither publishes a status (see statusDerived).
   entrypoint: string | null;
   root: Root;
   path: string;

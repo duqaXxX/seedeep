@@ -370,7 +370,12 @@ function openTab(record: SessionRecord, { activate = true }: { activate?: boolea
     ended: !open,
     sessionId,
   });
-  tabBar.add(sessionId, { label: tabLabel(record), ended: !open, busy: isWorking(record) });
+  tabBar.add(sessionId, {
+    label: tabLabel(record),
+    ended: !open,
+    busy: isWorking(record),
+    derived: record.statusDerived,
+  });
   // Seed the pending-prompt state from the record, exactly like the busy dot above: the
   // roster only notifies on CHANGE, and a session that is already waiting when its tab opens
   // (a refresh, a restored workspace, a tab opened from the picker) changes nothing — so
@@ -510,7 +515,7 @@ roster.onChange((rows) => {
       // Two different questions, deliberately two readings: the tab dot means "this session is
       // busy" (`shell` included — a background command IS the session working), the panel means
       // "this TURN is still going", and `shell` is Claude Code's word for a turn that is over.
-      tabBar.setBusy(row.sessionId, isWorking(row));
+      tabBar.setBusy(row.sessionId, isWorking(row), row.statusDerived);
       t.view.setBusy(isModelBusy(row));
       // The pending-prompt signal, to both surfaces at once: the strip keeps saying it
       // (it survives a tab switch), the view announces it and shows what is being asked.

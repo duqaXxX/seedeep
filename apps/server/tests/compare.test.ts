@@ -19,6 +19,7 @@ function rec(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
     status: null,
     waitingFor: null,
     waitingSince: null,
+    statusDerived: false,
     subject: 'do ' + id,
     entrypoint: 'cli',
     root: 'cli',

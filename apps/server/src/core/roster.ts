@@ -124,6 +124,8 @@ function ended(c: CatalogueRecord, pidVisible: boolean, now: number): SessionRec
     isActive: now - lastActivity <= ACTIVE_WINDOW_MS,
     isOpen: pidVisible ? false : null,
     status: null,
+    // A session nobody is running makes no claim, and there is nothing to derive one from.
+    statusDerived: false,
     waitingFor: null,
     waitingSince: null,
   };

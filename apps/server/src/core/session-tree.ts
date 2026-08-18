@@ -493,6 +493,13 @@ interface TurnAcc {
   command: string | null;
   startedAt: string | null;
   state: 'done' | 'interrupted' | 'live';
+  /**
+   * The turn was closed by the model's own `end_turn` rather than by a `system/turn_duration`
+   * line — the only close available to a session whose host writes none (the desktop app's Code
+   * tab, every headless run). PROVISIONAL by nature: a Stop hook can put the same turn back to
+   * work, and the next call reopens it. A `turn_duration` clears it, because that one is final.
+   */
+  closedByResult: boolean;
   cutoff: boolean; // interrupted by a dead session rather than by the user — see TurnNode.cutoff
   durationMs: number | null;
   messageCount: number | null;
@@ -989,6 +996,10 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
             mainWeightedByModel.set(e.model, (mainWeightedByModel.get(e.model) ?? 0) + w);
           }
           if (currentTurn) {
+            // Work after a provisional close — a Stop hook that sent the model back in, measured
+            // on 9 of 1048 real turns — means the turn never ended. Only a close this reducer
+            // guessed is reopened; `turn_duration` is Claude Code's word and stands.
+            if (currentTurn.closedByResult && currentTurn.state === 'done') currentTurn.state = 'live';
             currentTurn.inputTotal += e.delta.input;
             currentTurn.out += e.delta.output;
             currentTurn.apiCalls++;
@@ -1075,6 +1086,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           durationMs: null,
           messageCount: null,
           apiCalls: 0,
+          closedByResult: false,
           fillEnd: mainFill,
           breakdown: { ...breakdown },
           cacheTotals: { read: 0, created: 0 },
@@ -1105,6 +1117,8 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         currentTurn.durationMs = e.durationMs;
         currentTurn.messageCount = e.messageCount;
         currentTurn.state = 'done';
+        // Claude Code's own marker outranks the provisional close below, and is not reopened.
+        currentTurn.closedByResult = false;
       }
     } else if (e.type === 'turn-interrupted') {
       // A CUTOFF answers to the supersede path's rule (see where a new prompt closes the previous
@@ -1122,6 +1136,17 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       }
     } else if (e.type === 'turn-result') {
       if (owner === null && currentTurn) {
+        // The model stopped for the user (`stop_reason: end_turn`), which is the ONLY end-of-turn
+        // evidence a session gets when its host writes no `system/turn_duration`: measured on a
+        // real desktop transcript, four of its five finished turns were filed as INTERRUPTED —
+        // the supersede rule below reading "still live when the next prompt arrived" as an Esc —
+        // and none carried a duration. Closing here costs a CLI session nothing: its own marker
+        // lands a measured p50 96ms later (200 sessions, 1043 turns, 2026-08-18) and overrides
+        // this with the real duration.
+        if (currentTurn.state === 'live') {
+          currentTurn.state = 'done';
+          currentTurn.closedByResult = true;
+        }
         currentTurn.result = e.outputFull; // last wins
         currentTurn.lastWordTs = e.timestamp;
         dirtyGroups.add(currentTurn.index); // the cutoff moved: the group starts over

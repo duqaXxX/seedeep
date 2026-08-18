@@ -281,6 +281,7 @@ describe('the shipping scene — commits, cards and a published page', () => {
     status: null,
     waitingFor: null,
     waitingSince: null,
+    statusDerived: false,
     subject: null,
     entrypoint: null,
     root: 'cli',

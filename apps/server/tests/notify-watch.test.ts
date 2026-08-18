@@ -266,6 +266,7 @@ test('Esc produces no finish, in both shapes the transcript writes', () => {
         status,
         waitingFor: null,
         waitingSince: null,
+        statusDerived: false,
         subject: 'add a retry to the uploader',
         entrypoint: null,
         root: 'cli',

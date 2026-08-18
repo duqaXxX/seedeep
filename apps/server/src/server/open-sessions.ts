@@ -25,6 +25,17 @@ export interface OpenSession {
   waitingFor: string | null;
   /** When it started waiting (Claude Code's `statusUpdatedAt`, epoch ms); null otherwise. */
   waitingSince: number | null;
+  /**
+   * The file carried a `status` field at all — which is NOT the same fact as `status !== null`:
+   * an unrecognised value also reduces to null, and the two must not be confused. A session that
+   * publishes one owns its state even when seedeep does not know the word; a session that
+   * publishes none is the only one whose state may be derived from its transcript.
+   *
+   * Only the interactive terminal REPL publishes it. A host driving Claude Code over stream-json
+   * — the desktop app's Code tab, `claude -p`, the Agent SDK — registers a file here with no
+   * status, which is why this is a property of the SESSION and not of the mechanism.
+   */
+  publishesStatus: boolean;
 }
 
 /** Every status seedeep recognises. A value outside this list becomes `null` rather than a guess:
@@ -116,6 +127,7 @@ export async function listOpenSessions(
     const sessionId = typeof d?.sessionId === 'string' ? d.sessionId : '';
     const cwd = typeof d?.cwd === 'string' ? d.cwd : '';
     if (!Number.isFinite(pid) || !sessionId || !cwd || !alive(pid)) continue;
+    const publishesStatus = typeof d?.status === 'string' && d.status !== '';
     const status = STATUSES.find((s) => s === d?.status) ?? null;
     if (status === null) noteUnknownStatus(d?.status);
     // Only meaningful while waiting: Claude Code clears it on the way out, but a file read
@@ -123,7 +135,7 @@ export async function listOpenSessions(
     // flagged as blocked forever.
     const waitingFor = status === 'waiting' && typeof d?.waitingFor === 'string' ? d.waitingFor : null;
     const waitingSince = waitingFor !== null && typeof d?.statusUpdatedAt === 'number' ? d.statusUpdatedAt : null;
-    out.push({ pid, sessionId, cwd, status, waitingFor, waitingSince });
+    out.push({ pid, sessionId, cwd, status, waitingFor, waitingSince, publishesStatus });
   }
   return out;
 }

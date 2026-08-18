@@ -25,6 +25,8 @@ function watcherOver(recs: SessionRecord[], opts: WatcherOptions = {}): Watcher 
           status: r.status,
           waitingFor: null,
           waitingSince: null,
+          // The mechanism answered for this session, whatever the test declared its state to be.
+          publishesStatus: true,
         })),
     ...opts,
   });
@@ -61,6 +63,7 @@ test('tick emits usage events tagged by sessionId from two sessions', async () =
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -76,6 +79,7 @@ test('tick emits usage events tagged by sessionId from two sessions', async () =
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -105,6 +109,7 @@ test('a second tick reads only appended lines', async () => {
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -137,6 +142,7 @@ test('emitted events carry a per-file seq that increases across ticks', async ()
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -177,6 +183,7 @@ test('overlapping ticks never pump the same file twice — seq stays the line in
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -209,6 +216,7 @@ test('a tick skipped for overlap is not lost — the next one still reads what l
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -245,6 +253,7 @@ test('a truncated file restarts the numbering with the offset', async () => {
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -287,6 +296,7 @@ test('a subagent child file tags events with agentId and does not corrupt parent
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -343,6 +353,7 @@ test('a session with a live process keeps tailing its children while the parent 
       status: 'busy',
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: 'cli',
       root: 'cli',
@@ -380,6 +391,7 @@ test('a session with no live process and a cold file is not tailed', async () =>
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: 'cli',
       root: 'cli',
@@ -413,6 +425,7 @@ test('subagent-meta is not re-emitted every tick once resolved', async () => {
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -444,6 +457,7 @@ function rec(sessionId: string, path: string, isOpen: boolean): SessionRecord {
     status: null,
     waitingFor: null,
     waitingSince: null,
+    statusDerived: false,
     subject: null,
     entrypoint: null,
     root: 'cli',
@@ -488,7 +502,7 @@ test('an open session is located once, not on every tick', async () => {
       return [rec('P', p, true)];
     },
     openSessions: async () => [
-      { pid: 1, sessionId: 'P', cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      { pid: 1, sessionId: 'P', cwd: '/w', status: null, waitingFor: null, waitingSince: null, publishesStatus: true },
     ],
   });
   const fills: number[] = [];
@@ -514,7 +528,15 @@ test('an open session with no transcript yet does not rescan every tick', async 
       return [];
     }, // the id is nowhere on disk
     openSessions: async () => [
-      { pid: 1, sessionId: 'GHOST', cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: 'GHOST',
+        cwd: '/w',
+        status: null,
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   await w.tick();

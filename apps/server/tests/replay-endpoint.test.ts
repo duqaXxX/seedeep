@@ -64,6 +64,7 @@ test('replay and watcher assign the SAME seq to the same line, across a blank li
     status: null,
     waitingFor: null,
     waitingSince: null,
+    statusDerived: false,
     subject: null,
     entrypoint: null,
     root: 'cli',
@@ -73,7 +74,15 @@ test('replay and watcher assign the SAME seq to the same line, across a blank li
   const w = new Watcher({
     discover: async () => [rec],
     openSessions: async () => [
-      { pid: 1, sessionId: rec.sessionId, cwd: '/w', status: null, waitingFor: null, waitingSince: null },
+      {
+        pid: 1,
+        sessionId: rec.sessionId,
+        cwd: '/w',
+        status: null,
+        waitingFor: null,
+        waitingSince: null,
+        publishesStatus: true,
+      },
     ],
   });
   w.on('event', (e: NormalizedEvent) => {
@@ -103,6 +112,7 @@ test('GET /api/replay streams the session events then replay-end', async () => {
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -156,6 +166,7 @@ test('GET /api/replay?from= streams only what the caller is missing', async () =
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
@@ -197,6 +208,7 @@ test('GET /api/replay with a malformed from= replays the session whole', async (
       status: null,
       waitingFor: null,
       waitingSince: null,
+      statusDerived: false,
       subject: null,
       entrypoint: null,
       root: 'cli',
