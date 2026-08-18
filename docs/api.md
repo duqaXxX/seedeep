@@ -168,7 +168,8 @@ entry is derived state, not events to fold.
 Returns `DigestEntry` (`server/digest.ts`): the project and subject, the context block, the model
 and effort, the turn's state (`done` | `interrupted` | `live`) and what it is doing now, the
 background commands, the subagents, an `error` block when the last call failed, and `waiting` when
-the session is stopped on the user.
+the session is stopped on the user. `statusDerived` says that state was read off the transcript
+rather than published by the session's host — a client that puts the state in words should say so.
 
 There is no cap on anything in it: sixteen concurrent agents is a legitimate session, and a client
 that draws fewer is making that choice itself.
