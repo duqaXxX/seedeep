@@ -9,6 +9,15 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.31.1 (2026-08-21)
+
+### Changed
+
+- Dependency maintenance only — nothing here reaches a running seedeep. `@biomejs/biome` moves
+  2.5.7 → 2.5.9; it is a development dependency, so the distributed binary never carried it. The
+  `Swatinem/rust-cache` action that caches the tray's Rust build in CI and in the release workflow
+  is re-pinned to a newer commit, which changes how those two jobs cache and nothing that ships.
+
 ## 0.31.0 (2026-08-19)
 
 ### Added
