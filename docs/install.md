@@ -1,10 +1,10 @@
 # Installing, running and updating seedeep
 
 `seedeep` runs a small local server that watches your sessions and streams them to
-a page in your browser — one process, no daemon, stopped with Ctrl-C. Two channels
+a page in your browser. One process, no daemon, stopped with Ctrl-C. Two channels
 ship the same executable; a third runs it from a clone.
 
-> **The Windows build has been used in a VM**, several times, which found defects since fixed.
+> The Windows build has been used in a VM, several times, which found defects since fixed.
 > The Linux arm64 build was used on Ubuntu 24 in a VM; its x64 build has been started, never used.
 > [Which platforms have actually been run](../README.md#which-platforms-have-actually-been-run)
 > says exactly what each of those covers.
@@ -16,8 +16,8 @@ npm i -g seedeep                       # or: bun install -g seedeep --trust
 seedeep                                # watch, serve, and open the browser
 ```
 
-**A package manager is needed to install it, never to run it**: the package carries
-the compiled executable — its own runtime and the whole browser GUI inside it — and
+A package manager is needed to install it, never to run it. The package carries
+the compiled executable, with its own runtime and the whole browser GUI inside it, and
 the install puts that file on your PATH. Installing this way also raises no
 first-launch warning on macOS: the quarantine flag behind that dialog is set by the
 browser that downloads a file, and never by a package manager.
@@ -29,9 +29,9 @@ reports success and `seedeep` prints the one command that finishes the job
 
 ## The plain download — no runtime at all
 
-Take the file for your platform from [the latest release](../../../releases/latest)
-— `seedeep-server_<version>_macos-arm64`, `…_macos-x64`, `…_linux-x64`,
-`…_linux-arm64`, `…_windows-x64.exe`, `…_windows-arm64.exe` — make it executable, and run it:
+Take the file for your platform from [the latest release](../../../releases/latest),
+one of `seedeep-server_<version>_macos-arm64`, `…_macos-x64`, `…_linux-x64`,
+`…_linux-arm64`, `…_windows-x64.exe` or `…_windows-arm64.exe`, make it executable, and run it:
 
 ```sh
 chmod +x seedeep-server_*            # macOS and Linux
@@ -39,11 +39,11 @@ chmod +x seedeep-server_*            # macOS and Linux
 ```
 
 The `chmod` is not a formality: a downloaded file never arrives executable, and without it the
-Finder has no way to tell a program from a document — a double-click answers *"There is no
-application set to open the document"*, which is the missing execute bit and not a broken
+Finder has no way to tell a program from a document. A double-click answers *"There is no
+application set to open the document"*, which is the missing execute bit rather than a broken
 download. It is a command-line program either way, so the terminal is where it is run.
 
-**That file is not an installer — it is the program.** It installs nothing,
+That file is the program, not an installer. It installs nothing,
 registers nothing, and puts nothing on your PATH: it carries its own runtime and the
 whole GUI inside, so downloading it is the entire step. Running it leaves
 `~/.seedeep/` behind for its own settings and caches, and nothing else.
@@ -55,20 +55,20 @@ move it yourself:
 mv seedeep-server_* /usr/local/bin/seedeep   # now `seedeep` works anywhere
 ```
 
-That step is optional for running it — and required for `/seedeep` inside Claude
+That step is optional for running it, and required for `/seedeep` inside Claude
 Code, which calls `seedeep` by name. Installing from npm does it for you.
 
 It is the same executable either way, and it is what a headless box reached over
 SSH needs. macOS refuses an unsigned download on first launch: the way through is
 **System Settings → Privacy & Security → Security → Open Anyway**, then your login
-password — the same gesture the tray needs, described in
+password, the same gesture the tray needs, described in
 [`tray.md`](tray.md#packaging-and-releases). The Linux builds need glibc
 (Debian, Ubuntu, Fedora…), not musl.
 
 ### Checking a download came from here
 
 Unsigned is not the same as unattributable. Every release asset carries a build
-provenance attestation — a public, tamper-evident record that this exact file was built
+provenance attestation, a public and tamper-evident record that this exact file was built
 by seedeep's release workflow from the tagged commit, and by nothing else:
 
 ```sh
@@ -76,8 +76,8 @@ gh attestation verify seedeep-server_<version>_macos-arm64 -R duqaXxX/seedeep
 ```
 
 It answers with the workflow and the commit that produced the file, or it fails. That is
-a different question from the one macOS asks — Gatekeeper wants to know who *signed* the
-app, and nobody did; this says where the bytes came from, which is the question a
+a different question from the one macOS asks: Gatekeeper wants to know who *signed* the
+app, and nobody did, while this says where the bytes came from, which is the question a
 stranger downloading a 60 MB executable actually has. The npm packages carry their own
 [provenance](https://www.npmjs.com/package/seedeep), generated by npm itself.
 
@@ -94,48 +94,48 @@ bun start -- --no-open    # do not open the browser automatically
 ## The commands
 
 `seedeep --help` prints the same two tables, and `--version` the number alone, for a
-script to read. Everything below works however it was installed — `seedeep open`,
-`bun start -- --port 9000`, `./seedeep-server_… --no-open` are the same program.
+script to read. Everything below works however it was installed: `seedeep open`,
+`bun start -- --port 9000` and `./seedeep-server_… --no-open` are the same program.
 
 | | |
 |---|---|
-| `seedeep` | watch, serve, and open the browser — stays in the foreground, ends with Ctrl-C |
+| `seedeep` | watch, serve, and open the browser; stays in the foreground, ends with Ctrl-C |
 | `seedeep open` | open the GUI, starting the server first if it is down |
 | `seedeep start` | start the server detached, without opening a browser |
-| `seedeep stop` | stop the running server — SIGTERM, so it closes down rather than dying |
+| `seedeep stop` | stop the running server with SIGTERM, so it closes down rather than dying |
 | `seedeep restart` | replace the running server with a fresh one |
 | `seedeep status` | what state this machine is in ([below](#seedeep-status)) |
 | `seedeep report` | what a session cost and where its tokens went ([below](#seedeep-report)) |
-| `seedeep update` | say how *this* installation updates — prints the command, never runs it |
+| `seedeep update` | say how *this* installation updates; prints the command, never runs it |
 | `seedeep self-update` | run that command, then restart the server ([below](#seedeep-self-update)) |
 | `seedeep install-command` | write the `/seedeep` slash command into Claude Code |
 
 | Flag | Commands | |
 |---|---|---|
 | `--port <n>` | serve, open, start, stop, restart, status, self-update | the port (default 44842) |
-| `--host <addr>` | serve | the bind address — anything but loopback turns on TLS and a token ([Remote access](#remote-access)) |
+| `--host <addr>` | serve | the bind address; anything but loopback turns on TLS and a token ([Remote access](#remote-access)) |
 | `--no-open` | serve | do not open the browser |
 | `--session <id>` | report | a session other than this directory's newest |
 | `--full` | report | one line per turn as well |
 | `--offline` | update | skip the version check, the one network call seedeep makes |
 | `--force` | install-command | replace a command file you edited |
 
-*serve* in that middle column is the bare `seedeep` — the foreground server of the
+*serve* in that middle column is the bare `seedeep`, the foreground server of the
 first row, which is what you get when you name no command at all.
 
 With a server already running on a different port than your config's, `seedeep
-open` prints what is running rather than picking one — `seedeep open --port <port>`
+open` prints what is running rather than picking one, and `seedeep open --port <port>`
 says which.
 
 ### `seedeep status`
 
-The one command that acts on nothing: it answers *what state is this machine in* —
-the server (up or down, on which port, **which version it is actually serving**,
+The one command that acts on nothing. It answers *what state is this machine in*:
+the server (up or down, on which port, which version it is actually serving,
 which is not the version you installed until you restart it, and whether
 `config.json` has changed since it started), whether `/seedeep`
 exists and whose it is, and whether a newer release is out. That last line comes from
 the cache the server already keeps, so `status` needs no network and never waits on
-one. A server that is down is a state, not a failure: the exit code is 0 whatever it
+one. A server that is down is a state rather than a failure: the exit code is 0 whatever it
 finds.
 
 ## `/seedeep` inside Claude Code
@@ -146,10 +146,10 @@ seedeep install-command   # once: writes ~/.claude/commands/seedeep.md
 
 The command file it writes calls `seedeep` **by name**, so the binary has to be on
 your PATH under that name. From npm it already is. From a downloaded file it is not
-until you move it there (see above) — otherwise `install-command` succeeds and
+until you move it there (see above), and otherwise `install-command` succeeds and
 `/seedeep` then fails with *command not found*.
 
-**On native Windows it needs one line of configuration.** The command file carries a
+On native Windows it needs one line of configuration. The command file carries a
 single shell line, and Claude Code runs it in the shell it has: with Git Bash on the
 machine that is Bash, and without it the PowerShell tool, which splits that line into
 more than one operation and stops on the part it has no rule for. `/seedeep` then
@@ -164,7 +164,7 @@ in `%USERPROFILE%\.claude\settings.json`:
 }
 ```
 
-Restart Claude Code afterwards — settings are read at startup. If the file already
+Restart Claude Code afterwards, since settings are read at startup. If the file already
 exists, merge the `permissions` key into it rather than replacing the file. Installing
 [Git for Windows](https://git-scm.com/downloads/win) fixes it too, by giving Claude Code
 the Bash tool the line is written for. Inside WSL none of this applies: the shell there
@@ -175,29 +175,29 @@ After that, any Claude Code session has these:
 | | |
 |---|---|
 | `/seedeep` or `/seedeep open` | opens the GUI, starting the server first if it is down |
-| `/seedeep start` | starts the server without opening a browser — the counterpart of `stop` |
+| `/seedeep start` | starts the server without opening a browser, the counterpart of `stop` |
 | `/seedeep stop` | ends the running server, the way Ctrl-C in its terminal would |
 | `/seedeep restart` | replaces the running server with a fresh one |
-| `/seedeep status` | the state of this machine — server, served version, `/seedeep`, update |
+| `/seedeep status` | the state of this machine: server, served version, `/seedeep`, update |
 | `/seedeep report` | what this session cost and where its tokens went; `report full` adds a line per turn |
-| `/seedeep update` | says how *this* installation is updated — it prints the command, and never runs it |
+| `/seedeep update` | says how *this* installation is updated; it prints the command, and never runs it |
 | `/seedeep self-update` | installs that version and restarts the server, without leaving the session (macOS and Linux) |
 
 Every one of those words exists on the console too, spelled the same
 ([The commands](#the-commands)). A server
 started this way keeps running when the session ends, because it is started
-detached, exactly like one you launched yourself; `stop` is what ends it, and it
+detached, exactly like one you launched yourself. `stop` is what ends it, and it
 asks with SIGTERM rather than killing, so the server closes down properly.
 
 ### `seedeep report`
 
-`report` needs no server at all — it reads the session's own transcript — and on the
-console it needs no session id either: `seedeep report` takes the **newest session
-of the directory you are in**, and says so before printing. Never one from another
-project — that would be the one way to be wrong that the report's own first line
+`report` needs no server at all, since it reads the session's own transcript, and on the
+console it needs no session id either: `seedeep report` takes the newest session
+of the directory you are in, and says so before printing. Never one from another
+project, which would be the one way to be wrong that the report's own first line
 could not make obvious. `--session <id>` picks any other.
 
-It is deliberately small: it is printed INTO the session it describes, so its two
+It is small by design. It is printed INTO the session it describes, so its two
 standing blocks stay the same size whatever the session's length, and the last line
 tells you what the report itself cost. Only `report full`, which prints a line per
 turn, grows.
@@ -206,8 +206,8 @@ turn, grows.
 
 The command file records which seedeep wrote it, and after you have installed it
 once, seedeep keeps it current on its own: **every server start refreshes it** when
-it is older than the binary, and says so in one line. Nothing is created that way —
-only a file you asked for, by running `install-command`, is ever touched — and a
+it is older than the binary, and says so in one line. Nothing is created that way,
+since only a file you asked for by running `install-command` is ever touched, and a
 file you edited becomes yours and is left alone for good (`--force` is the only way
 back). If no server of yours ever starts, the next `/seedeep` you use tells you
 instead. `seedeep install-command` does it by hand at any time.
@@ -218,29 +218,29 @@ part of installing seedeep, and no upgrade does it behind your back.
 ## Updating seedeep
 
 **Updating seedeep itself** is `seedeep update`. It asks npm which version is
-current, reads where this executable actually lives — a package manager's
-`node_modules`, or a file you downloaded — and prints the one command that updates
-*that*. It never runs it — that is what `seedeep self-update` below is for.
+current, reads where this executable actually lives (a package manager's
+`node_modules`, or a file you downloaded) and prints the one command that updates
+*that*. It never runs it, which is what `seedeep self-update` below is for.
 
-That version check is **the only outbound request seedeep makes on its own** — the one
-exception being the [notification webhook](#data-flow), off until you configure it — and for the
-surfaces that poll — the portal's Settings panel, the tray, the line after
-`seedeep open` — it happens **at most once an hour**: the answer is cached, so the
+That version check is the only outbound request seedeep makes on its own, the one
+exception being the [notification webhook](#data-flow), off until you configure it. For the
+surfaces that poll, meaning the portal's Settings panel, the tray and the line after
+`seedeep open`, it happens **at most once an hour**: the answer is cached, so the
 three read one check rather than three.
 
-**The commands you type ask npm anyway.** `seedeep update` and `seedeep self-update`
+The commands you type ask npm anyway. `seedeep update` and `seedeep self-update`
 ignore that cache and go to the registry, because the reason to type either is
-usually having just heard there is a new version — and an answer from earlier in the
+usually having just heard there is a new version, and an answer from earlier in the
 hour would tell you that you are current when you are not. The fresh answer replaces
 the cache, so nothing else on the machine re-asks after it.
 `seedeep update --offline` skips the network entirely (and wins over the rule above),
-and a registry that cannot be reached never withholds the advice — you are still told
+and a registry that cannot be reached never withholds the advice: you are still told
 how this install would update.
 
 When a newer version exists you are told once per release: a notification from the
 tray (switchable off in its Settings, with the other three), a line in the portal's
 About section, and a line after `seedeep open` / `seedeep start`. Nothing updates by
-itself — npm documents no background or scheduled update, for global packages or any
+itself, since npm documents no background or scheduled update, for global packages or any
 other kind, and none of those notices installs anything. If you want it automatic,
 that belongs in your own scheduler (`npm update -g seedeep` on a cron), where you
 decided it.
@@ -262,50 +262,50 @@ It refuses, with the sentence that resolves each case instead of a half-done ins
 
 | | |
 |---|---|
-| a downloaded executable | there is nothing to install — replace the file with the new release |
+| a downloaded executable | there is nothing to install; replace the file with the new release |
 | a checkout | `git pull`, and the next `bun start` is the new code |
 | Windows | a running `.exe` cannot be replaced: `seedeep stop`, the install command, `seedeep start` |
 | a version *ahead* of npm's | that is a build of your own, and installing would downgrade it |
 
-Inside Claude Code, `/seedeep self-update` first reports what *would* happen —
-version, channel, and whether it can run at all — and Claude then runs the single
+Inside Claude Code, `/seedeep self-update` first reports what *would* happen, meaning
+version, channel, and whether it can run at all, and Claude then runs the single
 `seedeep self-update` command, which the command file already allows. The package
 manager is never invoked by Claude directly, and `/seedeep update` still only
 reports: the word that tells and the word that acts stay separate.
 
 ## The macOS permission the server asks for
 
-**"seedeep would like to access files in your Documents folder"** — asked by the
-**server**, not the tray, and only if your projects live there (or in Desktop or
+"seedeep would like to access files in your Documents folder", asked by the
+**server** rather than the tray, and only if your projects live there (or in Desktop or
 Downloads, which macOS gates the same way).
 
 seedeep reads `~/.claude/projects` and nothing else, with one exception: it runs
-**read-only git** in the working directory of a session — `rev-parse`, `log`,
-`diff-tree`, `remote get-url`, `rev-list`, every one with `--no-optional-locks` so
+**read-only git** in the working directory of a session (`rev-parse`, `log`,
+`diff-tree`, `remote get-url`, `rev-list`), every one with `--no-optional-locks` so
 that even a read cannot take `.git/index.lock` while you are committing. That is
 what fills the **Commits** and **Changed files** cards, and it runs when you open a
 session, not across your whole corpus. **Refuse and those two cards stay empty**;
 nothing else changes.
 
 Neither this prompt nor the tray's appears for the plain download, run from a
-terminal in a directory you already have access to. The tray's own permission — the
-local network — is in [`tray.md`](tray.md#the-one-permission-the-tray-asks-for).
+terminal in a directory you already have access to. The tray's own permission, the
+local network, is in [`tray.md`](tray.md#the-one-permission-the-tray-asks-for).
 
 ## Data flow
 
 Session data flows one way: the server pushes to the browser (Server-Sent Events)
-and the browser never sends any of it back — nothing seedeep reads is ever written.
+and the browser never sends any of it back. Nothing seedeep reads is ever written.
 
-**One exception, and it is off until you turn it on: the notification webhook.**
+One exception, and it is off until you turn it on: the notification webhook.
 It is the only thing in seedeep that sends your session data anywhere. Configured
 under `notifications.webhook` in `~/.seedeep/config.json`, it POSTs to whatever
-address you put there — your own ntfy, Pushover, a Telegram bot, a script on your
-LAN — when a session stops on you, breaks, or hands the turn back. What leaves the
+address you put there (your own ntfy, Pushover, a Telegram bot, a script on your
+LAN) when a session stops on you, breaks, or hands the turn back. What leaves the
 machine is what the banner says: the project name, the session's subject, and the
 tool and command a session is waiting on. Nothing else, and nothing at all while
 `url` is empty, which is how it ships. Emptying `url` turns it off again.
-The browser does POST two things, and both are seedeep's own state, never yours: the
-settings, and a restart. (The share card's PNG is drawn by the page itself — it
+The browser does POST two things, and both are seedeep's own state rather than yours: the
+settings, and a restart. (The share card's PNG is drawn by the page itself and
 never leaves your browser.)
 
 ## Remote access
@@ -320,7 +320,7 @@ SEEDEEP_TLS_CN=my-machine.local bun start -- --host 0.0.0.0
 ```
 
 Beyond loopback, HTTPS is mandatory and every `/api/*` request needs
-`Authorization: Bearer <token>` — a 32-byte token generated on first run and kept in
+`Authorization: Bearer <token>`, a 32-byte token generated on first run and kept in
 `~/.seedeep/config.json`. `seedeep` issues its own self-signed certificate, valid for
 the machine's current LAN address; the certificate's common name is required, which
 is what `SEEDEEP_TLS_CN` above provides. The startup URL carries the token, and the
@@ -328,43 +328,43 @@ page moves it into local storage and strips it from the address bar, so it never
 reaches your browser history.
 
 Its SHA-256 fingerprint is printed on **every** start, and shown in the settings
-panel with a Copy button — a browser waves a self-signed certificate through with one
+panel with a Copy button. A browser waves a self-signed certificate through with one
 click, but anything else has to pin it, and can only do that if you can read the
 value when you set that client up.
 
-The settings panel (the sliders icon in the header) edits all of it — port, host,
+The settings panel (the sliders icon in the header) edits all of it: port, host,
 token, the full access URL, and the certificate fingerprint, each with a Copy
-button — so nothing has to be edited by hand. It is an editor of `config.json`: the
+button, so nothing has to be edited by hand. It is an editor of `config.json`: the
 fields show what that file says (under any flag or environment variable that overrides
-it), so the two ways of configuring seedeep cannot undo each other — a save leaves
+it), so the two ways of configuring seedeep cannot undo each other, and a save leaves
 every field it did not mention exactly as your editor left it.
 
-**A running server keeps the port, host and certificate name it started with**, whichever
-way they changed — the panel or an editor. Until you restart it, the file says one thing
+A running server keeps the port, host and certificate name it started with, whichever
+way they changed, the panel or an editor. Until you restart it, the file says one thing
 and the process does another, which on this page means remote access that is configured
-and simply not listening. Every surface now says so rather than leaving it to be found
+and simply not listening. Every surface says so rather than leaving it to be found
 with `lsof`: an amber dot on the Settings button with the panel closed, a line above the
-tray's sessions, and a line in `seedeep status`. `seedeep restart` — or **Restart now** in
-the panel — applies it.
+tray's sessions, and a line in `seedeep status`. `seedeep restart`, or **Restart now** in
+the panel, applies it.
 
 A value a CLI flag or an environment variable sets is not reported, because a restart
 would not honour the file there either: `--port 9000` wins over `config.json` on every
 start, so there is nothing pending to announce.
 
-**The token is stored per ADDRESS, and the port is part of the address.** The
-browser keeps it in local storage, which is partitioned by origin — scheme, host
-*and* port — so a second `seedeep` on the same machine at another port is an address
+The token is stored per ADDRESS, and the port is part of the address. The
+browser keeps it in local storage, which is partitioned by origin (scheme, host
+*and* port), so a second `seedeep` on the same machine at another port is an address
 that has never been given the token, even though the certificate and the host are
 identical. Opening it bare then shows a red **`No token for this address`** in the
-header (hover it for the rest); the fix is to open the URL `seedeep` printed at
-startup once — the page stores the token and strips it from the address bar — or to
+header (hover it for the rest). The fix is to open the URL `seedeep` printed at
+startup once, so the page stores the token and strips it from the address bar, or to
 paste the token in the settings panel. **`Token refused`** is the other half of the
 same sentence: something IS stored and the server does not accept it, because it was
 regenerated or belongs to another `seedeep`.
 
 Neither is ever reported as a lost connection. A 401 is not a dropped stream and
-reconnecting cannot fix it, so the banner says which of the two it is instead of
-promising a recovery that will not come.
+reconnecting cannot fix it, so the banner names which of the two it is
+rather than showing a reconnection attempt.
 
 **`seedeep` ships no tunnel.** Reaching it from outside the local network is
 deliberately not its job: use an SSH port-forward
@@ -376,16 +376,16 @@ full is in [`configuration.md`](configuration.md#security-model).
 
 The menu-bar tray is a separate download, built by CI from a tag and attached to
 [the latest release](../../../releases/latest) beside the server: one universal
-`seedeep-tray_<version>_universal.dmg` for macOS — Apple Silicon and Intel in the
-same file, so there is nothing to choose — and one `-setup.exe` per architecture for
+`seedeep-tray_<version>_universal.dmg` for macOS, with Apple Silicon and Intel in the
+same file so there is nothing to choose, and one `-setup.exe` per architecture for
 Windows, `_arm64-` on a Snapdragon or any other Windows-on-ARM machine and `_x64-`
 on everything else, since Windows has no universal binary to hide the question. Until a
 release is listed there, `bun run tray:build` produces the same bundle locally,
 under the same name.
 
-**The tray is called `seedeep-tray`, the server is called `seedeep`**, and they are two
-programs, named apart on purpose. One name for both makes a system permission dialog impossible to
-read — it names the app that is asking, and both would be *"seedeep"* — and makes
+The tray is called `seedeep-tray`, the server is called `seedeep`, and they are two
+programs, named apart. One name for both makes a system permission dialog impossible to
+read, since it names the app that is asking and both would be *"seedeep"*, and makes
 `killall seedeep` reach the server rather than the app you meant.
 
 It is optional, and it is a **client**: it connects to a server, on this machine or
@@ -395,24 +395,24 @@ on another one. The server is what has to run where Claude Code runs.
 certificate behind these builds; that is the state `seedeep` ships in today, and each
 system says so in its own way:
 
-- **macOS** — the first double-click is refused. The way through is **System Settings →
+- **macOS:** the first double-click is refused. The way through is **System Settings →
   Privacy & Security → Security → Open Anyway**, then your login password. Apple
   offers that button for about an hour after the attempt that was refused, so open
   the app first and go to Settings second.
-- **Windows** — SmartScreen stops the installer. The way through is **More info → Run
+- **Windows:** SmartScreen stops the installer. The way through is **More info → Run
   anyway**. The installer installs for the current user only, so it never asks for
   Administrator rights.
 
-Both warnings are the honest cost of an unsigned build, not a sign that something
+Both warnings are the honest cost of an unsigned build rather than a sign that something
 went wrong. Signing becomes a real decision when there is a release worth signing.
 
-**Every tray update asks for its permissions again**, and that is the price of an
+Every tray update asks for its permissions again, and that is the price of an
 unsigned build rather than a bug: macOS attaches a permission to a code IDENTITY, and
-an unsigned app has none that survives a rebuild — `codesign -d -r-` on the installed
-app answers *"code object is not signed at all"*. The bundle identifier does not
+an unsigned app has none that survives a rebuild (`codesign -d -r-` on the installed
+app answers *"code object is not signed at all"*). The bundle identifier does not
 change, so your settings and stored connection carry over; the permission does not.
-The one that bites is notifications: **a tray that notified last week can go quiet
-after an upgrade**, and the fix is System Settings → Notifications → seedeep-tray.
+The one that bites is notifications: a tray that notified last week can go quiet
+after an upgrade, and the fix is System Settings → Notifications → seedeep-tray.
 What each banner says, and which ones ship on, is in
 [`tray.md`](tray.md#notifications).
 
@@ -425,13 +425,13 @@ ran `seedeep install-command`, there is a third: `~/.claude/commands/seedeep.md`
 
 The **tray** is a different program, and removing the server does not touch it:
 
-- **macOS** — quit it from the menu bar, then drag **seedeep-tray** out of
-  Applications. There is no uninstaller to run: the download is a `.dmg`, and a DMG
+- **macOS:** quit it from the menu bar, then drag **seedeep-tray** out of
+  Applications. There is no uninstaller to run, because the download is a `.dmg` and a DMG
   *is* the drag, in both directions. What that leaves behind is one folder,
-  `~/Library/Application Support/app.seedeep.tray/` — the server you connected to and
-  the notification switches, nothing else. Delete it to leave nothing; keep it and a
+  `~/Library/Application Support/app.seedeep.tray/`, holding the server you connected to and
+  the notification switches. Delete it to leave nothing; keep it and a
   reinstall picks up where you left off.
-- **Windows** — Settings → **Installed apps** → **seedeep-tray** → Uninstall. The
+- **Windows:** Settings → **Installed apps** → **seedeep-tray** → Uninstall. The
   uninstaller draws a **Delete app data** checkbox on the way, and it starts
   **unchecked**: leave it and `%APPDATA%\app.seedeep.tray` survives for the next
   install, tick it and it goes with the app.

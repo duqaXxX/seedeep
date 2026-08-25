@@ -9,6 +9,27 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Changed
+
+- Every public document rewritten to read as a reference rather than as a pitch. The prose carried
+  the register readers associate with generated text, and the count that made it measurable was
+  1094 em dashes across 16 files. Removed, along with 20 paragraphs closing on an aphorism, 436
+  bold spans wrapping a whole sentence, and 29 of the 54 "deliberately / on purpose" that defended
+  a choice the following clause already explained. No figure, table or admission was touched: the
+  pass took out voice, not evidence, and the corpus lost 11% of its words.
+- `README.md` leads with the install command, which sat at line 149 of 257 and is now in the first
+  screen.
+- The explanation of why the installed tray cannot read `SEEDEEP_HOME` lived in both
+  `CONTRIBUTING.md` and `configuration.md`. It now lives in `configuration.md`, which owns the
+  variable, and `CONTRIBUTING.md` links to it.
+
+### Added
+
+- `apps/server/tests/docs.test.ts` gains `no em dash in a public doc's prose`, blocking, over every
+  tracked markdown but the changelogs. It reads the file rather than the diff, which is what lets it
+  exempt headings, fenced blocks and backtick spans: an em dash inside backticks is a literal
+  seedeep prints (`Waiting for your approval — Bash`) and rewriting it would make the doc false.
+
 ## 0.31.1 (2026-08-21)
 
 ### Changed

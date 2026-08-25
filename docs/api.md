@@ -1,8 +1,8 @@
 # HTTP API
 
-The local server exposes 21 routes: the static page and 20 under `/api/`, across 19 paths — only
-`/api/config` answers to two methods. This document is the
-reference — every route, its parameters, its response and its failure modes. The reasoning behind
+The local server exposes 21 routes: the static page and 20 under `/api/`, across 19 paths, since
+only `/api/config` answers to two methods. This document is the
+reference for every route, its parameters, its response and its failure modes. The reasoning behind
 the design (why the roster is split, why the digest exists, how the watcher feeds any of it) is in
 [architecture.md](architecture.md).
 
@@ -21,19 +21,19 @@ seedeep code and reads only these.
 The other sixteen are consumed by the browser GUI shipped in the same executable. They are
 documented here because they are reachable and useful, **not** because they are frozen: treat them
 as internal to the GUI and expect them to change with it. There is no `/v1` prefix, no version
-negotiation and no deprecation window — the server's version is in `GET /api/config`, and every
+negotiation and no deprecation window. The server's version is in `GET /api/config`, and every
 deliverable ships from one tag.
 
 ## Base URL
 
 `http://127.0.0.1:44842` by default. Naming any other host makes HTTPS mandatory and a token
-required — see [install.md → remote access](install.md#remote-access).
+required, as described in [install.md → remote access](install.md#remote-access).
 
 ## Authentication
 
 On loopback there is no authentication: there is no network to authenticate against.
 
-Beyond loopback, **every `/api/*` route except `GET /api/config` requires the token**, either as a
+Beyond loopback, every `/api/*` route except `GET /api/config` requires the token, either as a
 header or as a query parameter:
 
 ```http
@@ -67,21 +67,21 @@ The API answers with **two different error shapes**, and which one you get depen
 
 | Status | Body | When |
 |---|---|---|
-| `400` | JSON — `{"error":"invalid JSON"}`, `{"error":"port must be a number"}`, `{"error":"host must be a string"}`, and the host/TLS validation messages | a malformed `POST /api/config` body |
-| `401` | JSON — `{"error":"unauthorized"}` | no valid token, beyond loopback |
-| `404` | **plain text** — `unknown session`, `unknown or ended session`, `no output for that tool`, `no such API call`, `no prompt found`, `not found` | the named session, call or asset does not exist |
-| `405` | **plain text** — `method not allowed` | any method other than `GET`, outside the two documented `POST`s |
-| `415` | JSON — `{"error":"Content-Type must be application/json"}` | `POST /api/config` without the JSON content type |
+| `400` | JSON: `{"error":"invalid JSON"}`, `{"error":"port must be a number"}`, `{"error":"host must be a string"}`, and the host/TLS validation messages | a malformed `POST /api/config` body |
+| `401` | JSON: `{"error":"unauthorized"}` | no valid token, beyond loopback |
+| `404` | **plain text**: `unknown session`, `unknown or ended session`, `no output for that tool`, `no such API call`, `no prompt found`, `not found` | the named session, call or asset does not exist |
+| `405` | **plain text**: `method not allowed` | any method other than `GET`, outside the two documented `POST`s |
+| `415` | JSON: `{"error":"Content-Type must be application/json"}` | `POST /api/config` without the JSON content type |
 
 A missing required query parameter is not a `400`: the route looks up the empty string, finds
-nothing and answers `404`. `GET /api/search` is the exception — an absent `q` is an empty query,
-not a bad request, and it answers `200` with no rows.
+nothing and answers `404`. `GET /api/search` is the exception, where an absent `q` is an empty
+query rather than a bad request, and it answers `200` with no rows.
 
 ## Caching
 
 Every JSON response and every static asset goes through one path:
 
-- `cache-control: no-cache` — revalidate every time; it does **not** mean "do not store".
+- `cache-control: no-cache`, which means revalidate every time and does **not** mean "do not store".
 - A strong `etag`. A matching `if-none-match` gets `304` with no body.
 - Bodies of **1400 bytes or more** are gzipped when the request accepts it. A compressed body's
   ETag carries a `-gz` suffix, so a strong validator is never shared between two different sets of
@@ -96,20 +96,20 @@ session. A browser-based client has to be served by seedeep itself.
 
 | Method | Path | Required parameters | Answers |
 |---|---|---|---|
-| `GET` | `/` | — | the GUI page (any other path serves its asset, else `404`) |
-| `GET` | `/api/config` | — | redacted config + server state; **the only route needing no token** |
+| `GET` | `/` | none | the GUI page (any other path serves its asset, else `404`) |
+| `GET` | `/api/config` | none | redacted config + server state; **the only route needing no token** |
 | `POST` | `/api/config` | JSON body | writes the config file, answers as `GET` does |
-| `POST` | `/api/restart` | — | `{"ok":true}`, then hands the port to a successor |
-| `GET` | `/api/update` | — | which version is current, and how this install updates |
-| `GET` | `/api/sessions` | — | `CatalogueRecord[]` — the roster's stable half |
-| `GET` | `/api/live` | — | `LivePayload` — the running sessions |
-| `GET` | `/api/digest` | — (`sessionId` optional) | `DigestEntry[]`, or one `DigestEntry` |
-| `GET` | `/api/session-stats` | — | turns and tokens per session |
-| `GET` | `/api/baseline` | — | `Baseline` — the user's per-turn token baseline |
-| `GET` | `/api/retro` | — | `Retrospective` — the corpus retrospective |
-| `GET` | `/api/compare` | — | `Comparison` — session weight by time window |
-| `GET` | `/api/search` | — (`q` carries the query) | `SearchResponse` |
-| `GET` | `/api/stream` | — | SSE, every session, live |
+| `POST` | `/api/restart` | none | `{"ok":true}`, then hands the port to a successor |
+| `GET` | `/api/update` | none | which version is current, and how this install updates |
+| `GET` | `/api/sessions` | none | `CatalogueRecord[]`, the roster's stable half |
+| `GET` | `/api/live` | none | `LivePayload`, the running sessions |
+| `GET` | `/api/digest` | none (`sessionId` optional) | `DigestEntry[]`, or one `DigestEntry` |
+| `GET` | `/api/session-stats` | none | turns and tokens per session |
+| `GET` | `/api/baseline` | none | `Baseline`, the user's per-turn token baseline |
+| `GET` | `/api/retro` | none | `Retrospective`, the corpus retrospective |
+| `GET` | `/api/compare` | none | `Comparison`, session weight by time window |
+| `GET` | `/api/search` | none (`q` carries the query) | `SearchResponse` |
+| `GET` | `/api/stream` | none | SSE, every session, live |
 | `GET` | `/api/replay` | `sessionId` | SSE, one session's history |
 | `GET` | `/api/tool-output` | `sessionId`, `toolUseId` | `ToolOutput` |
 | `GET` | `/api/call-io` | `sessionId`, `callId` | `CallIO` |
@@ -133,7 +133,7 @@ Returns `CatalogueRecord[]` (`core/roster.ts`).
 
 ### `GET /api/live`
 
-The handful of sessions actually running, in full. This is the only thing a client polls — about
+The handful of sessions actually running, in full. This is the only thing a client polls, about
 1 KB against the catalogue's hundreds.
 
 Returns `LivePayload` (`core/roster.ts`): `{ total, sessions, pidVisible }`.
@@ -146,7 +146,7 @@ would have produced whole.
 Turn count and token total per session, from the aggregate cache.
 
 Returns `Record<sessionId, { turns: number; totalTokens: number }>`. A session the cache has not
-folded yet is simply absent — the object is not padded with zeroes.
+folded yet is simply absent, and the object is not padded with zeroes.
 
 ---
 
@@ -154,7 +154,7 @@ folded yet is simply absent — the object is not padded with zeroes.
 
 ### `GET /api/digest`
 
-**The endpoint for a client that does not own the reducer.** The server has already reduced: an
+The endpoint for a client that does not own the reducer. The server has already reduced: an
 entry is derived state, not events to fold.
 
 | Parameter | Required | Meaning |
@@ -163,7 +163,7 @@ entry is derived state, not events to fold.
 
 - Without it: `DigestEntry[]`, one per live session.
 - With it: a single `DigestEntry`, or **`404 unknown or ended session`**. A session that ends leaves
-  immediately — there is no tombstone entry.
+  immediately, and there is no tombstone entry.
 
 Returns `DigestEntry` (`server/digest.ts`): the project and subject, the context block, the model
 and effort, the turn's state (`done` | `interrupted` | `live`) and what it is doing now, the
@@ -184,26 +184,26 @@ One session's history as SSE, then `replay-end`.
 | Parameter | Required | Meaning |
 |---|---|---|
 | `sessionId` | yes | `404 unknown session` if not in the roster |
-| `from` | no | resume marks — deliver only what a client has not already seen |
+| `from` | no | resume marks, so as to deliver only what a client has not already seen |
 
 ---
 
 ## Reading back one thing
 
-These four take a session id and one more identifier. **The file path always comes from the roster,
-never from the query**: a caller can only name a session seedeep already discovered, so no path
+These four take a session id and one more identifier. The file path always comes from the roster,
+never from the query: a caller can only name a session seedeep already discovered, so no path
 outside the corpus is reachable.
 
 ### `GET /api/tool-output`
 
-`sessionId`, `toolUseId` — both required.
+`sessionId` and `toolUseId`, both required.
 
 Returns `ToolOutput` (`server/tool-output.ts`): `{ toolUseId, text, len, truncated }`, the text
 capped at 20 000 characters. `404 no output for that tool` when the id names nothing.
 
 ### `GET /api/call-io`
 
-`sessionId`, `callId` — both required.
+`sessionId` and `callId`, both required.
 
 Returns `CallIO` (`server/call-io.ts`): the call's input and output, whether the output carried
 tools, its narration, its length, and the model, usage and effort that call ran on. Same 20 000
@@ -211,11 +211,11 @@ cap. `404 no such API call`.
 
 ### `GET /api/agent-prompt`
 
-`sessionId`, `agentId` — both required.
+`sessionId` and `agentId`, both required.
 
 Returns `{ text, truncated }`, capped at **1000** characters.
 
-**It serves workflow members only.** The prompt is read from
+It serves workflow members only. The prompt is read from
 `<sessionDir>/subagents/workflows/<runId>/agent-<agentId>.jsonl`; an ordinary subagent has no such
 file and gets `404 no prompt found`.
 
@@ -238,13 +238,13 @@ Each takes `sessionId`, each answers `404 unknown session`.
 ### `GET /api/retro`, `GET /api/baseline`
 
 `Retrospective` and `Baseline` (`core/types.ts`), both folded from the aggregate cache. `/api/baseline`
-is exactly the `baseline` that rides along inside `/api/retro` — the small route exists so a client
+is exactly the `baseline` that rides along inside `/api/retro`; the small route exists so a client
 needing only the baseline does not fetch the retrospective.
 
 ### `GET /api/compare`
 
 `Comparison` (`core/types.ts`): session weight per time window, where weight is a token count
-weighted by the kind of token and the model that spent it — never a cost in currency.
+weighted by the kind of token and the model that spent it, never a cost in currency.
 
 ### `GET /api/search`
 
@@ -253,7 +253,7 @@ weighted by the kind of token and the model that spent it — never a cost in cu
 | `q` | no, in effect | the words; every word narrows. Absent or empty answers `200` with no rows rather than an error |
 
 Returns `SearchResponse` (`core/types.ts`): `{ terms, rows, ms }`. An empty or absent `q` is not an
-error — it answers `{"terms":[],"rows":[],"ms":0}`.
+error, and answers `{"terms":[],"rows":[],"ms":0}`.
 
 What is indexed and how rows are ordered: [search.md](search.md).
 
@@ -274,7 +274,7 @@ Returns the configuration with every credential redacted, plus:
 | `dev` | present only when authorised: this server runs from source |
 | `auth.token` | always `***` |
 | `tls.fingerprint` | the SHA-256 of the served leaf certificate; `cert` and `key` paths are not returned |
-| `notifications.webhook.url` | `""` when unset, otherwise redacted — the URL is a credential, not an address |
+| `notifications.webhook.url` | `""` when unset, otherwise redacted, since the URL is a credential rather than an address |
 | `notifications.webhook.headers` | keys only; every value redacted |
 | `restart_pending` | a bound-at-startup setting was changed and needs a restart to take effect |
 | `save_pending` | the file on disk differs from what this process is running |
@@ -296,15 +296,15 @@ restart; the bound-at-startup settings are the ones `restart_pending` names.
 
 ### `GET /api/update`
 
-What npm says is current, from a cache that refreshes once an hour. It is how a REMOTE client — the
-tray, or the portal in a browser — learns the version of the server it is pointed at. The local CLI
+What npm says is current, from a cache that refreshes once an hour. It is how a REMOTE client, the
+tray or the portal in a browser, learns the version of the server it is pointed at. The local CLI
 does not use it: `seedeep update` reads the same cache directly, and forces a fetch.
 
 Returns `UpdateStatus` (`server/update-check.ts`) plus:
 
 | Field | Meaning |
 |---|---|
-| `current` | **this server's** version — a client on another machine compares `latest` against its own |
+| `current` | **this server's** version; a client on another machine compares `latest` against its own |
 | `channel` | how this server was installed (`npm`, `download`, `checkout`, …) |
 | `command` | what to tell the user to run, or `null` when replacing a file by hand is the answer |
 
@@ -337,7 +337,7 @@ There is no `Last-Event-ID` handling and no backlog: a client that reconnects re
 ### Deduplicating live against replay
 
 Every file-tailed event carries a **`seq`**: a per-file line number, a POSITION rather than a
-counter. One `seq` per source line — a line yielding several events (`usage` + `attribution` +
+counter. One `seq` per source line, so a line yielding several events (`usage` + `attribution` +
 `tool-start`) shares one.
 
 A client that opens a replay while the live stream is running dedups **per `(sessionId, agentId)`**,
@@ -347,14 +347,14 @@ that position is three numbers, not one:
 | Mark | Meaning | Test |
 |---|---|---|
 | `covered` | the last line a replay delivered ENTIRE | a live event at or below it is a re-delivery (`seq <=`) |
-| `liveMax` | the live frontier — a line possibly delivered only in PART | live drops only what is strictly earlier (`seq <`), so every event of the newest line passes |
-| `liveSeen` | how many events of that frontier line arrived | — |
+| `liveMax` | the live frontier, a line possibly delivered only in PART | live drops only what is strictly earlier (`seq <`), so every event of the newest line passes |
+| `liveSeen` | how many events of that frontier line arrived | |
 
 A replay in flight is measured against a **snapshot** of that position taken when it opened.
 Measuring against a mark the same replay is advancing drops every event of a line after its first.
 
-Events with `seq < 0` are out of band — a `subagent-meta` read from a sidecar has no line position —
-and are exempt from the dedup; the reducer folds them idempotently.
+Events with `seq < 0` are out of band, since a `subagent-meta` read from a sidecar has no line
+position, and are exempt from the dedup; the reducer folds them idempotently.
 
 When the tailer re-reads a file from offset 0 (it shrank), `seq` restarts with it. That is a
 re-delivery from 0, which the rules above already absorb.
