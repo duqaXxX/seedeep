@@ -137,6 +137,8 @@ const SECTIONS_WITHOUT_A_FIGURE: Record<string, string> = {
     'PENDING — the strip is only worth a figure with SEVERAL tabs in different states, and a capture opens one session',
   Notifications:
     "the surface is an OS banner and a POST to somebody else's service — neither is a crop of seedeep, and the switches that configure it are already in the two Settings figures",
+  'Checking the numbers yourself':
+    'a recipe, not a surface — it is the ten lines that recompute the token split from the session files, and a screenshot of seedeep cannot verify seedeep',
 };
 
 describe('docs/features.md — a figure per surface', () => {
