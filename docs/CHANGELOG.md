@@ -9,6 +9,16 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Fixed
+
+- The README's two loudest figures could not be reproduced by a reader. "39 of 47 failed calls were
+  the last line their session ever wrote", measured once over 1830 transcripts, comes back as 3 of 8
+  on a 770-file corpus, and "a quarter of every token spent" carried neither a date nor a corpus.
+  The failed-call bullet now states the mechanism, which is what a reader can check, and the token
+  figure is replaced by one that names its date, its corpus and its method.
+- `docs/features.md` gains *Checking the numbers yourself*: the ten lines that recompute the token
+  split straight from the session files, including the deduplication that a naive sum gets wrong.
+
 ## 0.31.2 (2026-08-25)
 
 ### Changed

@@ -492,8 +492,8 @@ is why a stopped session looks exactly like a thinking one everywhere else.*
 
 An API call that fails (an expired login, a session limit, an overloaded server)
 ends the turn and leaves the session sitting there. It is the quietest failure
-there is: a failed call is usually the last model line its session ever writes,
-and nothing on screen says so.
+there is: the error is the last line the transcript carries for that turn, and
+nothing on screen says so.
 
 seedeep makes it a state rather than a passing message: the tab dot turns **red**,
 the menu-bar icon turns red above every other signal, the tray panel files the
@@ -605,6 +605,39 @@ view follows it; a spawn block IS its subagent (launch intent, tools, real
 duration) and unfolds the child's own flow as a parallel lane below, filling
 **while the agent runs**. Every block clicks through to the same drawer as the rest
 of the app. The full rules live in [`trace.md`](trace.md).
+
+## Checking the numbers yourself
+
+Every figure seedeep draws comes from the session files Claude Code already wrote, so
+any of them can be recomputed without seedeep. This is the one that decides how the
+retrospective reads, and it takes ten lines:
+
+```python
+import json, glob, os, collections
+tot, seen = collections.Counter(), set()
+for f in glob.glob(os.path.expanduser('~/.claude/projects/*/**/*.jsonl'), recursive=True):
+    for line in open(f, encoding='utf8'):
+        if '"usage"' not in line: continue
+        try: msg = json.loads(line).get('message') or {}
+        except Exception: continue
+        u, rid = msg.get('usage'), msg.get('id')
+        if not isinstance(u, dict) or not rid or rid in seen: continue
+        seen.add(rid)                      # one usage block per CALL, repeated on every line of it
+        for k in ('input_tokens', 'output_tokens',
+                  'cache_read_input_tokens', 'cache_creation_input_tokens'):
+            tot[k] += u.get(k) or 0
+T = sum(tot.values())
+print(f'{len(seen):,} calls, {T:,} tokens')
+for k, v in tot.most_common(): print(f'  {k:30} {v:>14,}  {100*v/T:5.1f}%')
+```
+
+The `seen` set is the part that matters: Claude Code writes one line per content block
+and repeats the call's whole `usage` on every one of them, so summing per line
+multiplies the total. seedeep guards the same way, with `newCall`.
+
+On the machine seedeep is developed on, over 770 session files and 34,724 calls on
+2026-08-25, that prints 98.4% cache reads and 0.3% output. Your own corpus will not
+match those figures, and that is the point of running it.
 
 ## Home — your retrospective, from minute zero
 

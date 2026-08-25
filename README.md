@@ -36,10 +36,9 @@ npm i -g seedeep && seedeep     # Node or Bun; binaries below for neither
 Eight things a Claude Code session does not report, and what `seedeep` shows instead.
 
 - A failed API call ends the turn silently. An expired login, a session limit, an
-  overloaded server: the turn stops and the terminal keeps looking normal. Across
-  1830 real transcripts, 39 of 47 failed calls were the last line their session ever
-  wrote. seedeep turns the tab red, files the session under *Broken*, and turns the
-  menu-bar icon red above every other signal.
+  overloaded server: the turn stops, the terminal keeps looking normal, and the
+  transcript's last line is the error itself. seedeep turns the tab red, files the
+  session under *Broken*, and turns the menu-bar icon red above every other signal.
 - An approval dialog reaches no log at all, so a session stopped on a permission
   prompt looks identical to one that is thinking. seedeep reads Claude Code's own
   live state, turns the tab amber the moment it stops, and names what is waiting to
@@ -50,9 +49,12 @@ Eight things a Claude Code session does not report, and what `seedeep` shows ins
 - The window size depends on the model. The bar follows the model your calls really
   run on, so `/model` mid-session moves it, and a Haiku subagent is measured against
   200k inside a session running on 1M.
-- A resumed turn re-pays for its context. After the cache goes cold, the turn
-  re-creates its whole prompt before doing any work. On a real corpus that accounts
-  for a quarter of every token spent, and on screen it looks like work.
+- Most of what you spend is context you already sent. Measured on 2026-08-25 over
+  one machine's 770 session files and 34,724 API calls: 98% of the tokens processed
+  were cache reads, and 0.3% were output. Weighted by what each kind actually costs,
+  re-read context is still 71% of the bill. The recipe is in
+  [`docs/features.md`](docs/features.md#checking-the-numbers-yourself), so you can run
+  it on your own sessions.
 - Waste is scored per turn. Seven deterministic checks (no LLM) run as each turn
   closes, each quoting the Claude Code documentation that justifies it. They report
   what the turn did right as well.
@@ -95,7 +97,7 @@ notifies: not a subagent finishing, not a tool error.
 | Banner | Ships | Why |
 | -- | -- | -- |
 | **Waiting for your approval** | on | the session cannot continue until you answer |
-| **The last API call failed** | on | it has stopped and nothing on screen says so (39 of 47 real failures were the last line their session wrote) |
+| **The last API call failed** | on | it has stopped, and nothing on screen says so |
 | **Turn finished** | **off** | routine news, off by default so the two above stay unmuted |
 
 Each banner is one title and one line: which session, and what happened. The command
