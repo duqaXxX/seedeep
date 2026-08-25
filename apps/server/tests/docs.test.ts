@@ -130,3 +130,39 @@ test('every doc under docs/ is linked from somewhere', () => {
     .filter((f) => !corpus.includes(f.slice('docs/'.length)) || corpus.split(f.slice('docs/'.length)).length < 3);
   assert.deepEqual(orphans, [], 'these docs are reachable from nothing but themselves');
 });
+
+/**
+ * Prose outside a heading, a fenced block or a backtick span, with every inline code span removed.
+ * The three exemptions are not stylistic: a heading's em dash is part of an anchor other docs link
+ * to, and a backtick span quotes a literal seedeep prints (`Waiting for your approval — Bash`),
+ * which the doc would be lying about if it rewrote it.
+ */
+function proseLines(markdown: string): string[] {
+  const out: string[] = [];
+  let fenced = false;
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trimStart();
+    if (line.startsWith('```')) {
+      fenced = !fenced;
+      out.push('');
+      continue;
+    }
+    out.push(fenced || line.startsWith('#') ? '' : raw.replace(/`[^`]*`/g, ''));
+  }
+  return out;
+}
+
+// The one tell of AI-written prose a regex can settle. A stranger's only public comment on seedeep
+// was that its README read as generated, and the corpus held 1094 em dashes at the time. The rest
+// of the register — paragraphs closing on an aphorism, "not X but Y", bold lead-ins — needs
+// judgement and lives in the project's writing rules; this catches the one that can be counted.
+test('no em dash in a public doc’s prose', () => {
+  const hits: string[] = [];
+  for (const f of trackedMarkdown()) {
+    if (isChangelog(f)) continue; // a released entry is a historical record, never rewritten
+    proseLines(readFileSync(join(ROOT, f), 'utf8')).forEach((line, i) => {
+      if (line.includes('—')) hits.push(`${f}:${i + 1} → ${line.trim().slice(0, 90)}`);
+    });
+  }
+  assert.deepEqual(hits, [], 'use : , . ; or parentheses — a literal seedeep prints goes in backticks');
+});
