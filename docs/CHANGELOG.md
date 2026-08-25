@@ -9,6 +9,8 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.31.2 (2026-08-25)
+
 ### Changed
 
 - Every public document rewritten to read as a reference rather than as a pitch. The prose carried
