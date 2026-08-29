@@ -57,6 +57,44 @@ const bareSlash = (uuid: string, text: string, promptId: string, ts = '2026-07-1
     promptId,
     message: { role: 'user', content: text },
   });
+// Both shapes again, as Claude Code writes them from 2.1.237: a CUSTOM command (one defined by a
+// `.md` file) now carries `origin: {kind:'human'}`, which is what a typed prompt carries. Measured
+// 2026-08-29 over 1046 real transcripts — 0 of 97 such lines carry an origin up to 2.1.234, 25 of
+// 25 from 2.1.237, while built-in commands (`/clear`, `/model`) carry none on 817 of 817 in every
+// version, which is why `slash` above stays as it is. Read owner-first they were filed as ordinary
+// prompts: the round survived, but the command lost its NAME, so the Commands widget went empty.
+const slashHuman = (uuid: string, name: string, args = '', promptId?: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: '2026-07-14T10:00:00.000Z',
+    origin: { kind: 'human' },
+    ...(promptId ? { promptId } : {}),
+    message: {
+      role: 'user',
+      content: `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`,
+    },
+  });
+const bareSlashHuman = (uuid: string, text: string, promptId: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: '2026-07-14T10:00:00.000Z',
+    origin: { kind: 'human' },
+    promptId,
+    message: { role: 'user', content: text },
+  });
+// A user line Claude Code writes on its own behalf. It is the reason the plain-text branch is
+// gated at all: with `origin` no longer proving "not the user", the gate reads the KIND, and this
+// is the only other kind a user line carries (345 of them in the same corpus).
+const notificationLine = (uuid: string, text: string) =>
+  JSON.stringify({
+    type: 'user',
+    uuid,
+    timestamp: '2026-07-14T10:00:00.000Z',
+    origin: { kind: 'task-notification' },
+    message: { role: 'user', content: text },
+  });
 // What a forked skill (`/code-review`, run in the background) leaves in the PARENT transcript
 // instead of an `Agent` tool_use: a local_command line carrying the launch as JSON.
 const forkedLaunch = (uuid: string, agentId: string, skillName: string, description: string) =>
@@ -483,6 +521,70 @@ test('golden transcript: a command written as plain text opens its turn', () => 
   assert.ok(
     snap.commands.some((c) => c.name === 'code-review'),
     'the command is counted',
+  );
+});
+
+// ── The same two shapes, once Claude Code marks them as the user's own (2.1.237) ─────────────
+// The bug: a custom command still opened its turn, so nothing looked broken, but it was filed as
+// an ordinary prompt. The Commands widget lost every custom command, the per-turn counts lost
+// them, and the prompt on screen was the raw `<command-message>` markup instead of the args.
+
+test('golden transcript: a tagged command marked human-origin still reaches the Commands widget', () => {
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistant('a1', 40_000),
+    turnDuration('t1'),
+    slashHuman('u2', 'paste-image', 'why is this broken'),
+    assistant('a2', 70_000),
+  ]);
+
+  assert.equal(snap.turnList.length, 2, 'the command opened a turn of its own');
+  const last = snap.turnList[1]!;
+  assert.equal(last.command, 'paste-image', 'the command keeps its NAME, which is what was lost');
+  assert.equal(last.prompt, 'why is this broken', 'the args are the prompt, never the raw markup');
+  assert.ok(
+    snap.commands.some((c) => c.name === 'paste-image' && c.count === 1),
+    'the session-wide Commands widget counts it',
+  );
+  assert.ok(
+    last.commands.some((c) => c.name === 'paste-image'),
+    "the turn's own counts carry it too — a widget scoped to a turn reads these",
+  );
+});
+
+test('golden transcript: a plain-text command marked human-origin opens its turn and is counted', () => {
+  // `/code-review` writes ONLY this shape, and it moved with the tagged one: 26 lines with no
+  // origin through 2.1.233, then 7 of 7 with one from 2.1.241.
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistant('a1', 40_000),
+    turnDuration('t1'),
+    bareSlashHuman('u2', '/code-review the diff', 'p-2'),
+    assistant('a2', 70_000),
+  ]);
+
+  const last = snap.turnList[1]!;
+  assert.equal(last.command, 'code-review');
+  assert.equal(last.prompt, 'the diff');
+  assert.ok(snap.commands.some((c) => c.name === 'code-review'));
+});
+
+test('golden transcript: a task notification shaped like a command is NOT one', () => {
+  // What the plain-text gate is FOR, now that it reads the KIND rather than the mere presence of
+  // `origin`. No real notification opens with a slash today, so this is the shape the gate would
+  // have to survive rather than one it has met.
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistant('a1', 40_000),
+    turnDuration('t1'),
+    notificationLine('u2', '/deploy finished on the staging box'),
+  ]);
+
+  assert.equal(snap.turnList.length, 1, 'a notification is not a round the user sent');
+  assert.equal(
+    snap.commands.some((c) => c.name === 'deploy'),
+    false,
+    'and it never reaches the Commands widget',
   );
 });
 
