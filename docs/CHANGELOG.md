@@ -11,6 +11,15 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- Custom slash commands are read as commands again. Claude Code 2.1.237 began writing
+  `origin: {kind:"human"}` on a command defined by a `.md` file (measured over 1046 session files:
+  0 of 97 such lines up to 2.1.234, then 25 of 25; built-in commands like `/clear` still carry
+  none), and `userLineIntent` decided what a line was from its owner before its shape. Every custom
+  command was therefore filed as an ordinary typed prompt: no row in the Commands card, no per-turn
+  command count, and a prompt shown as the raw `<command-message>` markup. The shape is now read
+  first, which is what the function's contract already stated. `/code-review`, which writes only the
+  untagged shape, is recovered by the same change. Re-reading the whole corpus, 32 lines change
+  classification and 39,346 do not: older sessions parse exactly as before.
 - The README's two loudest figures could not be reproduced by a reader. "39 of 47 failed calls were
   the last line their session ever wrote", measured once over 1830 transcripts, comes back as 3 of 8
   on a 770-file corpus, and "a quarter of every token spent" carried neither a date nor a corpus.
@@ -18,6 +27,13 @@ Everything released before `0.20.0` — including the pre-publication developmen
   figure is replaced by one that names its date, its corpus and its method.
 - `docs/features.md` gains *Checking the numbers yourself*: the ten lines that recompute the token
   split straight from the session files, including the deduplication that a naive sum gets wrong.
+
+### Added
+
+- Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
+  `human` and `task-notification`. The untagged command shape is admitted on exactly those, so a
+  third kind would make one command read as a prompt with nothing anywhere reporting it.
+  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
 
 ## 0.31.2 (2026-08-25)
 

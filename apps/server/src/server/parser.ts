@@ -175,7 +175,6 @@ export function userLineIntent(
   if (Array.isArray(content) && content.some((b: any) => b?.type === 'tool_result')) return null;
   const text = typeof content === 'string' ? content : Array.isArray(content) ? renderedText(content) : '';
   const isHumanOrigin = typeof d?.origin === 'object' && d.origin !== null && d.origin.kind === 'human';
-  if (isHumanOrigin) return text.trim() ? { text, command: null, kind: 'human' } : null;
   // A headless line is headless whatever it says. Decided BEFORE the shape because an sdk line
   // carries no `origin` either (0 of 5586 measured), so a shape-first reading would file
   // `claude -p "/review this"` as a slash command — and turn detection keeps a command while it
@@ -183,8 +182,14 @@ export function userLineIntent(
   // trap applies to the tagged shape, which is why `promptSource` is read before both rather than
   // guarded inside one of them.
   const sdk = d?.promptSource === 'sdk';
+  // SHAPE before OWNER, which is what the contract above already says: `kind` names whose line
+  // it is, `command` names what it is, and the two are independent. Reading the owner first was
+  // a shortcut that held only while Claude Code wrote `origin` on nothing that was a command.
+  // Since 2.1.237 it writes `origin: {kind:'human'}` on every CUSTOM command, so the shortcut
+  // filed all of them as plain prompts and the Commands card went empty for them.
   const cmd = commandShape(text, d);
   if (cmd) return { ...cmd, kind: sdk ? 'sdk' : 'command' };
+  if (isHumanOrigin) return text.trim() ? { text, command: null, kind: 'human' } : null;
   if (sdk && text.trim()) return { text, command: null, kind: 'sdk' };
   return null;
 }
@@ -209,12 +214,17 @@ function commandShape(text: string, d: any): { text: string; command: string } |
   // prompt" it dropped the entire round — the turn never existed and its work was credited to the
   // previous one.
   //
-  // The gate is `origin` ABSENT, not merely "not human": a task-notification is a `user` line with
-  // an origin of its own, and only a line Claude Code wrote with no origin at all is the user's
-  // own keystrokes. `isMeta` is excluded for the same reason it is everywhere else — the caveat
+  // The gate keeps this branch on the user's own keystrokes, which Claude Code marks in two ways
+  // depending on its age: NO origin at all up to 2.1.234, and `origin.kind: 'human'` from 2.1.237
+  // (measured 2026-08-29 — `/code-review`, which writes only this shape, moved with it: 26 lines
+  // with no origin through 2.1.233, then 7 of 7 with one). It is deliberately not "origin absent"
+  // and not "any origin": `human` and `task-notification` are the only two kinds a user line
+  // carries (2371 and 345 lines), and a notification that happens to open with a slash must not
+  // become a command. `isMeta` is excluded for the same reason it is everywhere else — the caveat
   // Claude Code injects around a command is not the command. Nothing here reads `promptSource`:
   // whose line it is was settled before this was called.
-  if (d?.origin == null && d?.isMeta !== true) {
+  const keystrokes = d?.origin == null || (typeof d.origin === 'object' && d.origin?.kind === 'human');
+  if (keystrokes && d?.isMeta !== true) {
     const bare = BARE_COMMAND_RE.exec(text);
     if (bare) {
       const args = (bare[2] ?? '').trim();

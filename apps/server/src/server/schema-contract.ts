@@ -257,18 +257,40 @@ export const CLAIMS: Claim[] = [
   {
     id: 'C10',
     scene: 2,
-    describe: '<command-name> + <command-args>, and NO origin on a command line',
+    describe: '<command-name> + <command-args> open the content of a command line',
     reader: 'server/parser.ts:commandShape',
     investigate:
-      'the parser trusts the tag ONLY on a line without human origin. If commands gained an `origin`, every typed prompt quoting a tag gets misread.',
+      'the two tags are the ONLY thing that marks a command. Every other field on the line — origin, userType, entrypoint, isSidechain — is identical to a plain typed prompt (measured 2026-08-29 over 32 command lines and 575 prompts), so if the tags go, nothing else can tell them apart.',
     kind: 'gesture',
     provoked: (ctx) => userLineWith(ctx, ECHO_MARKER) !== null,
     holds: (ctx) => {
       const d = userLineWith(ctx, `<command-name>/${ECHO_MARKER}`) ?? userLineWith(ctx, ECHO_MARKER);
       if (!d) return false;
       const s = JSON.stringify(d);
-      return s.includes('<command-name>') && s.includes('<command-args>') && d.origin === undefined;
+      // `origin` is deliberately NOT asserted here. It used to be, and it caught a real break:
+      // Claude Code 2.1.237 started writing `origin: {kind:'human'}` on a custom command, which
+      // the parser then read as a plain prompt. The parser was fixed to read the SHAPE first,
+      // so the tagged branch no longer depends on origin either way — asserting it now would
+      // report a break in a reader that has stopped caring. What the bare branch still depends
+      // on moved to C28.
+      return s.includes('<command-name>') && s.includes('<command-args>');
     },
+  },
+
+  {
+    id: 'C28',
+    scene: 2,
+    describe: "origin.kind on a user line is 'human' or 'task-notification', and nothing else",
+    reader: 'server/parser.ts:commandShape',
+    investigate:
+      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` starts being one.",
+    kind: 'gesture',
+    provoked: (ctx) => typed(ctx, 'user').some((d) => d?.origin != null),
+    holds: (ctx) =>
+      typed(ctx, 'user')
+        .map((d) => d?.origin)
+        .filter((o) => o != null)
+        .every((o) => o?.kind === 'human' || o?.kind === 'task-notification'),
   },
 
   {

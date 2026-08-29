@@ -147,6 +147,29 @@ test('removing turn_duration makes C4 BROKEN', () => {
   assert.equal(c4.outcome, 'BROKEN');
 });
 
+test('a THIRD origin.kind makes C28 BROKEN — the bare shape loses its only gate', () => {
+  // `commandShape` admits the untagged shape on the user's own keystrokes: no origin, or
+  // origin.kind human. A kind it has never seen is neither, so a real command carrying it
+  // stops being one — silently, since the line still opens a turn as a plain prompt.
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  (lines[0] as any).origin = { kind: 'plugin-invocation' };
+  const c28 = evaluate(
+    CLAIMS.filter((c) => c.id === 'C28'),
+    ctxOf(lines),
+  )[0]!;
+  assert.equal(c28.outcome, 'BROKEN');
+});
+
+test('C28 holds on the two kinds Claude Code actually writes', () => {
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  lines.push({ ...structuredClone(lines[0]), uuid: 'u-2', origin: { kind: 'task-notification' } } as any);
+  const c28 = evaluate(
+    CLAIMS.filter((c) => c.id === 'C28'),
+    ctxOf(lines),
+  )[0]!;
+  assert.equal(c28.outcome, 'HOLDS');
+});
+
 test('the report names the reader site and the next action, not just the field', () => {
   const lines = structuredClone(REAL_SHAPE_LINES);
   delete (lines[0] as any).origin;

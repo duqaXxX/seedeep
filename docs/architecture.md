@@ -710,10 +710,11 @@ counts against the turn that asked for it.
 
 The timeline holds everything the user sent, and each entry is classified by what it
 COST, never by its name. A typed prompt and a slash command are indistinguishable in
-intent (`/paste-image fix this` is a prompt with a helper attached) but not in the log: a
-slash command carries no `origin`. Gating turns on `origin.kind: 'human'` therefore drops
-every one of them: a `/paste-image` round gets no turn at all, so nothing is live while
-Claude works and its `turn_duration` lands on the previous turn. The parser reports what was
+intent (`/paste-image fix this` is a prompt with a helper attached), and since Claude Code
+2.1.237 they are indistinguishable in every FIELD of the log as well: a custom command
+carries `origin: {kind:'human'}`, `userType: 'external'`, `entrypoint: 'cli'` and
+`isSidechain: false`, exactly like a prompt someone typed. Only the tags in its content set it
+apart. The parser reports what was
 sent and leaves the classification to the reducer, which decides from the
 token count (`TurnKind`):
 - **`work`:** it consumed tokens, meaning typed prompts and commands that run the model.
@@ -726,21 +727,27 @@ token count (`TurnKind`):
   window. A closed, intrinsic pair; `/compact` costs real tokens, so cost cannot separate it
   from a work turn; only intent can, which is why these two names appear in the code.
 
-Whose line it is is decided before what shape it has. A headless `claude -p` line carries no
-`origin` either, so reading the shape first would file `claude -p "/review
-this"` as a slash command, and turn detection keeps a command while it drops an sdk
-prompt, so a headless run would grow a turn it never had. `promptSource` is therefore read ahead of
-both shapes rather than guarded inside one: an sdk line stays an sdk line and still names its
-session with the command's arguments.
+What a line IS is decided before whose it is. The reverse order held only while Claude Code wrote
+`origin` on nothing that was a command, and 2.1.237 ended that: reading the owner first answered
+"a person typed this" for every custom command and stopped, so the command lost its name and the
+Commands card went empty for it. `promptSource` keeps its place ahead of both, because a headless
+`claude -p` line carries no `origin` at all: reading the shape first would file
+`claude -p "/review this"` as a slash command, and turn detection keeps a command while it drops an
+sdk prompt, so a headless run would grow a turn it never had. An sdk line therefore stays an sdk
+line and still names its session with the command's arguments.
 
 A command is written in one of TWO shapes, and both are the user sending something. The
-familiar one is the expansion: `<command-message>` / `<command-name>` / `<command-args>`. The other
-is the command exactly as it was typed, in plain text (`/code-review del diff`), with no `origin`, no
-`promptSource` and no tags. It is the rarer of the two, and reading only the tagged shape loses the
-whole round: the command gets no turn at all and its work is credited to the previous one. The gate
-for the plain shape is
-`origin` **absent** (a task-notification is a `user` line with an origin of its own) and not
-`isMeta`, and the line must be a command and nothing else, anchored at both ends.
+familiar one is the expansion: `<command-message>` / `<command-name>` / `<command-args>`, and it is
+read from the tags alone, whatever the line's owner. The other
+is the command exactly as it was typed, in plain text (`/code-review the diff`), with no tags at
+all. It is the rarer of the two, and reading only the tagged shape loses the
+whole round: the command gets no turn at all and its work is credited to the previous one. Having
+no tags, it needs a gate, and the gate is that the line be the user's own keystrokes: `origin`
+absent (Claude Code up to 2.1.234) or `origin.kind: 'human'` (2.1.237 onward), and not `isMeta`,
+with the line a command and nothing else, anchored at both ends. It is deliberately neither
+"origin absent" nor "any origin": `task-notification` is the other kind a `user` line carries, and
+a notification that opens with a slash must not become a command. Claim **C28** holds Claude Code
+to those two kinds.
 
 One invocation can write BOTH shapes, and they share a `promptId`. The reducer folds them into
 one turn, keyed by `promptId` **and the command name**: a prompt QUEUED while a command runs

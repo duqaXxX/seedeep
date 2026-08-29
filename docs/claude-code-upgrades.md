@@ -115,8 +115,19 @@ The vocabularies seedeep reads today, all of them exposed the same way:
 | `sessions/<PID>.json` `waitingFor` | `permission prompt` `input needed` (others deliberately ignored) | a real approval stops raising the amber band |
 | `entrypoint` | `cli` `sdk-cli` `sdk-py` | the tray's interactive-only filter mis-sorts a species |
 | `<task-id>` prefix | `a…` agent · `b…` background · `w…` workflow | a notification is routed to the wrong subject |
+| `origin.kind` on a `user` line | `human` `task-notification` | an untagged slash command stops being read as one |
 
-Two guards cover the first, and they differ from the two above:
+A vocabulary can also break by GROWING, and that shape of failure is worse, because the value
+arrives on lines that already parsed. Claude Code 2.1.237 began writing `origin: {kind:"human"}`
+on a slash command defined by a `.md` file, having written none on any command before it (measured
+over 1046 session files: 0 of 97 such lines up to 2.1.234, then 25 of 25). Built-in commands like
+`/clear` never gained one. Nothing was missing and nothing failed: `userLineIntent` simply answered
+"a person typed this" and stopped, so the command lost its name, and the Commands card went empty
+for every custom command anyone ran. The fix was to read the SHAPE before the owner, which is what
+the function's own contract had always said; the guard that noticed was the probe, on its first run
+in 39 releases.
+
+Two guards cover `status`, and they differ from the two above:
 
 - **A claim in the contract (C25).** The probe launches a background command, lets the turn end,
   and requires `status: "shell"` while it runs. This is the only mechanism that can hold Claude
@@ -129,6 +140,11 @@ Two guards cover the first, and they differ from the two above:
 
 Neither fails the build. An unknown value is not a crash: the session simply makes no claim. Stopping the
 server over a word Claude Code changed would cost more than the missing claim does.
+
+`origin.kind` is guarded the first way only, by claim **C28**, which requires every origin a driven
+session writes to be one of the two known kinds. There is no runtime warning for it, and there is a
+reason: a third kind would not fall through to "unknown" anywhere visible. It would make one
+untagged command read as a prompt, which looks exactly like a prompt.
 
 A third kind of thing the radar cannot see: a PATH LAYOUT (C26). seedeep finds a background
 command's output file at `<tmp>/claude-<uid>/<slug>/<session>/tasks/<taskId>.output`, because that
