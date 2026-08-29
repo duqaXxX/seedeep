@@ -132,7 +132,22 @@ export const POST_ESC_MARKER = 'say only the word done';
 // 22 named one), the rest falling to the tool's 2-minute default. 47s is under that default and
 // the scene never asks for another. scenes.ts imports it — see ESC_MARKER's note on what two
 // copies of a scene's own text cost.
-export const CTRLB_COMMAND = 'sleep 47';
+// NOT `sleep 47`, which it was until 2026-08-29: Claude Code BLOCKS a long foreground `sleep` and
+// answers the tool call with prose telling the model to pass `run_in_background: true`. The model
+// obeys, so the command is already in the background before the probe can take it there, nothing
+// is running in the foreground when Ctrl+B lands, and C27 reports "scene 14 never happened" on a
+// version where nothing is wrong. The block reads the shell command, not the text (`perl -e
+// 'sleep 47'` passes, verified 2026-08-29 on 2.1.251), and perl ships with macOS and with every
+// Linux the probe is run on.
+export const CTRLB_COMMAND = "perl -e 'sleep 47'";
+// What both readers of scene 14 match on, instead of the command verbatim. The model RETYPES the
+// command and its quoting is not ours to predict: `perl -e "sleep 47"` is as good an answer as the
+// single-quoted one, and only the second matches an exact string. That is the same reason the
+// `settings.local.json` the probe writes uses a PREFIX permission rule (`Bash(perl -e *)`) —
+// matching had stayed exact only because `sleep 47` carried no quoting to vary. The scene still
+// anchors this behind `"command":"` in the raw transcript, so it identifies the tool_use's own
+// field rather than a mention of the command in prose.
+export const CTRLB_MARKER = 'perl -e ';
 
 export const CLAIMS: Claim[] = [
   // ── Scene 1: a typed prompt ────────────────────────────────────────────────
@@ -257,17 +272,53 @@ export const CLAIMS: Claim[] = [
   {
     id: 'C10',
     scene: 2,
-    describe: '<command-name> + <command-args>, and NO origin on a command line',
+    describe: '<command-name> + <command-args> open the content of a command line',
     reader: 'server/parser.ts:commandShape',
     investigate:
-      'the parser trusts the tag ONLY on a line without human origin. If commands gained an `origin`, every typed prompt quoting a tag gets misread.',
+      'the two tags are the ONLY thing that marks a command. Every other field on the line — origin, userType, entrypoint, isSidechain — is identical to a plain typed prompt (measured 2026-08-29 over 32 command lines and 575 prompts), so if the tags go, nothing else can tell them apart.',
     kind: 'gesture',
     provoked: (ctx) => userLineWith(ctx, ECHO_MARKER) !== null,
     holds: (ctx) => {
       const d = userLineWith(ctx, `<command-name>/${ECHO_MARKER}`) ?? userLineWith(ctx, ECHO_MARKER);
       if (!d) return false;
       const s = JSON.stringify(d);
-      return s.includes('<command-name>') && s.includes('<command-args>') && d.origin === undefined;
+      // `origin` is deliberately NOT asserted here. It used to be, and it caught a real break:
+      // Claude Code 2.1.237 started writing `origin: {kind:'human'}` on a custom command, which
+      // the parser then read as a plain prompt. The parser was fixed to read the SHAPE first,
+      // so the tagged branch no longer depends on origin either way — asserting it now would
+      // report a break in a reader that has stopped caring. What the bare branch still depends
+      // on moved to C28.
+      return s.includes('<command-name>') && s.includes('<command-args>');
+    },
+  },
+
+  {
+    id: 'C28',
+    scene: 2,
+    describe: "a user line carries origin.kind, and it is 'human' or 'task-notification' — never a third",
+    reader: 'server/parser.ts:commandShape',
+    investigate:
+      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` passes the gate that holds it out. `origin` disappearing altogether breaks it from the other side: every line then reads as keystrokes, and one whose whole content is `/name …` becomes a command.",
+    kind: 'gesture',
+    // Ground truth is the SCENE, never the field under test. Asking "did any user line carry an
+    // origin?" answers "scene 2 never happened" the day `origin` is removed wholesale, which is
+    // one of the two breaks this claim exists to catch — the expansion of the command the probe
+    // typed is what proves the scene ran.
+    provoked: (ctx) => userLineWith(ctx, ECHO_MARKER) !== null,
+    holds: (ctx) => {
+      const kinds = typed(ctx, 'user')
+        .map((d) => d?.origin)
+        .filter((o) => o != null)
+        .map((o) => o?.kind);
+      // The positive sighting is load-bearing, not a formality. `.every` over an empty list is
+      // TRUE, and `closeWithEvidence` consults `holds` alone — so an `origin` that had vanished
+      // from every line would close this claim from a real session containing no origin at all.
+      // Absence is a break in its own right: `commandShape` reads `origin == null` as the user's
+      // own keystrokes, so an `origin` that went away leaves the untagged shape with no gate, and
+      // any `user` line whose whole content reads `/name …` becomes a command. No task
+      // notification is shaped that way today (0 of 346, measured 2026-08-29), which is what makes
+      // this half the harder one to notice: it costs nothing until one is.
+      return kinds.length > 0 && kinds.every((k) => k === 'human' || k === 'task-notification');
     },
   },
 
@@ -627,7 +678,7 @@ export const CLAIMS: Claim[] = [
     // the timeout (which cannot reach a 47s command anyway), can only have been taken away by the
     // Ctrl+B the probe pressed.
     provoked: (ctx) => {
-      const r = backgroundReceiptOf(ctx, CTRLB_COMMAND);
+      const r = backgroundReceiptOf(ctx, CTRLB_MARKER);
       return !!r && r.input?.run_in_background !== true && r.result.timedOutAfterMs === undefined;
     },
     // `holds` is deliberately NOT tied to the probe's own command, unlike `provoked`: the same

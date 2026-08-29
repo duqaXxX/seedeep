@@ -340,9 +340,11 @@ const humanOrigin = { kind: 'human' };
 const taskNotifOrigin = { kind: 'task-notification' };
 
 test('slash-command line yields BOTH a command event and a turn, with NO origin field', () => {
-  // The real shape: a slash command carries no `origin` and no `promptSource` — gating on
-  // origin.kind === 'human' (as this once did) dropped the line entirely, so a `/paste-image`
-  // round produced no turn at all and nothing was ever live while Claude worked.
+  // The shape Claude Code wrote up to 2.1.234, and still writes for BUILT-IN commands on every
+  // version measured (0 of 817 lines carry an origin): no `origin` and no `promptSource` —
+  // gating on origin.kind === 'human' (as this once did) dropped the line entirely, so a
+  // `/paste-image` round produced no turn at all and nothing was ever live while Claude worked.
+  // Custom commands moved to the origin-carrying shape below; both must keep working.
   const line = JSON.stringify({
     type: 'user',
     timestamp: 't',
@@ -374,6 +376,86 @@ test('a slash command with no arguments uses the command itself as the prompt', 
   const turn = parseLine(line, ctx).find((e) => e.type === 'user-turn') as any;
   assert.equal(turn.prompt, '/clear');
   assert.equal(turn.command, 'clear');
+});
+
+// Claude Code 2.1.237 started writing `origin: {kind:'human'}` on a CUSTOM command (a `.md`
+// file, user- or project-level). Measured 2026-08-29 over 1046 local session files: 0 of 97
+// custom-command lines carry an origin up to 2.1.234, 25 of 25 from 2.1.237, while built-in
+// commands carry none on 817 of 817 in every version. Reading the owner before the shape filed
+// all 25 as plain prompts and emptied the Commands card. The three fields below are the ones a
+// real 2.1.251 line carries, provoked in a driven session; the names are synthetic.
+test('a CUSTOM slash command is a command even though Claude Code marks it human-origin', () => {
+  const line = JSON.stringify({
+    type: 'user',
+    timestamp: 't',
+    uuid: 'u1',
+    origin: humanOrigin,
+    message: {
+      role: 'user',
+      content:
+        '<command-message>paste-image is running…</command-message>\n' +
+        '<command-name>/paste-image</command-name>\n<command-args>look at this</command-args>',
+    },
+  });
+  const evs = parseLine(line, ctx);
+
+  const cmd = evs.find((e) => e.type === 'command') as any;
+  assert.ok(cmd, 'a human-origin line carrying the tags is still a command');
+  assert.equal(cmd.name, 'paste-image');
+
+  const turn = evs.find((e) => e.type === 'user-turn') as any;
+  assert.equal(turn.command, 'paste-image');
+  assert.equal(turn.prompt, 'look at this', 'the args are the prompt — never the raw markup');
+});
+
+test('a bare-shape command is a command when the line is marked human-origin', () => {
+  // `/code-review` is a forked skill: it writes ONLY the untagged shape, and it moved the same
+  // way — 26 lines with no origin up to 2.1.233, then 7 of 7 with origin from 2.1.241.
+  const line = JSON.stringify({
+    type: 'user',
+    timestamp: 't',
+    uuid: 'u1',
+    origin: humanOrigin,
+    message: { role: 'user', content: '/code-review the diff' },
+  });
+  const turn = parseLine(line, ctx).find((e) => e.type === 'user-turn') as any;
+  assert.equal(turn.command, 'code-review');
+  assert.equal(turn.prompt, 'the diff');
+});
+
+test('a task-notification whose text opens with a slash is NOT a command', () => {
+  // What the bare shape's gate is FOR. `origin` is no longer absent on a real command, so the
+  // gate reads the two kinds a user line can carry — human (keystrokes) and task-notification —
+  // rather than the mere presence of the field. Measured: those are the only two values, on
+  // 2371 and 345 lines.
+  const line = JSON.stringify({
+    type: 'user',
+    timestamp: 't',
+    origin: taskNotifOrigin,
+    message: { role: 'user', content: '/deploy finished on the staging box' },
+  });
+  const evs = parseLine(line, ctx);
+  assert.equal(
+    evs.some((e) => e.type === 'command'),
+    false,
+    'a notification that happens to start with a slash is not something the user typed',
+  );
+});
+
+test('a headless prompt shaped like a command stays sdk, never a command turn', () => {
+  // `claude -p "/review this"`: an sdk line carries no origin either, so shape-first would file
+  // it as a slash command — and turn detection keeps a command while it drops an sdk prompt.
+  const line = JSON.stringify({
+    type: 'user',
+    timestamp: 't',
+    promptSource: 'sdk',
+    message: { role: 'user', content: '/review this' },
+  });
+  assert.equal(
+    parseLine(line, ctx).some((e) => e.type === 'user-turn'),
+    false,
+    'a headless prompt never grows a turn, whatever it is shaped like',
+  );
 });
 
 test('a local-command-stdout line is not something the user sent — no turn, no command', () => {
