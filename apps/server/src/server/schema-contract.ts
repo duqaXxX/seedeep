@@ -298,7 +298,7 @@ export const CLAIMS: Claim[] = [
     describe: "a user line carries origin.kind, and it is 'human' or 'task-notification' — never a third",
     reader: 'server/parser.ts:commandShape',
     investigate:
-      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` starts being one. `origin` disappearing altogether breaks it from the other side: every notification then reads as keystrokes.",
+      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` passes the gate that holds it out. `origin` disappearing altogether breaks it from the other side: every line then reads as keystrokes, and one whose whole content is `/name …` becomes a command.",
     kind: 'gesture',
     // Ground truth is the SCENE, never the field under test. Asking "did any user line carry an
     // origin?" answers "scene 2 never happened" the day `origin` is removed wholesale, which is
@@ -314,7 +314,10 @@ export const CLAIMS: Claim[] = [
       // TRUE, and `closeWithEvidence` consults `holds` alone — so an `origin` that had vanished
       // from every line would close this claim from a real session containing no origin at all.
       // Absence is a break in its own right: `commandShape` reads `origin == null` as the user's
-      // own keystrokes, so a task-notification that lost its origin starts being a command.
+      // own keystrokes, so an `origin` that went away leaves the untagged shape with no gate, and
+      // any `user` line whose whole content reads `/name …` becomes a command. No task
+      // notification is shaped that way today (0 of 346, measured 2026-08-29), which is what makes
+      // this half the harder one to notice: it costs nothing until one is.
       return kinds.length > 0 && kinds.every((k) => k === 'human' || k === 'task-notification');
     },
   },

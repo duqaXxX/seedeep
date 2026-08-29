@@ -47,9 +47,9 @@ Everything released before `0.20.0` — including the pre-publication developmen
 - Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
   `human` and `task-notification`, and to writing the field at all. The untagged command shape is
   admitted on exactly those two plus no origin, so a third kind makes one command read as a prompt,
-  and an `origin` that went away makes every task notification read as a command — neither with
-  anything anywhere reporting it. `docs/claude-code-upgrades.md` gains the same row in its
-  closed-vocabulary table.
+  and an `origin` that went away leaves that shape with no gate, admitting any user line whose whole
+  content reads `/name …`. Neither has anything anywhere reporting it.
+  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
 
 ## 0.31.2 (2026-08-25)
 
