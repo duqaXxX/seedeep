@@ -23,8 +23,11 @@ import { cliRoot } from '../src/server/roots.ts';
 const TRUST_GATE = /trustthisfolder|Isthisaprojectyoucreated/i;
 // The trust menu with the TRUSTING option selected. Measured on 2.1.251: the gate
 // opens on "No, exit", so the probe must move the selection and confirm it landed
-// rather than press Enter on whatever is highlighted.
-const TRUST_ACCEPTED = /❯Yes,Itrustthisfolder/i;
+// rather than press Enter on whatever is highlighted. The optional `1.` covers the
+// numbered rendering Claude Code uses for several of its other menus — without it a
+// `❯ 1. Yes, I trust this folder` would never match and the run would die on a menu
+// that was already correct.
+const TRUST_ACCEPTED = /❯(?:\d+\.)?Yes,Itrustthisfolder/i;
 // The banner the TUI draws once it is accepting input.
 const TUI_READY = /ClaudeCodev\d|forshortcuts|Tipsforgettingstarted/i;
 
@@ -298,7 +301,14 @@ export async function openProbeSession(opts: {
     // Claude Code exited and the run died 30s later on "the TUI never became
     // ready", which reads like a hang and is not one. Reading the selection back
     // also survives the two options being reordered.
-    let accepted = false;
+    //
+    // READ FIRST, then move. The default is exactly the thing that changed here, and it can
+    // change back: the gate opened on the trusting option until 2.1.251, and a Down sent before
+    // the first test walks AWAY from it. With two options that do not wrap, the selection then
+    // sits on "No, exit" for every remaining attempt and the run dies claiming it could not
+    // reach an option that was selected all along. Nothing has pressed a key yet, so whatever
+    // the buffer shows now is the default itself.
+    let accepted = TRUST_ACCEPTED.test(squashed());
     for (let i = 0; i < 4 && !accepted; i++) {
       // clear() first: the buffer is append-only, so an earlier frame still holds
       // the previous selection and testing the whole of it always matches.

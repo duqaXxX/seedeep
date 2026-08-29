@@ -141,10 +141,13 @@ Two guards cover `status`, and they differ from the two above:
 Neither fails the build. An unknown value is not a crash: the session simply makes no claim. Stopping the
 server over a word Claude Code changed would cost more than the missing claim does.
 
-`origin.kind` is guarded the first way only, by claim **C28**, which requires every origin a driven
-session writes to be one of the two known kinds. There is no runtime warning for it, and there is a
-reason: a third kind would not fall through to "unknown" anywhere visible. It would make one
-untagged command read as a prompt, which looks exactly like a prompt.
+`origin.kind` is guarded the first way only, by claim **C28**, which requires a driven session to
+write at least one origin and every origin it writes to be one of the two known kinds. The
+at-least-one half is not bookkeeping: this vocabulary can break by emptying as well as by growing,
+and `commandShape` reads a line with no origin as the user's own keystrokes, so an `origin` that
+went away would turn every task notification into a command. There is no runtime warning for either
+half, and there is a reason: neither falls through to "unknown" anywhere visible. A third kind makes
+one untagged command read as a prompt, which looks exactly like a prompt.
 
 A third kind of thing the radar cannot see: a PATH LAYOUT (C26). seedeep finds a background
 command's output file at `<tmp>/claude-<uid>/<slug>/<session>/tasks/<taskId>.output`, because that

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canCertify, closeWithEvidence, evaluate, isBroken, manualChecklist, report } from '../probe/verify.ts';
 import type { Claim, ClaimContext } from '../src/server/schema-contract.ts';
-import { CLAIMS, CTRLB_COMMAND, claimsForScene, SCENE1_MARKER } from '../src/server/schema-contract.ts';
+import { CLAIMS, CTRLB_COMMAND, claimsForScene, ECHO_MARKER, SCENE1_MARKER } from '../src/server/schema-contract.ts';
 
 /**
  * The scene-1 lines a real driven session produces. The SHAPE is not invented:
@@ -147,27 +147,63 @@ test('removing turn_duration makes C4 BROKEN', () => {
   assert.equal(c4.outcome, 'BROKEN');
 });
 
+/**
+ * Scene 2's lines: the command expansion Claude Code writes for `/probe-echo hello world`,
+ * carrying the `origin` 2.1.237 began putting on it. C28 answers "did the scene happen?" from
+ * this expansion, so a scene-1 fixture would make every assertion below read UNPROVEN instead
+ * of answering the question it was written to ask.
+ */
+const scene2Lines = () => {
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  (lines[0] as any).message.content =
+    `<command-message>${ECHO_MARKER} is running…</command-message>\n` +
+    `<command-name>/${ECHO_MARKER}</command-name>\n<command-args>hello world</command-args>`;
+  return lines;
+};
+
+const c28Of = (lines: any[]) =>
+  evaluate(
+    CLAIMS.filter((c) => c.id === 'C28'),
+    ctxOf(lines),
+  )[0]!;
+
 test('a THIRD origin.kind makes C28 BROKEN — the bare shape loses its only gate', () => {
   // `commandShape` admits the untagged shape on the user's own keystrokes: no origin, or
   // origin.kind human. A kind it has never seen is neither, so a real command carrying it
   // stops being one — silently, since the line still opens a turn as a plain prompt.
-  const lines = structuredClone(REAL_SHAPE_LINES);
+  const lines = scene2Lines();
   (lines[0] as any).origin = { kind: 'plugin-invocation' };
-  const c28 = evaluate(
-    CLAIMS.filter((c) => c.id === 'C28'),
-    ctxOf(lines),
-  )[0]!;
-  assert.equal(c28.outcome, 'BROKEN');
+  assert.equal(c28Of(lines).outcome, 'BROKEN');
 });
 
 test('C28 holds on the two kinds Claude Code actually writes', () => {
-  const lines = structuredClone(REAL_SHAPE_LINES);
+  const lines = scene2Lines();
   lines.push({ ...structuredClone(lines[0]), uuid: 'u-2', origin: { kind: 'task-notification' } } as any);
-  const c28 = evaluate(
+  assert.equal(c28Of(lines).outcome, 'HOLDS');
+});
+
+test('C28 is BROKEN when origin goes altogether — not vacuously true, and not "it never happened"', () => {
+  // Two failures in one fixture, and each was real code once. `.every` over the empty list
+  // returns TRUE, so a `holds` without the presence check certifies the claim from a session
+  // proving nothing — and `closeWithEvidence` reads `holds` alone. Answering `provoked` from
+  // `origin` itself would meanwhile call this "scene 2 never happened", which is the wrong
+  // report for the one break the claim is here to catch: with no origin anywhere, every
+  // task-notification passes `commandShape`'s keystrokes gate.
+  const lines = scene2Lines();
+  for (const l of lines) delete (l as any).origin;
+  assert.equal(c28Of(lines).outcome, 'BROKEN');
+});
+
+test('an origin-free real session cannot close C28 from evidence', () => {
+  const unproven = evaluate(
     CLAIMS.filter((c) => c.id === 'C28'),
-    ctxOf(lines),
-  )[0]!;
-  assert.equal(c28.outcome, 'HOLDS');
+    ctxOf([]),
+  );
+  assert.equal(unproven[0]!.outcome, 'UNPROVEN');
+  const originFree = scene2Lines();
+  for (const l of originFree) delete (l as any).origin;
+  const closed = closeWithEvidence(unproven, [ctxOf(originFree)], '2.1.251');
+  assert.equal(closed[0]!.outcome, 'UNPROVEN');
 });
 
 test('the report names the reader site and the next action, not just the field', () => {
@@ -230,14 +266,14 @@ test('a fully-proven run has an empty manual checklist', () => {
  * `toolUseResult` carrying `backgroundTaskId` and `backgroundedByUser` and no `timedOutAfterMs`.
  * Content is synthetic; shape is a fact.
  */
-const ctrlbLines = (over: Record<string, unknown> = {}) => [
+const ctrlbLines = (over: Record<string, unknown> = {}, command: string = CTRLB_COMMAND) => [
   {
     type: 'assistant',
     sessionId: 'probe-1',
     version: '2.1.225',
     message: {
       role: 'assistant',
-      content: [{ type: 'tool_use', id: 'toolu_ctrlb', name: 'Bash', input: { command: CTRLB_COMMAND } }],
+      content: [{ type: 'tool_use', id: 'toolu_ctrlb', name: 'Bash', input: { command } }],
     },
     uuid: 'a-14',
   },
@@ -253,6 +289,18 @@ const ctrlbLines = (over: Record<string, unknown> = {}) => [
 
 test('scene 14 HOLDS when the Ctrl+B receipt names the user', () => {
   const r = evaluate(claimsForScene(14), ctxOf(ctrlbLines({ backgroundedByUser: true })));
+  assert.deepEqual(
+    r.map((x) => x.outcome),
+    ['HOLDS'],
+  );
+});
+
+test('scene 14 HOLDS when the model quoted the command its own way', () => {
+  // The scene asks for `perl -e 'sleep 47'` and the model retypes it. Nothing makes it keep the
+  // single quotes, and an exact match on the command reported "the gesture never happened" for a
+  // run in which everything worked — the same failure the perl change was made to remove, reached
+  // from the other end. CTRLB_MARKER is the part no quoting can move.
+  const r = evaluate(claimsForScene(14), ctxOf(ctrlbLines({ backgroundedByUser: true }, 'perl -e "sleep 47"')));
   assert.deepEqual(
     r.map((x) => x.outcome),
     ['HOLDS'],

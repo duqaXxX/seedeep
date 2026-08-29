@@ -1,5 +1,6 @@
 import {
   CTRLB_COMMAND,
+  CTRLB_MARKER,
   ECHO_MARKER,
   ESC_MARKER,
   POST_ESC_MARKER,
@@ -260,8 +261,10 @@ export async function runScenes(s: ProbeSession, log: (m: string) => void = () =
     await s.typeLine(`run \`${CTRLB_COMMAND}\` in the foreground and tell me when it is done`);
     // Waits for the LAUNCH ITSELF in the transcript, not for a word on the screen: the TUI's hint
     // line is CC's prose and would make the scene hostage to its wording, while the `tool_use`
-    // block is written when it closes — i.e. as the command starts running (p50 0.23s).
-    const started = await seenInTranscript(s, `"command":"${CTRLB_COMMAND}`, 90_000);
+    // block is written when it closes — i.e. as the command starts running (p50 0.23s). It waits
+    // for CTRLB_MARKER and not for the whole command, because the quoting is the model's to choose
+    // — see the marker's note.
+    const started = await seenInTranscript(s, `"command":"${CTRLB_MARKER}`, 90_000);
     if (!started) throw new Error('the command was never launched, so there was nothing to background');
     // A beat, so Ctrl+B lands on a command the TUI has already put on screen as running.
     await new Promise((r) => setTimeout(r, 2_000));

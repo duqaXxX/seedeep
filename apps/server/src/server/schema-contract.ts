@@ -140,6 +140,14 @@ export const POST_ESC_MARKER = 'say only the word done';
 // 'sleep 47'` passes, verified 2026-08-29 on 2.1.251), and perl ships with macOS and with every
 // Linux the probe is run on.
 export const CTRLB_COMMAND = "perl -e 'sleep 47'";
+// What both readers of scene 14 match on, instead of the command verbatim. The model RETYPES the
+// command and its quoting is not ours to predict: `perl -e "sleep 47"` is as good an answer as the
+// single-quoted one, and only the second matches an exact string. That is the same reason the
+// `settings.local.json` the probe writes uses a PREFIX permission rule (`Bash(perl -e *)`) —
+// matching had stayed exact only because `sleep 47` carried no quoting to vary. The scene still
+// anchors this behind `"command":"` in the raw transcript, so it identifies the tool_use's own
+// field rather than a mention of the command in prose.
+export const CTRLB_MARKER = 'perl -e ';
 
 export const CLAIMS: Claim[] = [
   // ── Scene 1: a typed prompt ────────────────────────────────────────────────
@@ -287,17 +295,28 @@ export const CLAIMS: Claim[] = [
   {
     id: 'C28',
     scene: 2,
-    describe: "origin.kind on a user line is 'human' or 'task-notification', and nothing else",
+    describe: "a user line carries origin.kind, and it is 'human' or 'task-notification' — never a third",
     reader: 'server/parser.ts:commandShape',
     investigate:
-      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` starts being one.",
+      "the untagged shape (`/code-review` writes only that one) is admitted when the line is the user's own keystrokes: no origin, or origin.kind human. A THIRD kind would be neither — a real command carrying it silently stops being one, and a notification gaining `human` starts being one. `origin` disappearing altogether breaks it from the other side: every notification then reads as keystrokes.",
     kind: 'gesture',
-    provoked: (ctx) => typed(ctx, 'user').some((d) => d?.origin != null),
-    holds: (ctx) =>
-      typed(ctx, 'user')
+    // Ground truth is the SCENE, never the field under test. Asking "did any user line carry an
+    // origin?" answers "scene 2 never happened" the day `origin` is removed wholesale, which is
+    // one of the two breaks this claim exists to catch — the expansion of the command the probe
+    // typed is what proves the scene ran.
+    provoked: (ctx) => userLineWith(ctx, ECHO_MARKER) !== null,
+    holds: (ctx) => {
+      const kinds = typed(ctx, 'user')
         .map((d) => d?.origin)
         .filter((o) => o != null)
-        .every((o) => o?.kind === 'human' || o?.kind === 'task-notification'),
+        .map((o) => o?.kind);
+      // The positive sighting is load-bearing, not a formality. `.every` over an empty list is
+      // TRUE, and `closeWithEvidence` consults `holds` alone — so an `origin` that had vanished
+      // from every line would close this claim from a real session containing no origin at all.
+      // Absence is a break in its own right: `commandShape` reads `origin == null` as the user's
+      // own keystrokes, so a task-notification that lost its origin starts being a command.
+      return kinds.length > 0 && kinds.every((k) => k === 'human' || k === 'task-notification');
+    },
   },
 
   {
@@ -656,7 +675,7 @@ export const CLAIMS: Claim[] = [
     // the timeout (which cannot reach a 47s command anyway), can only have been taken away by the
     // Ctrl+B the probe pressed.
     provoked: (ctx) => {
-      const r = backgroundReceiptOf(ctx, CTRLB_COMMAND);
+      const r = backgroundReceiptOf(ctx, CTRLB_MARKER);
       return !!r && r.input?.run_in_background !== true && r.result.timedOutAfterMs === undefined;
     },
     // `holds` is deliberately NOT tied to the probe's own command, unlike `provoked`: the same

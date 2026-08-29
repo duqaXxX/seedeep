@@ -157,9 +157,11 @@ const BARE_COMMAND_RE = /^\s*\/([a-zA-Z0-9:_-]+)(?:[ \t]+([\s\S]*))?$/;
  * What the user actually sent on a `user`-type line, or null if the line carries no
  * user intent (a `tool_result`, or empty). `kind` names WHOSE line it is, `command` names its
  * SHAPE — the two are independent, which is the whole point of the ordering below:
- *   'human'   — a typed prompt (`origin.kind: 'human'`, the AUTHORITATIVE signal,
- *               checked first so a prompt that merely QUOTES a <command-name> tag is
- *               not mistaken for a command),
+ *   'human'   — a typed prompt (`origin.kind: 'human'`): what the line is once the SHAPE
+ *               has not claimed it. The shape is read FIRST, so a prompt whose content
+ *               OPENS with a <command-name> tag is filed as a command whoever typed it
+ *               (0 such lines in the 39,378-line corpus measured 2026-08-29); anchoring
+ *               the tag at the start is what keeps a prompt that merely QUOTES one out,
  *   'sdk'     — a headless/programmatic prompt (`promptSource: 'sdk'`, e.g. a git-hook
  *               `claude -p`). It carries a `command` when the headless prompt WAS one:
  *               being headless decides the kind, the shape only decides the text.
