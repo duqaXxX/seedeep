@@ -21,6 +21,10 @@ import { cliRoot } from '../src/server/roots.ts';
 // happens to carry real spaces), which is how the trust gate was answered
 // sometimes and silently missed other times, wedging the whole run.
 const TRUST_GATE = /trustthisfolder|Isthisaprojectyoucreated/i;
+// The trust menu with the TRUSTING option selected. Measured on 2.1.251: the gate
+// opens on "No, exit", so the probe must move the selection and confirm it landed
+// rather than press Enter on whatever is highlighted.
+const TRUST_ACCEPTED = /❯Yes,Itrustthisfolder/i;
 // The banner the TUI draws once it is accepting input.
 const TUI_READY = /ClaudeCodev\d|forshortcuts|Tipsforgettingstarted/i;
 
@@ -287,8 +291,27 @@ export async function openProbeSession(opts: {
   // A fresh cwd raises the folder-trust gate; it is part of the contract too.
   if (await session.waitForScreen(TRUST_GATE, 15_000)) {
     // The pattern can match mid-redraw, before the menu accepts keys; give it a
-    // beat or the Enter is swallowed and the gate never clears.
+    // beat or the keystroke is swallowed and the gate never clears.
     await sleep(1_500);
+    // Walk to the trusting option instead of trusting the default. On 2.1.251 the
+    // gate opens on "No, exit", so the bare Enter this used to send ANSWERED NO:
+    // Claude Code exited and the run died 30s later on "the TUI never became
+    // ready", which reads like a hang and is not one. Reading the selection back
+    // also survives the two options being reordered.
+    let accepted = false;
+    for (let i = 0; i < 4 && !accepted; i++) {
+      // clear() first: the buffer is append-only, so an earlier frame still holds
+      // the previous selection and testing the whole of it always matches.
+      session.clear();
+      session.send('\x1b[B');
+      await sleep(600);
+      accepted = TRUST_ACCEPTED.test(squashed());
+    }
+    if (!accepted) {
+      throw new Error(
+        `probe: could not select "Yes, I trust this folder". Screen tail:\n${session.screen().slice(-600)}`,
+      );
+    }
     session.send('\r');
   }
   // Wait for the TUI to be READY, never a fixed delay: typing 2s after the trust

@@ -132,7 +132,14 @@ export const POST_ESC_MARKER = 'say only the word done';
 // 22 named one), the rest falling to the tool's 2-minute default. 47s is under that default and
 // the scene never asks for another. scenes.ts imports it — see ESC_MARKER's note on what two
 // copies of a scene's own text cost.
-export const CTRLB_COMMAND = 'sleep 47';
+// NOT `sleep 47`, which it was until 2026-08-29: Claude Code BLOCKS a long foreground `sleep` and
+// answers the tool call with prose telling the model to pass `run_in_background: true`. The model
+// obeys, so the command is already in the background before the probe can take it there, nothing
+// is running in the foreground when Ctrl+B lands, and C27 reports "scene 14 never happened" on a
+// version where nothing is wrong. The block reads the shell command, not the text (`perl -e
+// 'sleep 47'` passes, verified 2026-08-29 on 2.1.251), and perl ships with macOS and with every
+// Linux the probe is run on.
+export const CTRLB_COMMAND = "perl -e 'sleep 47'";
 
 export const CLAIMS: Claim[] = [
   // ── Scene 1: a typed prompt ────────────────────────────────────────────────

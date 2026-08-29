@@ -20,6 +20,18 @@ Everything released before `0.20.0` — including the pre-publication developmen
   first, which is what the function's contract already stated. `/code-review`, which writes only the
   untagged shape, is recovered by the same change. Re-reading the whole corpus, 32 lines change
   classification and 39,346 do not: older sessions parse exactly as before.
+- The schema probe could not start. The folder-trust gate opens with "No, exit" selected, and the
+  driver confirmed whatever was highlighted, so every run quit Claude Code and then failed on
+  `the TUI never became ready`. It now walks to the trusting option and reads the selection back
+  before confirming. This is why the regression above went 39 releases without being caught.
+- The probe's Ctrl+B scene could no longer happen, so the claim about `backgroundedByUser` came
+  back unproven on a version where nothing was wrong. Claude Code blocks a long foreground `sleep`
+  and answers the tool call with prose telling the model to pass `run_in_background: true`, which
+  it does, so the command was already in the background before the probe could take it there. The
+  scene now holds `perl -e 'sleep 47'` in the foreground, pre-approved by a `settings.local.json`
+  the probe writes into its own throwaway directory, since `sleep` was auto-approved and `perl` is
+  not. Driven on 2.1.251, the receipt carries `backgroundedByUser: true` beside `backgroundTaskId`,
+  the shape the claim asserts.
 - The README's two loudest figures could not be reproduced by a reader. "39 of 47 failed calls were
   the last line their session ever wrote", measured once over 1830 transcripts, comes back as 3 of 8
   on a 770-file corpus, and "a quarter of every token spent" carried neither a date nor a corpus.

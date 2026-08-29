@@ -70,6 +70,18 @@ description: Echo the arguments back (schema probe fixture)
 
 Repeat the following text back verbatim and say nothing else: $ARGUMENTS
 `,
+  // Pre-approves ONLY the command scene 14 keeps in the foreground, and only inside the throwaway
+  // cwd this file is written into. Without it the run stops on an approval dialog nobody is there
+  // to answer: `sleep` was auto-approved and `perl` is not, and scene 14 had to leave `sleep`
+  // behind (see CTRLB_COMMAND). Scene 12 still provokes a real permission prompt with an Edit, so
+  // nothing here weakens what that scene tests. A prefix rule rather than the exact string,
+  // because the model retypes the command and its quoting is not ours to predict.
+  '.claude/settings.local.json': `{
+  "permissions": {
+    "allow": ["Bash(perl -e *)"]
+  }
+}
+`,
   // The description must be matchable by a natural request: attributionSkill is
   // written only when the MODEL picks the skill. Naming a slash command here
   // (the old wording) invited the one invocation path that attributes nothing.
