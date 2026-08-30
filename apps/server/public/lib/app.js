@@ -5213,11 +5213,23 @@ function hhmm2(at) {
 function openCommit(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
+function chip(c) {
+  if (!c.reachable) {
+    return {
+      word: "superseded",
+      why: "No branch leads to it any more — squash-merged or rebased away. The work is in the history under another hash."
+    };
+  }
+  if (!c.url)
+    return { word: "local", why: "Not pushed yet — it has no page on the forge" };
+  return null;
+}
 function commitRow(c, withTime) {
   const row = el6("div", "cmtrow" + (c.url ? "" : " nolink"));
+  const mark = chip(c);
   row.append(el6("span", "cmth", c.short));
-  if (!c.url)
-    row.append(el6("span", "cmtlocal", "local"));
+  if (mark)
+    row.append(el6("span", c.reachable ? "cmtlocal" : "cmtlocal cmtgone", mark.word));
   row.append(el6("span", "cmts", c.subject));
   if (withTime)
     row.append(el6("span", "cmtt", hhmm2(c.at)));
@@ -5226,22 +5238,28 @@ function commitRow(c, withTime) {
     row.title = "Open on the forge";
     row.onclick = () => openCommit(url);
   } else {
-    row.title = "Not pushed yet — it has no page on the forge";
+    row.title = mark?.why ?? "";
   }
   return row;
 }
 function describe2(commits) {
   if (commits.some((c) => c.url))
     return "Commits this session produced. Click one to open it on the forge.";
+  if (commits.every((c) => !c.reachable))
+    return "Commits this session produced. The history has moved past them, so none has a page to open.";
   return "Commits this session produced. None is pushed yet, so none has a page to open.";
 }
 function commitsList(commits) {
   const box = el6("div", "cmtdlist");
   for (const c of [...commits].reverse()) {
     const row = el6("div", "cmtdrow" + (c.url ? "" : " nolink"));
+    const mark = chip(c);
     row.append(el6("span", "cmth", c.short));
-    if (!c.url)
-      row.append(el6("span", "cmtlocal", "local"));
+    if (mark) {
+      const span = el6("span", c.reachable ? "cmtlocal" : "cmtlocal cmtgone", mark.word);
+      span.title = mark.why;
+      row.append(span);
+    }
     row.append(el6("span", "cmts wrap", c.subject), el6("span", "cmtt", hhmm2(c.at)));
     if (c.url) {
       const url = c.url;
@@ -7703,12 +7721,12 @@ function createGraph(container, state, opts = {}) {
   function appendModelChips(host, models, efforts) {
     if (models.length) {
       const current = models[models.length - 1];
-      const chip = E("span", "sbmodel", modelLabel3(current));
+      const chip2 = E("span", "sbmodel", modelLabel3(current));
       if (models.length > 1) {
-        chip.classList.add("mixed");
-        chip.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
+        chip2.classList.add("mixed");
+        chip2.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
       }
-      host.append(chip);
+      host.append(chip2);
     }
     if (efforts.length)
       host.append(E("span", "sbeffort", efforts.join(" · ")));
@@ -7776,15 +7794,15 @@ function createGraph(container, state, opts = {}) {
     const running = runningBackground(fullSnap.mainTools);
     if (!running.length || ended2)
       return null;
-    const chip = E("span", "sbbg");
+    const chip2 = E("span", "sbbg");
     const oldest = Date.parse(running[0].since);
     const label = running.length === 1 ? "1 background command" : running.length + " background commands";
     const renderAge = () => label + (Number.isNaN(oldest) ? "" : " · " + formatDuration(Math.max(0, Date.now() - oldest)));
-    chip.textContent = renderAge();
-    liveCounters.push({ el: chip, render: renderAge });
-    chip.title = running.map((c) => c.command).join(`
+    chip2.textContent = renderAge();
+    liveCounters.push({ el: chip2, render: renderAge });
+    chip2.title = running.map((c) => c.command).join(`
 `);
-    return chip;
+    return chip2;
   }
   function renderScopeBanner(fullSnap) {
     scopeBanner.replaceChildren();
@@ -7881,17 +7899,17 @@ function createGraph(container, state, opts = {}) {
       scopeBanner.append(E("span", "sbstats", statParts.join(" · ")));
     const v = verdicts.get(turn.index);
     if (v && v.severity !== "good") {
-      const chip = E("button", "sbverdict " + v.severity);
-      chip.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
-      chip.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
+      const chip2 = E("button", "sbverdict " + v.severity);
+      chip2.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
+      chip2.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
 `);
-      chip.onclick = (ev) => {
+      chip2.onclick = (ev) => {
         ev.stopPropagation();
         stripOpen = true;
         activeFilter = "waste";
         render();
       };
-      scopeBanner.append(chip);
+      scopeBanner.append(chip2);
     }
     if (turn.state === "live" && !ended2)
       scopeBanner.append(liveElapsed(turn));
@@ -7973,10 +7991,10 @@ function createGraph(container, state, opts = {}) {
     const cmds = s.commands || [];
     if (cmds.length) {
       for (const c of cmds) {
-        const chip = E("span", "tchip clk");
-        chip.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
-        chip.onclick = () => openCommand(c);
-        chips.append(chip);
+        const chip2 = E("span", "tchip clk");
+        chip2.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
+        chip2.onclick = () => openCommand(c);
+        chips.append(chip2);
       }
     } else {
       chips.append(E("span", "wdesc", "none yet"));
@@ -8653,9 +8671,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     if (w.models.length) {
       const chips = E("div", "wfmodels");
       for (const m of w.models) {
-        const chip = E("span", "amodel-chip");
-        chip.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
-        chips.append(chip);
+        const chip2 = E("span", "amodel-chip");
+        chip2.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
+        chips.append(chip2);
       }
       c.append(chips);
     }

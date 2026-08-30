@@ -48,6 +48,27 @@ Two sources answer two different questions, and neither can answer the other's:
 
 There is **no forge API call**; see *The forge link* below.
 
+### A commit no ref leads to
+
+`readCommits` lists what `git log --all` walks, which is refs and HEAD. A squash merge replaces a
+branch's commits with one new commit and the branch is then deleted, so every commit of a finished
+pull request stops being listed while the object stays readable, and the card went blank at the
+exact moment the work shipped.
+
+Those commits are recovered by hash instead (`orphaned`, `apps/server/src/server/session-commits.ts`):
+the session's own output named them, `readCommit` reads an unreachable object, and `isReachable`
+(`apps/server/src/server/git.ts`) says which side of the line each one is on. The evidence is
+`proof` and never testimony, since testimony works by matching a subject against the commits the
+repo listed, and these are the ones it did not.
+
+`isReachable` asks `for-each-ref --contains` first and HEAD second, because `git log --all` honours
+HEAD too: without the second question a detached checkout would report a perfectly listed commit as
+superseded. A recovered commit gets no forge link: nothing was pushed under a name the forge can
+serve.
+
+Costs nothing when every commit is reachable: a hash already attributed is skipped before git is
+asked.
+
 ### The forge link
 
 Built offline from `origin`, in three steps (`remoteBase` + `commitUrl` in `apps/server/src/server/git.ts`):
@@ -156,9 +177,13 @@ its commit could be claimed here by testimony (never by proof).
   a `local` chip, its hash goes quiet and it does not open anything, because a link would 404. The chip
   is on the row, not only in a tooltip: a row that does nothing when clicked otherwise reads as
   broken.
+- **A `superseded` chip** is the other reason a row does not open, and it is a different fact: no
+  ref leads to that commit any more, because the branch was squash-merged or rebased away. The work
+  shipped, under a hash the session never saw. Calling it `local` would say it was still on its way.
+  The two chips look alike apart from a dashed edge, since neither is an error.
 - The description states what the card can do. With something pushed it invites the click;
-  with everything local it says so instead, since a card that promises an action it cannot perform is
-  the card lying about itself.
+  with everything local it says so instead, and when the history has moved past every commit it
+  says that, since a card that promises an action it cannot perform is the card lying about itself.
 - **Freshness**: fetched once when the replay hands off, then every 60 s while the session is live,
   and once more when it ends.
 
@@ -196,6 +221,7 @@ trailing line for it. One line, rewritten per render:
 |---|---|
 | the session committed | `Files in 2 commits.` |
 | it committed nothing | `Nothing committed in this session.` (`…in this turn.` when one is selected) |
+| its commits were squashed away | the commits, each with a `superseded` chip (see [Commits](#commits)) |
 | git could not answer | `The repository could not be read.` |
 | outside a repo | `This session is not inside a git repository.` |
 | the answer has not arrived | `Reading the repository…` |

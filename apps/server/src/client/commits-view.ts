@@ -26,7 +26,25 @@ function openCommit(url: string): void {
 }
 
 /**
- * One commit: short hash, `local` when it has nowhere to open, subject, time.
+ * Why a row does not open, in one word, or null when it does.
+ *
+ * TWO reasons and they are not the same news: `local` is a commit on its way, and `superseded` is
+ * one the history has moved past — squash-merged or rebased away. Both leave `url` null, so the
+ * word is what keeps them apart; calling the second one `local` said it was still coming.
+ */
+function chip(c: SessionCommit): { word: string; why: string } | null {
+  if (!c.reachable) {
+    return {
+      word: 'superseded',
+      why: 'No branch leads to it any more — squash-merged or rebased away. The work is in the history under another hash.',
+    };
+  }
+  if (!c.url) return { word: 'local', why: 'Not pushed yet — it has no page on the forge' };
+  return null;
+}
+
+/**
+ * One commit: short hash, why it does not open when it does not, subject, time.
  *
  * The chip is not decoration: a row that does nothing when clicked reads as broken, and a
  * `title` only tells whoever hovers for a second. It says WHY on the row itself, and disappears
@@ -34,8 +52,9 @@ function openCommit(url: string): void {
  */
 function commitRow(c: SessionCommit, withTime: boolean): HTMLElement {
   const row = el('div', 'cmtrow' + (c.url ? '' : ' nolink'));
+  const mark = chip(c);
   row.append(el('span', 'cmth', c.short));
-  if (!c.url) row.append(el('span', 'cmtlocal', 'local'));
+  if (mark) row.append(el('span', c.reachable ? 'cmtlocal' : 'cmtlocal cmtgone', mark.word));
   row.append(el('span', 'cmts', c.subject));
   if (withTime) row.append(el('span', 'cmtt', hhmm(c.at)));
   if (c.url) {
@@ -43,7 +62,7 @@ function commitRow(c: SessionCommit, withTime: boolean): HTMLElement {
     row.title = 'Open on the forge';
     row.onclick = () => openCommit(url);
   } else {
-    row.title = 'Not pushed yet — it has no page on the forge';
+    row.title = mark?.why ?? '';
   }
   return row;
 }
@@ -55,6 +74,11 @@ function commitRow(c: SessionCommit, withTime: boolean): HTMLElement {
  */
 function describe(commits: readonly SessionCommit[]): string {
   if (commits.some((c) => c.url)) return 'Commits this session produced. Click one to open it on the forge.';
+  // Said before "none is pushed", because it is the stronger fact: these are not on their way to
+  // a page, they are behind the history. A squash merge puts every commit of a finished pull
+  // request here, which is precisely when this card used to go blank.
+  if (commits.every((c) => !c.reachable))
+    return 'Commits this session produced. The history has moved past them, so none has a page to open.';
   return 'Commits this session produced. None is pushed yet, so none has a page to open.';
 }
 
@@ -63,8 +87,13 @@ export function commitsList(commits: readonly SessionCommit[]): HTMLElement {
   const box = el('div', 'cmtdlist');
   for (const c of [...commits].reverse()) {
     const row = el('div', 'cmtdrow' + (c.url ? '' : ' nolink'));
+    const mark = chip(c);
     row.append(el('span', 'cmth', c.short));
-    if (!c.url) row.append(el('span', 'cmtlocal', 'local'));
+    if (mark) {
+      const span = el('span', c.reachable ? 'cmtlocal' : 'cmtlocal cmtgone', mark.word);
+      span.title = mark.why;
+      row.append(span);
+    }
     row.append(el('span', 'cmts wrap', c.subject), el('span', 'cmtt', hhmm(c.at)));
     if (c.url) {
       const url = c.url;

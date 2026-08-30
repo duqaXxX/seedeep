@@ -60,6 +60,13 @@ export interface SessionCommit {
   evidence: Evidence;
   /** The commit's page on the forge, or null when there is no origin or it is not pushed yet. */
   url: string | null;
+  /**
+   * Whether any ref still leads to it. False means the object is there and this session's own
+   * output named it, but the history has moved past it — a squash merge, or a rebase. It is
+   * still the commit this session made, so it is still shown; it simply has no page to link to
+   * and no place in `git log`. Every commit of a squash-merged pull request is one of these.
+   */
+  reachable: boolean;
 }
 
 /** The payload of `GET /api/commits`. */

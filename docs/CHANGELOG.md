@@ -47,6 +47,16 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- A session's commits survive the squash merge that ships them. `readCommits` lists what
+  `git log --all` walks, so when a pull request is squashed and its branch deleted, every commit
+  the session made stops being listed while the object stays readable — and the Commits card went
+  blank saying `Nothing committed in this session.` on a session that had committed and shipped.
+  Since squash is how a pull request normally ends, the card lost its content at the exact moment
+  it was worth reading. Those commits are now recovered by hash, which the session's own output
+  named, and marked `superseded`: shown, with the subject and the time, and with no forge link,
+  since nothing was pushed under a name the forge can serve. `local` is kept for what it always
+  meant, a commit on its way. `isReachable` asks `for-each-ref --contains` and then HEAD, because
+  `git log --all` honours HEAD as well and a detached checkout would otherwise read as superseded.
 - Automated sessions no longer notify. A headless run (`entrypoint` `sdk-cli` or `sdk-py`) has
   nobody sitting at it, so `Turn finished` on the tray and on the webhook was a request to get up
   for a machine, and seedeep's own docs-freshness gate raised one on every push. The exclusion had
