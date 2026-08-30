@@ -9,6 +9,26 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Changed
+
+- The schema radar's known set is accepted, so it reports nothing again. What each newly seen
+  field was decided to be, rather than merely accepted: `output_tokens_details.thinking_tokens` is
+  READ (it splits the Output row). Everything else is knowingly ignored, each for a measured
+  reason. `atis-latch` carries one field, `atis`, and it is the empty string on all 2,377 lines.
+  `turnCompanion` marks lines that all carry `isMeta: true`, which the prompt gate already
+  excludes. `mcpMeta` holds server info seedeep already attributes through
+  `attributionMcpServer` / `attributionMcpTool`. `queue-operation.reason` has one value across 5
+  occurrences of 2,919 queue operations. `queueSkipAttachments` is queue behaviour, not an
+  observable fact about a session. `bridge-session` and the `bridge_status` line are a feature
+  seedeep does not report.
+- `cost-state` is ignored in full, and not because of the dollars. Its scope is the PROCESS, while
+  seedeep's unit is the session file: `totalDuration` measures how long a terminal stayed open
+  (23.7h against 4 minutes of API and tool time on one real session), and `modelUsage` ranges from
+  0.18x to 1.95x of the tokens in the file it belongs to, naming models that file never used.
+  Two numbers that disagree on one screen with neither being wrong is the trap the Changed files
+  card was moved off this same ledger to avoid. It is also absent from 81 of 93 sessions on
+  2.1.251 and written at exit.
+
 ### Added
 
 - The **Output** row of the Session card splits into the part the model spent reasoning and the
