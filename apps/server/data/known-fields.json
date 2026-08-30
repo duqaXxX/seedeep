@@ -6,6 +6,19 @@
       "sessionId",
       "type"
     ],
+    "artifact-autoreact-ledger": [
+      "accountUuid",
+      "artifacts",
+      "sessionId",
+      "type",
+      "v"
+    ],
+    "artifact-comment-monitor": [
+      "artifacts",
+      "sessionId",
+      "type",
+      "v"
+    ],
     "assistant": [
       "agentId",
       "apiError",
@@ -35,6 +48,11 @@
       "uuid",
       "version"
     ],
+    "atis-latch": [
+      "atis",
+      "sessionId",
+      "type"
+    ],
     "attachment": [
       "agentId",
       "attachment",
@@ -52,6 +70,33 @@
       "uuid",
       "version"
     ],
+    "bridge-session": [
+      "bridgeSessionId",
+      "lastSequenceNum",
+      "ownerAccountUuid",
+      "ownerOrganizationUuid",
+      "sessionId",
+      "type"
+    ],
+    "cost-state": [
+      "hasUnknownModelCost",
+      "modelUsage",
+      "sessionId",
+      "startTime",
+      "totalAPIDuration",
+      "totalAPIDurationWithoutRetries",
+      "totalCostUSD",
+      "totalDuration",
+      "totalLinesAdded",
+      "totalLinesRemoved",
+      "totalToolDuration",
+      "type"
+    ],
+    "custom-title": [
+      "customTitle",
+      "sessionId",
+      "type"
+    ],
     "file-history-delta": [
       "backup",
       "messageId",
@@ -67,6 +112,7 @@
       "type"
     ],
     "frame-link": [
+      "artifactCount",
       "frameUrl",
       "path",
       "sessionId",
@@ -101,19 +147,9 @@
     "queue-operation": [
       "content",
       "operation",
+      "reason",
       "sessionId",
       "timestamp",
-      "type"
-    ],
-    "result": [
-      "agentId",
-      "key",
-      "result",
-      "type"
-    ],
-    "started": [
-      "agentId",
-      "key",
       "type"
     ],
     "system": [
@@ -146,6 +182,7 @@
       "timestamp",
       "toolUseID",
       "type",
+      "url",
       "userType",
       "uuid",
       "version"
@@ -161,6 +198,7 @@
       "isMeta",
       "isSidechain",
       "isVisibleInTranscriptOnly",
+      "mcpMeta",
       "message",
       "origin",
       "parentUuid",
@@ -168,6 +206,7 @@
       "promptId",
       "promptSource",
       "queuePriority",
+      "queueSkipAttachments",
       "sessionId",
       "session_id",
       "slug",
@@ -177,11 +216,23 @@
       "toolDenialKind",
       "toolEndsTurn",
       "toolUseResult",
+      "turnCompanion",
       "type",
       "userFeedback",
       "userType",
       "uuid",
       "version"
+    ],
+    "result": [
+      "agentId",
+      "key",
+      "result",
+      "type"
+    ],
+    "started": [
+      "agentId",
+      "key",
+      "type"
     ],
     "agent-name": [
       "agentName",
@@ -212,9 +263,13 @@
       "input_tokens",
       "iterations",
       "output_tokens",
+      "output_tokens_details",
       "server_tool_use",
       "service_tier",
       "speed"
+    ],
+    "message.usage.output_tokens_details": [
+      "thinking_tokens"
     ],
     "toolUseResult": [
       "afkTimeoutMs",
@@ -224,8 +279,12 @@
       "annotations",
       "answers",
       "appliedLimit",
+      "artifactRead",
+      "artifact_id",
       "artifacts",
+      "audience",
       "authUrl",
+      "background",
       "backgroundCwdHint",
       "backgroundTaskId",
       "backgroundedByUser",
@@ -238,6 +297,7 @@
       "command",
       "commandName",
       "content",
+      "contract",
       "count",
       "countIsComplete",
       "dangerouslyDisableSandbox",
@@ -256,6 +316,7 @@
       "isAsync",
       "isImage",
       "level",
+      "listing",
       "liveSubscription",
       "localSent",
       "matches",
@@ -309,6 +370,7 @@
       "task_id",
       "task_type",
       "tasks",
+      "threads",
       "timedOutAfterMs",
       "timeoutMs",
       "title",
