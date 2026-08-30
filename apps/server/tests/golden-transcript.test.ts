@@ -108,6 +108,20 @@ const forkedLaunch = (uuid: string, agentId: string, skillName: string, descript
       `<local-command-stdout>Running in the background as @${skillName}</local-command-stdout>\n` +
       `<forked-skill-launch>${JSON.stringify({ agentId, skillName, description })}</forked-skill-launch>`,
   });
+// An explicit Skill call: what the assistant emits when it loads a skill by name. This is what
+// lets a session vouch for a slash word the user typed inside a sentence.
+const skillCall = (uuid: string, toolId: string, name: string) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    timestamp: '2026-07-14T10:00:02.000Z',
+    message: {
+      role: 'assistant',
+      id: 'msg-skill',
+      model: 'claude-opus-4-8',
+      content: [{ type: 'tool_use', id: toolId, name: 'Skill', input: { skill: name } }],
+    },
+  });
 // The skill body Claude Code injects after a skill command — not something the user sent.
 const skillBody = (uuid: string) =>
   JSON.stringify({
@@ -570,6 +584,61 @@ test('golden transcript: a tagged command marked human-origin still reaches the 
   assert.ok(
     last.commands.some((c) => c.name === 'paste-image'),
     "the turn's own counts carry it too — a widget scoped to a turn reads these",
+  );
+});
+
+test('golden transcript: a command typed inside a sentence is counted, a path is not', () => {
+  // Claude Code expands a slash command only when it stands ALONE, so one written mid-sentence
+  // stays prose and produces no command event. The user typed it and says so, which is what the
+  // widget claims to list. Reported on a real session: `/paste-image` written inside the prompt,
+  // the skill ran, and the Commands card showed only `/clear`.
+  //
+  // The word is admitted only when the SESSION vouches for the name — here the Skill call that
+  // followed. That is what keeps `/home/dev/notes` and `/tmp` out: measured over the local corpus,
+  // 119 of 258 slash words inside typed prompts are paths, and none of them survives this rule.
+  const snap = timelineOf([
+    typed('u1', 'look at /tmp and /home/dev/notes, then /paste-image and tell me'),
+    assistant('a1', 40_000),
+    skillCall('a1b', 'tool-1', 'paste-image'),
+    turnDuration('t1'),
+  ]);
+
+  assert.deepEqual(
+    snap.commands.map((c) => `${c.name}:${c.count}`),
+    ['paste-image:1'],
+    'the word the session can vouch for, and nothing else',
+  );
+});
+
+test('golden transcript: a slash word nothing vouches for is not a command', () => {
+  // The other half of the rule, and the reason it is not a bare regex: with no skill and no
+  // command of that name anywhere in the session, the word stays prose. A session that types
+  // `/deploy` while talking about a script must not grow a command it never ran.
+  const snap = timelineOf([
+    typed('u1', 'the /deploy script writes into /opt/build, check it'),
+    assistant('a1', 40_000),
+    turnDuration('t1'),
+  ]);
+
+  assert.deepEqual(snap.commands, [], 'nothing proves any of those words is a command');
+});
+
+test('golden transcript: a command both typed inline and expanded is counted once for each', () => {
+  // The counts MERGE rather than sit apart, which is the product rule: a command the user typed is
+  // a command the user typed, whether or not Claude Code went on to expand it. The expansion also
+  // vouches for the name, so the inline one needs no skill call to be admitted.
+  const snap = timelineOf([
+    slashHuman('u1', 'paste-image', 'this screenshot'),
+    assistant('a1', 40_000),
+    turnDuration('t1'),
+    typed('u2', 'and now /paste-image again please'),
+    assistant('a2', 70_000),
+  ]);
+
+  assert.deepEqual(
+    snap.commands.map((c) => `${c.name}:${c.count}`),
+    ['paste-image:2'],
+    'the expanded one and the typed one, in one count',
   );
 });
 

@@ -104,6 +104,18 @@ var SPAWN_TOOL_NAMES = new Set(["Agent", "Task"]);
 function hasStarted(a) {
   return a.agentType !== null || a.fill > 0 || a.tools.length > 0 || a.outputFull !== null;
 }
+function slashWords(prompt) {
+  return [...prompt.matchAll(/(?<![\w./~-])\/([a-zA-Z][\w-]*)(?!\/)/g)].map((m) => m[1]);
+}
+function withTypedSlashes(ran, typed, skillTurns, skillInvokes) {
+  const out = new Map(ran);
+  for (const [name, n] of typed) {
+    if (!ran.has(name) && !skillTurns.has(name) && !skillInvokes.has(name))
+      continue;
+    out.set(name, (out.get(name) ?? 0) + n);
+  }
+  return out;
+}
 var CONTEXT_COMMANDS = new Set(["clear", "compact"]);
 function sumTokensByModel(subagents) {
   const byModel = new Map;
@@ -147,6 +159,7 @@ function createSessionTree(opts) {
   const skillTurns = new Map;
   const skillInvokes = new Map;
   const commandCounts = new Map;
+  const typedSlashCounts = new Map;
   let entries = 0;
   let apiCalls = 0;
   let sessionHadRealCall = false;
@@ -357,6 +370,9 @@ function createSessionTree(opts) {
       const twinKey = e.command && e.promptId ? e.promptId + ":" + e.command : null;
       if (owner === null && !appliedLineSeqs.has(e.seq) && !(twinKey && appliedCommandKeys.has(twinKey))) {
         appliedLineSeqs.add(e.seq);
+        if (e.command === null)
+          for (const n of slashWords(e.prompt))
+            bump(typedSlashCounts, n);
         if (twinKey)
           appliedCommandKeys.add(twinKey);
         entries++;
@@ -1014,7 +1030,7 @@ function createSessionTree(opts) {
       };
     });
     const skills = skillNodes(skillTurns, skillInvokes);
-    const commands = commandNodes(commandCounts);
+    const commands = commandNodes(withTypedSlashes(commandCounts, typedSlashCounts, skillTurns, skillInvokes));
     const turnList = buildTurnList(subagents);
     const subagentsTotal = subagents.reduce((n, a) => n + a.volume, 0);
     const subagentsEstimated = subagents.some((a) => a.volumeEstimated);

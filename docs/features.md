@@ -197,6 +197,13 @@ model called the Skill tool) and active turns, distinct from user-typed
 *Two different things, deliberately kept apart: a **skill** the model invoked, and the
 **commands you typed**. Each chip opens a drawer listing the turns it appeared in.*
 
+A command typed **inside a sentence** counts too. Claude Code expands a slash command only when it
+stands alone, so `look at this /paste-image and tell me` stays prose and opens no turn of its own,
+but you typed it and the card says commands you typed. The word is admitted only when the session
+itself can vouch for the name, by loading the skill it names or by running the same command
+somewhere else, which is what keeps `/tmp` and `/home/dev/notes` from being read as commands: measured
+over 1037 local sessions, the rule admits fourteen names and every one of them is a real command.
+
 The **Changed files** widget answers *what did this touch*: a total plus a
 proportional bar per file extension, counted from **git**: the files of the
 commits that session produced, so the number is one you can reproduce with

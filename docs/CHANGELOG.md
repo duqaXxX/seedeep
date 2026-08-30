@@ -47,6 +47,17 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- A slash command typed inside a sentence is counted as one. Claude Code expands a command only
+  when it stands alone, so `…testing this /paste-image and I see…` stays prose, opens no turn and
+  emitted no command event, while the user typed it and the card says *commands you typed*. Over
+  the local corpus that is not a corner: 122 of the 153 slash words found inside typed prompts are
+  a single command written that way. The word is admitted only when the SESSION vouches for the
+  name, by loading the skill it names or running the same command elsewhere in the same file, so
+  nothing global is consulted and the answer cannot drift with the machine. That rule is what
+  separates a command from a path: of 258 slash words inside typed prompts, 119 are paths
+  (`/Users`, `/tmp`, `/opt`, `/dev`) and not one survives it. Reducing all 1037 local sessions, the
+  Commands card gains fourteen names and every one is a real command. The counts merge with the
+  expanded ones rather than sitting apart, since a command you typed is a command you typed.
 - A session's commits survive the squash merge that ships them. `readCommits` lists what
   `git log --all` walks, so when a pull request is squashed and its branch deleted, every commit
   the session made stops being listed while the object stays readable — and the Commits card went
