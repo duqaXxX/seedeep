@@ -12,7 +12,7 @@
  *   `holds` — is the field there, in the shape the parser expects?
  */
 
-export type ClaimKind = 'gesture' | 'model';
+export type ClaimKind = 'gesture' | 'model' | 'retired';
 
 export interface ClaimContext {
   /** Parsed lines of the driven session's transcript. */
@@ -62,8 +62,19 @@ export interface Claim {
    * 'model'  — the model had to choose to do it, so absence is inconclusive
    *             (UNPROVEN): CC may have changed, or Claude just answered
    *             differently. Never report a model claim as broken.
+   * 'retired' — Claude Code no longer offers any way to CAUSE this shape, so no run
+   *             will ever prove it again. The reader stays, because sessions written
+   *             before it went away still carry the shape and still replay. Kept in the
+   *             contract rather than deleted: if the shape ever comes back, the evidence
+   *             pass says so by flipping it to HOLDS. Requires {@link retired}.
    */
   kind: ClaimKind;
+  /**
+   * Why a `retired` claim can no longer be provoked, with the measurement behind it —
+   * a date and a corpus, never an impression. Printed instead of the manual instruction,
+   * because telling someone to go and provoke an impossible scene wastes their afternoon.
+   */
+  retired?: string;
   provoked(ctx: ClaimContext): boolean;
   holds(ctx: ClaimContext): boolean;
 }
@@ -487,7 +498,12 @@ export const CLAIMS: Claim[] = [
     manual:
       'ask Claude to do something it must wait for before continuing; confirm the inline subagent result still renders.',
 
-    kind: 'model',
+    kind: 'retired',
+    retired:
+      'the inline result exists only when the Agent tool is called with `run_in_background: false`, and that ' +
+      'parameter is gone from the tool schema. Measured 2026-08-30 over every session on one machine: passed 100 ' +
+      'times (84 false, 16 true) up to 2.1.233, and absent from all 39 Agent calls on 2.1.245 and later. Each of ' +
+      'the 84 `false` calls produced this shape and nothing else ever did, so no run can provoke it again.',
     provoked: (ctx) => typed(ctx, 'user').some((d) => d?.toolUseResult),
     holds: (ctx) => typed(ctx, 'user').some((d) => Array.isArray(d?.toolUseResult?.content)),
   },
@@ -541,7 +557,11 @@ export const CLAIMS: Claim[] = [
     manual:
       'give Claude a multi-step job so it creates tasks, and confirm seedeep labels them by subject rather than by a bare id.',
 
-    kind: 'model',
+    kind: 'retired',
+    retired:
+      'the text is written by the TaskCreate tool, which Claude Code no longer offers. Measured 2026-08-30 over ' +
+      'every session on one machine: used in 5 sessions up to 2.1.231, then 0 of 611 sessions across 2.1.239 to ' +
+      '2.1.251. Asking for a multi-step job cannot bring it back, so the scene has no way of happening.',
     provoked: (ctx) => ctx.raw.includes('created successfully'),
     holds: (ctx) => /Task #\d+ created successfully: /.test(ctx.raw),
   },

@@ -45,6 +45,20 @@ Everything released before `0.20.0` — including the pre-publication developmen
   radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
   would be blind to anything added beside `thinking_tokens`.
 
+### Changed
+
+- The schema contract gains a fourth outcome, **RETIRED**, for a claim whose scene Claude Code no
+  longer offers any way to cause. Two claims move to it, each carrying the measurement that
+  justifies it. **C18** asserts the inline result of a synchronous subagent, which exists only when
+  the Agent tool is called with `run_in_background: false`: that parameter was passed 100 times up
+  to 2.1.233 and appears in none of the 39 Agent calls on 2.1.245 and later. **C21** asserts a text
+  written by a `TaskCreate` tool, used in 5 sessions up to 2.1.231 and in 0 of 611 across 2.1.239
+  to 2.1.251. Left as `model` claims they returned UNPROVEN on every run for ever, sat in the
+  `open` list of a certified version, and made each report print an instruction nobody could carry
+  out. They are retired rather than deleted for two reasons: their readers still run, on sessions
+  written while the shape existed, and `holds` is still evaluated, so the day either shape comes
+  back the claim flips to HOLDS and says so.
+
 ### Fixed
 
 - Every subagent went output-less on Claude Code 2.1.251, which is seedeep's differentiator. The
