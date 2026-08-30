@@ -301,6 +301,13 @@ when it has not it re-arms instead of giving up: dropping the question would lea
 that really ended live for the life of the page, since `gone` is driven by an identity change
 that has already happened.
 
+A session can also stop being live by leaving the roster altogether, which is not the same
+event: its transcript is gone, so no row carries it and no reading of `isOpen` can be taken.
+A throwaway working directory cleaned up under a driven session does this, and so does pruning
+`~/.claude/projects` by hand. The roster listener walks the rows it is handed, so the tabs it
+cannot see are collected separately and offered to the same guard; the guard's own question
+already treats an absent row as gone.
+
 Ending a tab is **reversible**, and has to be: `claude --resume` continues the SAME session id,
 so a resumed session can never be handed a new tab, and nothing auto-opens it
 (`sessionsToAutoOpen` excludes both `known` and the ids on screen) and picking it from the
@@ -975,7 +982,9 @@ own verdict that something is worth interrupting the user for. The transition de
 (`notify-watch.ts`) folds each reading of the digest and the engine (`notify-engine.ts`) gates its
 output per channel: the tray subscribes here, a configured webhook is POSTed to instead. The
 switches filter that output and never the detector's input, so turning one back on announces what
-happens next and not the backlog it slept through. Evaluation is skipped entirely when nobody is
+happens next and not the backlog it slept through. One thing IS filtered on the way in, for the
+opposite reason: an automated run (`isAutomated`, `core/types.ts`) never reaches the detector,
+because a notification asks somebody to get up and nobody is sitting at a `claude -p`. Evaluation is skipped entirely when nobody is
 subscribed and no webhook is configured, which is what keeps an unwatched process idle.
 
 Staying connected is not free, and SSE does not give reconnection for free on its own. Four

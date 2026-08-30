@@ -1,4 +1,4 @@
-import { isWorking, pendingInput } from '../core/types.ts';
+import { isAutomated, isWorking, pendingInput } from '../core/types.ts';
 import type { DigestEntry } from './digest.ts';
 
 /** Which switch an announcement answers to. */
@@ -151,9 +151,11 @@ function finishedAnnouncement(e: DigestEntry): Announcement | null {
 /**
  * The transition detector: fold one reading in and return what the user should be told about.
  *
- * Ported from the tray, which owned it while it was the only thing that notified. Four rules travel
+ * Ported from the tray, which owned it while it was the only thing that notified. Five rules travel
  * with it, and each exists because something went wrong once:
  *
+ * - **Nobody is sitting at an automated run**, so it never reaches the detector at all — see the
+ *   filter in `step`, which is the one thing here that touches the INPUT.
  * - **Seeding.** `null` until a reading has actually been made, and back to `null` after any reading
  *   that could not be. A session already waiting when this starts — or when it restarts — is not
  *   something that just happened, and saying so would misdate it.
@@ -179,7 +181,19 @@ export function createNotifyWatch(): { step(entries: DigestEntry[] | null): Anno
       }
       // An entry with no id is skipped entirely rather than announced: it cannot be remembered, so
       // it would be new again on every single tick.
-      const identified = entries.filter((e) => typeof e.sessionId === 'string' && e.sessionId.length > 0);
+      //
+      // An AUTOMATED run is dropped for a different reason, and here rather than beside the
+      // switches: a notification asks somebody to get up, and there is nobody at a `claude -p`.
+      // This filters the detector's INPUT, which the per-kind switches below deliberately never
+      // do — a switch turned back on must not replay a backlog, whereas a headless run has no
+      // event worth remembering at all, and tracking one would only make it announceable the day
+      // something read `seen` differently. Until 0.31.0 the exclusion was accidental: those hosts
+      // publish no status, so a session that never left `null` could not transition and the
+      // detector never saw one. Deriving their state from the transcript gave them the busy→idle
+      // they had always lacked, and every git push started announcing `Turn finished`.
+      const identified = entries.filter(
+        (e) => typeof e.sessionId === 'string' && e.sessionId.length > 0 && !isAutomated(e),
+      );
       const before = seen;
       seen = {
         waiting: ids(identified, needsYou),

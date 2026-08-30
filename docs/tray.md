@@ -219,9 +219,12 @@ transcript, because the tray has no reducer. What it derives is presentation: wh
 is in, and how long it has been there.
 
 Only interactive sessions, and the filter is not in the panel. A headless run (`entrypoint`
-`sdk-cli`/`sdk-py`) is not a session anybody is sitting at. The rule is the browser picker's
-(`client/sessions.ts`, `isAutomated`), applied **where the digest enters the tray** (`client.rs`,
-`only_interactive`), so the rows, the icon and the notifications read one list. An unrecognised
+`sdk-cli`/`sdk-py`) is not a session anybody is sitting at. The rule is `isAutomated`
+(`core/types.ts`), which the browser picker reads too, applied **where the digest enters the tray**
+(`client.rs`, `only_interactive`) so the rows and the icon read one list. Notifications arrive on
+their own channel and carry no `entrypoint`, so the tray cannot filter them: they are excluded in
+the server instead, at the detector (`notify-watch.ts`, `createNotifyWatch`), which is what makes
+the two surfaces of this app agree about which sessions exist. An unrecognised
 entrypoint, and a missing one, are **kept**, since a newer Claude Code renaming one must not make the tray
 silently stop watching, and a payload that is not a list passes through untouched, landing in
 *Unreachable* rather than in "the machine is idle".
@@ -700,6 +703,9 @@ time it could see, and announces only what was not there before, per session and
 one prompt answered and another raised in the same interval still interrupts. Each rule that follows
 is a way of not lying about when something happened:
 
+- An automated run never announces at all. A notification asks somebody to get up, and nobody is
+  sitting at a `claude -p`. It is the one rule applied to the detector's INPUT rather than to its
+  output, so such a session has no remembered state that a later change could make announceable.
 - A failure announces once, and re-arms on recovery. Still-broken is not news on the next tick,
   and only a successful call, which clears the server's `error`, makes the next failure
   announceable. A session that breaks while it was ALSO stopped on the user raises **one** banner,

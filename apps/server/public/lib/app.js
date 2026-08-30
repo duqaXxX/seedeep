@@ -79,6 +79,9 @@ var HIST_BINS = [
 function isLive(s) {
   return s.isOpen ?? s.isActive;
 }
+function isAutomated(s) {
+  return !!s.entrypoint && s.entrypoint.startsWith("sdk");
+}
 function isWorking(s) {
   return s.status === "busy" || s.status === "shell";
 }
@@ -1653,9 +1656,6 @@ function withDeadline(read, ms) {
 }
 
 // apps/server/src/client/sessions.ts
-function isAutomated(s) {
-  return !!s.entrypoint && s.entrypoint.startsWith("sdk");
-}
 function sessionsToAutoOpen(rows, known, openIds) {
   return rows.filter((s) => isLive(s) && !isAutomated(s) && !known.has(s.sessionId) && !openIds.has(s.sessionId));
 }
@@ -10355,6 +10355,10 @@ roster.onChange((rows) => {
       }
     }
   }
+  const listed = new Set(rows.map((r) => r.sessionId));
+  for (const [sessionId, t] of openTabs)
+    if (!t.ended && !listed.has(sessionId))
+      endGuard.gone(sessionId);
   if (rows.length !== lastPaintedLen) {
     lastPaintedLen = rows.length;
     homeView.repaint();

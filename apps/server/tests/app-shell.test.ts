@@ -212,6 +212,15 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     });
     await until('the resumed session to reach the strip', () => liveTab().children[0].classList.contains('err'));
 
+    // The other way a session stops being live, and the one no reading of `isOpen` can express:
+    // its FILE is gone, so it leaves the roster entirely rather than turning up not-live in it.
+    // A throwaway cwd cleaned up under a driven session does exactly this. `roster.onChange`
+    // walks the rows it was handed, so this tab was never offered to the end guard at all and
+    // kept its live chrome for the life of the page — a turn clock still ticking on a session
+    // that had ended, and a pending-approval banner nothing could ever clear.
+    roster.splice(0, 1);
+    await until('the vanished session to end its tab', () => liveTab().classList.contains('ended'));
+
     // Close both via ×: panels and tabs drop with them.
     for (const t of [...tabs]) t.children[2].onclick({ stopPropagation: () => {} });
     assert.equal(findByClass(tabsEl, 'tab').length, 0);

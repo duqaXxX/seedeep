@@ -527,6 +527,15 @@ roster.onChange((rows) => {
       }
     }
   }
+  // And the tabs the loop above cannot reach: it walks `rows`, so it only ever visits sessions
+  // the roster still lists. A session whose FILE is gone — a throwaway cwd cleaned up under it,
+  // `~/.claude/projects` pruned by hand — leaves the roster entirely, and its tab was never
+  // handed to the guard at all: it kept the live chrome for the life of the page, a turn clock
+  // ticking on a session that ended an hour ago and a pending-approval banner nothing could
+  // clear. Same confirmation window, and `stillGone` already answers this case ("gone from the
+  // roster entirely counts as gone") — it was simply never armed for it.
+  const listed = new Set(rows.map((r) => r.sessionId));
+  for (const [sessionId, t] of openTabs) if (!t.ended && !listed.has(sessionId)) endGuard.gone(sessionId);
   // Free, and NOT guarded by `booted`: Home's empty box states whether this machine has any
   // session at all, and it paints before the first roster reading lands. Without this the box
   // keeps saying "there is none on this machine" over a picker that lists one — measured on a

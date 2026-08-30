@@ -233,6 +233,23 @@ export function isLive(s: Pick<SessionRecord, 'isOpen' | 'isActive'>): boolean {
 }
 
 /**
+ * A headless/programmatic run (`sdk-cli`, `sdk-py`) rather than a session somebody is sitting at.
+ *
+ * One definition, beside {@link isLive}, because four surfaces answer it and they must not
+ * disagree: the picker's Human/Automated split, the auto-open rule, the tray's row filter (which
+ * holds its own copy in `client.rs`), and whether an event is worth interrupting anyone for. The
+ * desktop app's Code tab is deliberately NOT automated — somebody is sitting at it; what it shares
+ * with a headless run is only being driven over stream-json, which is a fact about the transport.
+ *
+ * An entrypoint this does not recognise — and a missing one — is NOT automated. The failure modes
+ * are not symmetric: one session too many is a row you ignore, while hiding one because a newer
+ * Claude Code renamed its entrypoint is a session that silently stops being watched.
+ */
+export function isAutomated(s: Pick<SessionRecord, 'entrypoint'>): boolean {
+  return !!s.entrypoint && s.entrypoint.startsWith('sdk');
+}
+
+/**
  * The session is DOING something — which is not the same as "its agent is thinking".
  *
  * `busy` is the agent at work. `shell` is Claude Code's own word for a turn that is OVER while a

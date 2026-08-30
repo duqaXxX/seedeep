@@ -20,10 +20,14 @@ function entry(o: {
   turnState?: string;
   apiCalls?: number;
   nowText?: string;
+  entrypoint?: string | null;
 }): DigestEntry {
   return {
     sessionId: o.id as string,
     project: 'atlas',
+    // Defaults to the interactive terminal, which is what every test above is about. Written out
+    // rather than left undefined so a reader can see that `isAutomated` is being asked something.
+    entrypoint: o.entrypoint === undefined ? 'cli' : o.entrypoint,
     subject: 'add a retry to the uploader',
     status: o.status,
     waitingFor: o.waitingFor ?? null,
@@ -298,4 +302,48 @@ test('Esc produces no finish, in both shapes the transcript writes', () => {
 
   // A real turn still announces — the rule must not swallow the event it exists for.
   assert.ok(announced([typed('u1', 'first prompt', 3), assistant('a1', 4)]).includes('finishes'));
+});
+
+test('a headless run never announces — there is nobody at it to get up', () => {
+  // Until 0.31.0 this held by accident: a host driving Claude Code over stream-json publishes no
+  // status, so the entry never left `null` and could not transition. Reading the state off the
+  // transcript gave those sessions the busy→idle they had always lacked, and seedeep's own
+  // docs-freshness gate — a `claude -p` on every push — started announcing `Turn finished` to the
+  // tray and to the webhook.
+  for (const ep of ['sdk-cli', 'sdk-py']) {
+    const finish = createNotifyWatch();
+    finish.step([entry({ id: 'a', status: 'busy', entrypoint: ep })]);
+    assert.deepEqual(finish.step([entry({ id: 'a', status: 'idle', entrypoint: ep })]), [], `${ep} finish`);
+
+    // The derived wait is the other half: `deriveStatus` reaches an unanswered AskUserQuestion,
+    // and it carries Claude Code's own `input needed`, so it reads exactly like a published one.
+    const wait = createNotifyWatch();
+    wait.step([entry({ id: 'a', status: 'busy', entrypoint: ep })]);
+    const w = wait.step([entry({ id: 'a', status: 'waiting', waitingFor: 'input needed', entrypoint: ep })]);
+    assert.deepEqual(w, [], `${ep} wait`);
+
+    // And a failure, which is read before either of them.
+    const fail = createNotifyWatch();
+    fail.step([entry({ id: 'a', status: 'busy', entrypoint: ep })]);
+    const f = fail.step([
+      entry({ id: 'a', status: 'busy', error: { agentId: null, message: 'boom' }, entrypoint: ep }),
+    ]);
+    assert.deepEqual(f, [], `${ep} failure`);
+  }
+});
+
+test('the desktop app is not a headless run — somebody is sitting at it', () => {
+  // The distinction 0.31.0 was actually after. Both hosts are driven over stream-json and neither
+  // publishes a status, so the mechanism that gave them a state cannot tell them apart; the
+  // entrypoint can. An entrypoint nobody recognises stays announceable for the same reason: one
+  // banner too many is ignored, a session silently stopped being watched is not.
+  for (const ep of ['claude-desktop', 'vscode', null]) {
+    const w = createNotifyWatch();
+    w.step([entry({ id: 'a', status: 'busy', entrypoint: ep })]);
+    assert.deepEqual(
+      w.step([entry({ id: 'a', status: 'idle', entrypoint: ep })]).map((a) => a.kind),
+      ['finishes'],
+      `entrypoint ${ep}`,
+    );
+  }
 });
