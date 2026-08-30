@@ -306,6 +306,14 @@ A session launches shell commands into the background as readily as it launches
 subagents, and each one gets a catalogue row that outlives it, so a command that
 **failed** is still there to be found, which is the one thing you needed to be told.
 
+Every row states the same fields in the same places: the state, the turn it was launched from,
+the exit code, then how long it ran. Each of those has a **column of its own, kept even when the
+row has nothing to put in it**, so the eye reads down `done` or down `exit 0` rather than hunting
+along a shell command whose length is arbitrary. What varies in length (who backgrounded it, how
+many events a monitor produced) sits to the left of those columns, where growing pushes nothing
+out of true. The command itself is set as the card's prose rather than as a heading, since it is
+what the row is about and not a title it carries.
+
 The card holds both lists behind two tabs, and it grows them only when both have
 something in them: with commands and no subagents (or the reverse) it is simply
 the one list, with no switch to press. The tab you land on is always Subagents, since a

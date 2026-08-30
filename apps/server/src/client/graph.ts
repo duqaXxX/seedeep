@@ -1889,8 +1889,11 @@ export function createGraph(
     r.append(E('span', 'sdot'));
     const mid = E('div', 'smid');
     mid.append(E('b', null, a.title));
-    if (a.model) mid.append(E('span', 'schip', shortModel(a.model)));
-    r.append(mid);
+    // Its own column, like the background rows in the other tab of this card: one card must not
+    // hold two row shapes.
+    const meta = E('div', 'smeta');
+    if (a.model) meta.append(E('span', 'schip', shortModel(a.model)));
+    r.append(mid, meta);
     // durationMs is null for a finished subagent whose timing never resolved (no child jsonl);
     // formatDuration(null) is "running…" — a lie on an ended session, so show a dash instead.
     r.append(E('span', 'sdur', a.durationMs != null ? formatDuration(a.durationMs) : '—'));
@@ -1903,8 +1906,10 @@ export function createGraph(
     r.onclick = () => subsCard.scrollIntoView({ behavior: 'smooth' });
     r.append(E('span', 'sdot'));
     const mid = E('div', 'smid');
-    mid.append(E('b', null, a.workflow?.name || 'workflow'), E('span', 'schip', 'workflow'));
-    r.append(mid);
+    mid.append(E('b', null, a.workflow?.name || 'workflow'));
+    const meta = E('div', 'smeta');
+    meta.append(E('span', 'schip', 'workflow'));
+    r.append(mid, meta);
     r.append(E('span', 'sdur', a.durationMs != null ? formatDuration(a.durationMs) : '—'));
     return r;
   }
@@ -2199,24 +2204,44 @@ export function createGraph(
    * not the launch receipt's, which closes in milliseconds.
    */
   function bgEndedRow(c: BackgroundCommand): HTMLElement {
-    const r = E('div', 'subrow done');
+    const r = E('div', 'subrow done bgrow');
     r.onclick = () => openBlock({ kind: 'tool', toolUseId: c.toolUseId });
     r.append(E('span', 'sdot'));
     const mid = E('div', 'smid');
     mid.append(E('b', null, c.label));
-    mid.append(E('span', `badge b-${c.state === 'done' ? 'done' : c.state}`, c.state));
-    if (c.turnIndex !== null) mid.append(E('span', 'schip', 'turn ' + c.turnIndex));
+    // The chips ride in their OWN column rather than after the label, because the label is a shell
+    // command and its length is arbitrary: trailing them made `done`, `turn 7` and `exit 0` land at
+    // a different x on every row, so the eye could not read down any of them. One column each, and
+    // the row scans as a table.
+    // A FIXED set of cells, in a fixed order, and an absent field leaves its cell empty rather
+    // than closing the gap. That is what puts every `done` under every other `done` and every
+    // `exit 0` under every other: a row is its own grid, so a column only exists if every row
+    // spends the same width on it. The variable-length extras (who backgrounded it, how many
+    // events a Monitor produced) share the one flexible cell on the left, where growing pushes
+    // nothing out of line.
+    const meta = E('div', 'smeta');
+    const extra = E('div', 'sxtra');
     // Same word the live row used, so the row a reader watched running and the row it became are
     // telling one story about one command.
-    if (c.by !== 'agent') mid.append(E('span', 'schip', BG_AUTHOR_LABEL[c.by]));
+    if (c.by !== 'agent') extra.append(E('span', 'schip', BG_AUTHOR_LABEL[c.by]));
+    // What the stream produced, which for a Monitor is the only thing it ever did. One line here,
+    // so the chip carries the count and the row's tooltip the last event.
+    if (c.events > 0) extra.append(E('span', 'schip', c.events + (c.events === 1 ? ' event' : ' events')));
     // The exit code lives in Claude Code's sentence and nowhere else, so the chip quotes it from
     // there rather than inventing a parse of the command's own semantics.
     const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
-    if (exit) mid.append(E('span', 'schip', 'exit ' + exit[1]));
-    // What the stream produced, which for a Monitor is the only thing it ever did. One line here,
-    // so the chip carries the count and the row's tooltip the last event.
-    if (c.events > 0) mid.append(E('span', 'schip', c.events + (c.events === 1 ? ' event' : ' events')));
-    r.append(mid);
+    const cell = (child: HTMLElement | null): HTMLElement => {
+      const d = E('div', 'scell');
+      if (child) d.append(child);
+      return d;
+    };
+    meta.append(
+      extra,
+      cell(E('span', `badge b-${c.state === 'done' ? 'done' : c.state}`, c.state)),
+      cell(c.turnIndex !== null ? E('span', 'schip', 'turn ' + c.turnIndex) : null),
+      cell(exit ? E('span', 'schip', 'exit ' + exit[1]) : null),
+    );
+    r.append(mid, meta);
     // A RUNNING row has no duration to state — nothing has ended — but it does have an age, and
     // the live row two cards up has been showing it all along. Leaving `—` here made one command
     // read two ways on one screen. It ticks on the shared counter, so it cannot go stale, and it

@@ -8104,9 +8104,10 @@ function createGraph(container, state, opts = {}) {
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
     mid.append(E("b", null, a.title));
+    const meta = E("div", "smeta");
     if (a.model)
-      mid.append(E("span", "schip", shortModel2(a.model)));
-    r.append(mid);
+      meta.append(E("span", "schip", shortModel2(a.model)));
+    r.append(mid, meta);
     r.append(E("span", "sdur", a.durationMs != null ? formatDuration(a.durationMs) : "—"));
     return r;
   }
@@ -8115,8 +8116,10 @@ function createGraph(container, state, opts = {}) {
     r.onclick = () => subsCard.scrollIntoView({ behavior: "smooth" });
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
-    mid.append(E("b", null, a.workflow?.name || "workflow"), E("span", "schip", "workflow"));
-    r.append(mid);
+    mid.append(E("b", null, a.workflow?.name || "workflow"));
+    const meta = E("div", "smeta");
+    meta.append(E("span", "schip", "workflow"));
+    r.append(mid, meta);
     r.append(E("span", "sdur", a.durationMs != null ? formatDuration(a.durationMs) : "—"));
     return r;
   }
@@ -8270,22 +8273,26 @@ function createGraph(container, state, opts = {}) {
     return r;
   }
   function bgEndedRow(c) {
-    const r = E("div", "subrow done");
+    const r = E("div", "subrow done bgrow");
     r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
     mid.append(E("b", null, c.label));
-    mid.append(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state));
-    if (c.turnIndex !== null)
-      mid.append(E("span", "schip", "turn " + c.turnIndex));
+    const meta = E("div", "smeta");
+    const extra = E("div", "sxtra");
     if (c.by !== "agent")
-      mid.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
-    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
-    if (exit)
-      mid.append(E("span", "schip", "exit " + exit[1]));
+      extra.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
     if (c.events > 0)
-      mid.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
-    r.append(mid);
+      extra.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
+    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
+    const cell = (child) => {
+      const d = E("div", "scell");
+      if (child)
+        d.append(child);
+      return d;
+    };
+    meta.append(extra, cell(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state)), cell(c.turnIndex !== null ? E("span", "schip", "turn " + c.turnIndex) : null), cell(exit ? E("span", "schip", "exit " + exit[1]) : null));
+    r.append(mid, meta);
     const since = c.state === "running" ? Date.parse(c.since) : Number.NaN;
     if (Number.isFinite(since)) {
       const age = E("span", "sdur run");

@@ -92,6 +92,14 @@
   color: var(--lo2);
   white-space: nowrap;
 }
+/* Sized from what `formatDuration` can WRITE, never from the durations one machine happens to
+   hold: its widest ordinary output is `59m 59s`, seven mono characters, and `running…` on a row
+   that has none. Right aligned inside that width so the figures line up by their last digit, and
+   free to grow past it for an `h`/`m` reading rather than clipping one. */
+.subrow.done .sdur {
+  min-width: 8ch;
+  text-align: right;
+}
 /* A running row's figure counts UP — it is an age, not a duration — so it is coloured like the
    live rows above rather than like the measured durations beside it. */
 .subrow .sdur.run {
@@ -119,15 +127,78 @@
   grid-template-columns: 14px 1fr auto;
   gap: 0.55rem;
   align-items: center;
-  padding: 0.45rem 0.6rem;
+  padding: 0.42rem 0.6rem;
   border-radius: 9px;
   background: var(--panel2);
   border: 1px solid var(--border);
   cursor: pointer;
   transition: 0.15s;
 }
+/* The finished rows carry their chips in a column of their own, so they are four columns wide.
+   The live `.subrow.act` rows are `display: block` and never see this. */
+.subrow.done {
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  /* A list of these is read as a LIST, and at sixteen rows the box around each one is the loudest
+     thing on the card — sixteen borders competing with the text they hold. The fill alone still
+     separates one row from the next, and the border comes back under the cursor, where it is the
+     answer to "which one am I about to open". */
+  background: color-mix(in srgb, var(--panel2) 62%, transparent);
+  border-color: transparent;
+}
 .subrow:hover {
   border-color: var(--border2);
+}
+.subrow.done:hover {
+  background: var(--panel2);
+}
+/* The chips, in launch order of importance: state, then which turn, then how it exited. Right
+   aligned as one block so every row's `done` sits at the same x, and the eye can read the column
+   instead of hunting along a label whose length is arbitrary. */
+.subrow .smeta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  flex: none;
+}
+/* Each row is its own grid, so an `auto` column is sized by that row alone and the chips landed
+   at four different x. The floor is what makes them a column: the two chips every finished row
+   carries are the state (`unknown` is its longest word) and `turn N`, and a row holding only
+   those still reserves the same width as one that also exits. Anything further — an exit code, an
+   author, an event count — grows the block LEFTWARD, since the flex packs to the end: the right
+   edge is the one the eye reads down, and it never moves. */
+/* The command reads as the card's own prose, not as a heading: same size, colour and family as
+   the description above the list (`.wdesc`). Sixteen rows of bright mono made the list shout, and
+   a shell command is what the row is ABOUT rather than a title it carries. */
+.subrow.bgrow .smid b {
+  font: 400 0.76rem var(--sans);
+  color: var(--lo);
+}
+/* Four cells, always all four, in a fixed order: the extras, then state, turn, exit. An absent
+   field keeps its cell, which is the whole point — a column exists only when every row spends the
+   same width on it, since each row is a grid of its own and an `auto` track is sized by its row
+   alone. Widths come from what the code can WRITE, never from what one machine happens to hold:
+   the longest state is `unknown`, and `turn`/`exit` take a space and up to three digits. The
+   extras sit in the flexible cell, where a long `backgrounded by you` grows leftward and pushes
+   none of the three columns out of true. */
+.subrow.bgrow .smeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9ch 9.5ch 9.5ch;
+  align-items: center;
+  gap: 0.4rem;
+  justify-items: start;
+}
+.subrow .sxtra {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.subrow .scell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 .subrow .sdot {
   width: 7px;
@@ -138,8 +209,8 @@
 }
 .subrow .schip {
   font: 0.68rem var(--mono);
-  color: var(--lo2);
-  border: 1px solid var(--border2);
+  color: var(--lo);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 5px;
   white-space: nowrap;

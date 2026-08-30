@@ -47,6 +47,16 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Changed
 
+- The Background commands catalogue reads as a table. Its chips trailed the command, whose length
+  is arbitrary, so `done`, `turn 7` and `exit 0` landed at a different x on every row and none of
+  them could be read down the list. State, turn and exit now have a column each, **kept even when
+  a row has nothing to put in it**, since each row is a grid of its own and a column only exists
+  when every row spends the same width on it. Those widths come from what the code can write (the
+  longest state is `unknown`; turn and exit take a space and up to three digits), never from the
+  commands one machine happens to hold. The fields that vary in length, who backgrounded it and a
+  monitor's event count, share a flexible cell to their left. The command is set in the same size,
+  colour and family as the card's own description: sixteen rows of bright mono read as sixteen
+  headlines, and the command is what a row is about rather than a title it carries.
 - The schema contract gains a fourth outcome, **RETIRED**, for a claim whose scene Claude Code no
   longer offers any way to cause. Two claims move to it, each carrying the measurement that
   justifies it. **C18** asserts the inline result of a synchronous subagent, which exists only when
