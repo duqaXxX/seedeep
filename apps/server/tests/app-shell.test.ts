@@ -76,13 +76,27 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
   // — so Share threw in every later test in every later file, silently, on whichever machine won
   // that race. A fake that says `ok` to an endpoint it knows nothing about is not a stub, it is a
   // wrong answer with a stub's confidence.
+  // The roster endpoints answer 500 while `rosterFails` is set, and — deliberately — with a
+  // PARSEABLE body saying zero sessions. That is what a scan which could not be made would look
+  // like to a client that reads the body without looking at the status, and it is the only way
+  // this test can tell a reading that was checked from one that merely failed to parse.
+  let rosterFails = false;
+  let liveReadings = 0;
+  const failed = (body: unknown) => ({ ok: false, status: 500, json: () => Promise.resolve(body) });
   g.fetch = (input: any) => {
     const url = String(input);
     if (url.startsWith('/api/commits'))
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ commits: [], remote: null }) });
-    if (url === '/api/live') return Promise.resolve({ ok: true, json: () => Promise.resolve(liveOf(roster)) });
+    if (url === '/api/live') {
+      liveReadings++;
+      return Promise.resolve(
+        rosterFails ? failed(liveOf([])) : { ok: true, json: () => Promise.resolve(liveOf(roster)) },
+      );
+    }
     if (url === '/api/sessions')
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(roster.map(toCatalogue)) });
+      return Promise.resolve(
+        rosterFails ? failed([]) : { ok: true, json: () => Promise.resolve(roster.map(toCatalogue)) },
+      );
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error(`no fake for ${url}`)) });
   };
   try {
@@ -218,6 +232,17 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     // walks the rows it was handed, so this tab was never offered to the end guard at all and
     // kept its live chrome for the life of the page — a turn clock still ticking on a session
     // that had ended, and a pending-approval banner nothing could ever clear.
+    // Before that: the roster endpoint FAILING must not be read as the same thing. A scan that
+    // could not be made answers 500, and a client that took the body at face value would see zero
+    // sessions — the sweep below would then end every tab on the page while the sessions behind
+    // them were still running. Several failed readings, over more than the confirmation window,
+    // and the live tab is untouched.
+    rosterFails = true;
+    const readingsAtFailure = liveReadings;
+    await until('the roster to have failed several readings', () => liveReadings >= readingsAtFailure + 4);
+    assert.equal(liveTab().classList.contains('ended'), false, 'a failed reading is not an empty roster');
+    rosterFails = false;
+
     roster.splice(0, 1);
     await until('the vanished session to end its tab', () => liveTab().classList.contains('ended'));
 

@@ -80,6 +80,7 @@ export class Watcher extends EventEmitter {
   private readonly runMembers = new Set<string>(); // `${sessionId} ${runId} ${agentId}` already announced
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false; // a tick is walking the files; see the guard in tick()
+  private passFailing = false; // a pass is failing and has already been logged; see tick()
 
   constructor(opts: WatcherOptions = {}) {
     super();
@@ -121,6 +122,17 @@ export class Watcher extends EventEmitter {
     this.ticking = true;
     try {
       await this.pass();
+      this.passFailing = false;
+    } catch (err) {
+      // A pass reads the filesystem, so it CAN fail — `discoverSessions` throws when a root
+      // exists but will not be read (see discovery.ts). The timer must survive it: the cause is
+      // usually transient and the next tick is 300ms away, while an escaping rejection from
+      // `void this.tick()` takes the process with it. Logged once per outage, not 3.3 times a
+      // second, so a lasting failure is still visible in the console without burying it.
+      if (!this.passFailing) {
+        this.passFailing = true;
+        console.error('seedeep: watcher pass failed —', err);
+      }
     } finally {
       this.ticking = false;
     }

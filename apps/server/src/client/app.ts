@@ -1,6 +1,7 @@
 import type { SessionCommits } from '../core/commit-attribution.ts';
 import { windowFor } from '../core/context-windows.ts';
 import type { SessionFiles } from '../core/file-attribution.ts';
+import type { CatalogueRecord, LivePayload } from '../core/roster.ts';
 import { createSessionTree } from '../core/session-tree.ts';
 import type { SessionCards } from '../core/tracker-cards.ts';
 import { tabLabel } from '../core/tree-format.ts';
@@ -109,6 +110,18 @@ const navMenu = createNavMenu(navEl, {
   onSwitch: switchTo,
 });
 const dropdown = createDropdown(dropdownEl, { onOpen: openFromDropdown });
+/**
+ * A roster reading, or a throw. `authFetch` resolves on any status, so a 500 — which is what a
+ * scan that could not be made answers with (see discovery.ts) — would otherwise be parsed as
+ * data, and an unparseable body is only accidentally a failure. Throwing is what puts it on the
+ * path the poll already has for a reading that did not land: keep the last good rows, retry in
+ * 3s. Serving `[]` there would say every session on the machine is gone.
+ */
+function readRoster<T>(r: Response): Promise<T> {
+  if (!r.ok) throw new Error(`roster reading failed: ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 // Named here rather than left to createRoster's default because the end-of-session
 // confirmation window below is defined RELATIVE to it: a confirmation that does not outlast
 // one poll would re-read the very same reading it is meant to check.
@@ -118,8 +131,8 @@ const ROSTER_POLL_MS = 3000;
 const roster = createRoster({
   // The signal is the roster's deadline (see READING_TIMEOUT_MS): honouring it is what lets a
   // request the network will never answer be dropped instead of held open forever.
-  fetchCatalogue: (signal) => authFetch('/api/sessions', { signal }).then((r) => r.json()),
-  fetchLive: (signal) => authFetch('/api/live', { signal }).then((r) => r.json()),
+  fetchCatalogue: (signal) => authFetch('/api/sessions', { signal }).then((r) => readRoster<CatalogueRecord[]>(r)),
+  fetchLive: (signal) => authFetch('/api/live', { signal }).then((r) => readRoster<LivePayload>(r)),
   pollMs: ROSTER_POLL_MS,
 });
 // Committing "this session is over": it costs the tab its live presentation, so it happens only
@@ -534,6 +547,12 @@ roster.onChange((rows) => {
   // ticking on a session that ended an hour ago and a pending-approval banner nothing could
   // clear. Same confirmation window, and `stillGone` already answers this case ("gone from the
   // roster entirely counts as gone") — it was simply never armed for it.
+  //
+  // Safe to arm on an EMPTY roster only because a reading that did not land never gets here: a
+  // scan that could not be made throws instead of reporting zero sessions (discovery.ts), the
+  // response is read as a failure instead of as data (`readRoster`), and the poll then serves the
+  // previous rows unchanged. Without that chain an unreadable `~/.claude/projects` would end every
+  // tab on the page while the sessions behind them were still running.
   const listed = new Set(rows.map((r) => r.sessionId));
   for (const [sessionId, t] of openTabs) if (!t.ended && !listed.has(sessionId)) endGuard.gone(sessionId);
   // Free, and NOT guarded by `booted`: Home's empty box states whether this machine has any

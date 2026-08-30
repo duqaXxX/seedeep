@@ -555,3 +555,42 @@ test('no open-session mechanism: the mtime window still decides, as it did befor
   await w.tick();
   assert.deepEqual(seen, ['W'], 'the recently-written session is tailed, the cold one is not');
 });
+
+test('a failing discovery does not kill the watcher: the next tick still delivers', async () => {
+  // `discoverSessions` throws when a root exists but will not be read (see discovery.ts) — that
+  // is the whole point of it, so the roster can never report a scan it could not make as zero
+  // sessions. The timer must outlive it: `start()` calls `tick()` for its side effects, so an
+  // escaping rejection ends the process, and the cause (an EMFILE, a home that stopped
+  // answering) is usually gone by the next tick 300 ms later.
+  const dir = mkdtempSync(join(tmpdir(), 'seedeep-discfail-'));
+  const path = join(dir, 'A.jsonl');
+  writeFileSync(path, usageLine(11));
+  const recs = [rec('A', path, true)];
+  let failing = true;
+  const w = watcherOver(recs, {
+    discover: async () => {
+      if (failing) throw new Error('EMFILE: too many open files');
+      return recs;
+    },
+  });
+  const seen: string[] = [];
+  w.on('event', (e: NormalizedEvent) => {
+    if (e.type === 'usage') seen.push(e.sessionId);
+  });
+  // The watcher says the failure out loud, which is the behaviour wanted in production and noise
+  // here — captured rather than suppressed, so the test also pins that it is reported ONCE.
+  const realError = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => void logged.push(args);
+  try {
+    await w.tick(); // must settle, not reject
+    await w.tick(); // still failing: the same outage must not be re-logged every 300 ms
+  } finally {
+    console.error = realError;
+  }
+  assert.equal(logged.length, 1, 'one line per outage, not one per tick');
+  assert.deepEqual(seen, [], 'a scan that failed places nothing, so nothing is tailed');
+  failing = false;
+  await w.tick();
+  assert.deepEqual(seen, ['A'], 'the very next tick works — the failure was not terminal');
+});

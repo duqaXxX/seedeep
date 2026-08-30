@@ -69,6 +69,14 @@ Everything released before `0.20.0` — including the pre-publication developmen
   and handed to it. Only a page reload cleared them before. It is reached by any session whose file
   disappears under it: a driven session in a throwaway working directory, or `~/.claude/projects`
   pruned by hand.
+- A scan that cannot be made is no longer reported as an empty machine. The session directory was
+  read with every failure swallowed, so an `EMFILE` under load or a home that stops answering
+  produced zero sessions rather than an error — indistinguishable from a machine with none, and
+  now acted upon: the sweep above would have ended every tab on the page while the sessions behind
+  them were still running. `ENOENT` stays an answer (there is nothing there); anything else throws,
+  the roster endpoints answer `500`, and the poll keeps the last rows it had. The watcher survives
+  the same failure and logs it once per outage instead of on every 300 ms tick. This is the rule
+  `isOpen` already followed as `null`: absence of an answer is never served as a negative one.
 - Custom slash commands are read as commands again. Claude Code 2.1.237 began writing
   `origin: {kind:"human"}` on a command defined by a `.md` file (measured over 1046 session files:
   0 of 97 such lines up to 2.1.234, then 25 of 25; built-in commands like `/clear` still carry

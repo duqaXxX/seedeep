@@ -141,6 +141,11 @@ Returns `LivePayload` (`core/roster.ts`): `{ total, sessions, pidVisible }`.
 The two halves rejoin client-side: `mergeRoster(catalogue, live)` is the same roster the server
 would have produced whole.
 
+Both roster endpoints answer `500` when the session directory exists but cannot be read. A `200`
+listing zero sessions therefore means the machine has none, never that the scan failed; a client
+must treat the `500` as a reading that did not land and keep the rows it already has, since the
+alternative is reporting every running session as gone.
+
 ### `GET /api/session-stats`
 
 Turn count and token total per session, from the aggregate cache.

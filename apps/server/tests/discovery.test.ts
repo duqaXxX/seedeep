@@ -273,3 +273,18 @@ test('head cache: an incomplete head is re-scanned when the file grows', async (
   assert.equal(grown.model, 'claude-opus-4-8');
   assert.equal(grown.subject, 'now the task exists');
 });
+
+test('a root that does not exist is zero sessions; one that cannot be read is an error', async () => {
+  // The two are different facts and the caller acts on the difference: an empty array ends every
+  // open tab (the GUI sweeps the tabs the roster stopped listing), so a scan that could not be
+  // made must never produce one. ENOENT is a real answer — this machine keeps no sessions there.
+  assert.deepEqual(await discover(join(tmpdir(), 'seedeep-absent-' + Date.now())), []);
+
+  const root = makeRoot();
+  chmodSync(root, 0o000);
+  try {
+    await assert.rejects(discover(root), 'an unreadable root is reported, not served as empty');
+  } finally {
+    chmodSync(root, 0o755);
+  }
+});

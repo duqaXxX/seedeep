@@ -191,8 +191,17 @@ async function scanCliDir(
   let slugs: string[];
   try {
     slugs = await readdir(slugParent);
-  } catch {
-    return out;
+  } catch (e: any) {
+    // ENOENT is an ANSWER: this machine keeps no sessions under that root, so an empty result
+    // states a fact. Every other failure (EMFILE under load, EACCES, a network-backed home that
+    // stops responding) is the scan not happening, and returning `[]` for it would have the
+    // roster report that every session on the machine vanished — which the GUI acts on, ending
+    // every open tab and freezing live sessions into their ended presentation. Same rule the
+    // PID scan already follows through `isOpen: null` (see roster.ts): absence of an answer must
+    // never be served as a negative answer. The throw reaches the client as a failed reading,
+    // which the roster poll already handles by keeping the last good rows.
+    if (e?.code === 'ENOENT') return out;
+    throw e;
   }
   for (const slug of slugs) {
     const dir = join(slugParent, slug);
@@ -227,6 +236,9 @@ async function scanCliDir(
  * (`isActive`).
  * All inputs are injectable via {@link DiscoverOptions} for testing (home, now,
  * roots, openSessions).
+ *
+ * THROWS when a root directory exists but cannot be read. An empty array therefore always
+ * means "no sessions", never "the scan failed" — every caller acts on that distinction.
  */
 export async function discoverSessions(opts: DiscoverOptions = {}): Promise<SessionRecord[]> {
   const home = opts.home ?? homedir();

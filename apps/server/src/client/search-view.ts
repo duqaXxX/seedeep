@@ -105,7 +105,7 @@ function appendHighlighted(into: HTMLElement, text: string, terms: readonly stri
 /** A session's label: its first task-bearing prompt, or what it is when it has none. */
 function labelOf(r: SearchRow): string {
   if (r.subject && r.subject.trim()) return r.subject.replace(/\s+/g, ' ').trim();
-  if (r.entrypoint && r.entrypoint.startsWith('sdk')) return 'Automated run · ' + r.entrypoint;
+  if (isAutomated(r)) return 'Automated run · ' + r.entrypoint;
   return 'Session ' + r.sessionId.slice(0, 8);
 }
 

@@ -1374,7 +1374,7 @@ function el(tag, className, text) {
 function labelOf(row) {
   if (row.subject)
     return row.subject.replace(/\s+/g, " ").trim();
-  if (row.entrypoint && row.entrypoint.startsWith("sdk"))
+  if (isAutomated(row))
     return "Automated run · " + row.entrypoint;
   return "Session " + row.sessionId.slice(0, 8);
 }
@@ -2814,7 +2814,7 @@ function appendHighlighted(into, text, terms) {
 function labelOf2(r) {
   if (r.subject && r.subject.trim())
     return r.subject.replace(/\s+/g, " ").trim();
-  if (r.entrypoint && r.entrypoint.startsWith("sdk"))
+  if (isAutomated(r))
     return "Automated run · " + r.entrypoint;
   return "Session " + r.sessionId.slice(0, 8);
 }
@@ -10117,10 +10117,15 @@ var navMenu = createNavMenu(navEl, {
   onSwitch: switchTo
 });
 var dropdown = createDropdown(dropdownEl, { onOpen: openFromDropdown });
+function readRoster(r) {
+  if (!r.ok)
+    throw new Error(`roster reading failed: ${r.status}`);
+  return r.json();
+}
 var ROSTER_POLL_MS = 3000;
 var roster = createRoster({
-  fetchCatalogue: (signal) => authFetch("/api/sessions", { signal }).then((r) => r.json()),
-  fetchLive: (signal) => authFetch("/api/live", { signal }).then((r) => r.json()),
+  fetchCatalogue: (signal) => authFetch("/api/sessions", { signal }).then((r) => readRoster(r)),
+  fetchLive: (signal) => authFetch("/api/live", { signal }).then((r) => readRoster(r)),
   pollMs: ROSTER_POLL_MS
 });
 var endGuard = createEndGuard({

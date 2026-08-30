@@ -209,7 +209,7 @@ export interface SessionRecord {
   // How the session was launched: 'cli' = interactive TUI; 'claude-desktop' = the desktop app's
   // Code tab; 'sdk-cli'/'sdk-py' = headless/programmatic (git-hook `claude -p`, scripts). Lets the
   // GUI badge the non-interactive ones instead of passing them off as normal sessions — which the
-  // desktop app is NOT: somebody is sitting at it, and `isAutomated` (client/sessions.ts) files it
+  // desktop app is NOT: somebody is sitting at it, and {@link isAutomated}, below, files it
   // with the interactive ones. What it shares with the headless runs is only that Claude Code is
   // driven over stream-json there, which is why neither publishes a status (see statusDerived).
   entrypoint: string | null;
@@ -235,9 +235,10 @@ export function isLive(s: Pick<SessionRecord, 'isOpen' | 'isActive'>): boolean {
 /**
  * A headless/programmatic run (`sdk-cli`, `sdk-py`) rather than a session somebody is sitting at.
  *
- * One definition, beside {@link isLive}, because four surfaces answer it and they must not
+ * One definition, beside {@link isLive}, because every surface answers it and they must not
  * disagree: the picker's Human/Automated split, the auto-open rule, the tray's row filter (which
- * holds its own copy in `client.rs`), and whether an event is worth interrupting anyone for. The
+ * holds its own copy in `client.rs`), whether an event is worth interrupting anyone for, and the
+ * label Compare and Search give a run that has no prompt of its own to show. The
  * desktop app's Code tab is deliberately NOT automated — somebody is sitting at it; what it shares
  * with a headless run is only being driven over stream-json, which is a fact about the transport.
  *
