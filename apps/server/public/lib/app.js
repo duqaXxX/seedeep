@@ -496,6 +496,11 @@ function createSessionTree(opts) {
         a.outLen = e.outLen;
       }
     } else if (e.type === "tool-start") {
+      if (e.agentId) {
+        const a = agentFor(e.agentId);
+        a.outputFull = null;
+        a.outLen = 0;
+      }
       tools.set(e.id, {
         name: e.name,
         startTs: e.timestamp,

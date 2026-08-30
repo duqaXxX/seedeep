@@ -47,6 +47,22 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- Every subagent went output-less on Claude Code 2.1.251, which is seedeep's differentiator. The
+  reader took a child's returned answer from a line carrying `stop_reason: "end_turn"`, and 2.1.251
+  stopped writing that value on child lines: 0 of 29 children have it, against 202 of 207 across the
+  fifteen releases before it. The text was never missing, only the marker naming it, so the panel
+  showed a subagent that ran for six minutes and returned nothing while every other number on it was
+  right. Reducing the local corpus, subagents rendering their output fell from 83-100% per release
+  to **0%** on 2.1.251.
+  The answer is now the child's last text block with no tool call after it, which needs no marker: a
+  text with work after it was narration. It agrees with the old rule 202 times out of 202 wherever
+  that rule applied, and it selects rather than accepts, since most children write several text
+  blocks and exactly one survives in 241 of 253 real children. Repeating the measurement with the
+  fix, 2.1.251 goes to 76% (the rest are the children that end on a tool call, having answered
+  nothing) and no earlier release loses a single one, while 2.1.219 and 2.1.220 gain the few they
+  were missing. Contract claim **C16c** is rewritten to assert the shape rather than the marker,
+  and now HOLDS on evidence from 102 real 2.1.251 sessions; pinned to a value Claude Code no longer
+  writes it could only ever return UNPROVEN, which teaches nothing.
 - A slash command typed inside a sentence is counted as one. Claude Code expands a command only
   when it stands alone, so `…testing this /paste-image and I see…` stays prose, opens no turn and
   emitted no command event, while the user typed it and the card says *commands you typed*. Over

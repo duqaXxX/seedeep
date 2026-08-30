@@ -437,7 +437,20 @@ export function parseLine(
       // doing" reading a sentence no model ever wrote, held for as long as the session stayed
       // idle. An API-error line is NOT suppressed here: its text is what the user was actually told.
       if (text && !noAnswer) {
-        if (d.message?.stop_reason === 'end_turn') {
+        // A CHILD's text is its returned output when no work follows it, which is a different
+        // test from `stop_reason === 'end_turn'` and outlives it: Claude Code 2.1.251 stopped
+        // writing that value on child lines (0 of 29 children, against 202 of 207 on every
+        // release before it), and every subagent went output-less while the rest of the panel
+        // still worked. The text was there the whole time — only the marker naming it went away.
+        //
+        // So the line is emitted as a CANDIDATE and the reducer drops it the moment the child
+        // calls another tool, which is what a narration always has after it. Measured over 253
+        // real child transcripts: exactly one block survives that rule in 241 of them (none in
+        // the 12 that end on a tool call), and where an `end_turn` still exists the survivor IS
+        // that text, 202 times out of 202. A line carrying a tool_use of its own is narration by
+        // the same argument, and never a candidate.
+        const childText = agentId !== null && !content.some((b: any) => b?.type === 'tool_use');
+        if (childText || d.message?.stop_reason === 'end_turn') {
           const full = anon(text, 20000);
           if (agentId !== null) {
             out.push({ type: 'subagent-output', ...base, outputFull: full, outLen: full.length });

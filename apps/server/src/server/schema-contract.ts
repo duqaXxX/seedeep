@@ -433,26 +433,33 @@ export const CLAIMS: Claim[] = [
   {
     id: 'C16c',
     scene: 4,
-    describe: "the child's end_turn text = the subagent's RETURNED OUTPUT",
+    describe: "a child's LAST text, with no tool call after it, = the subagent's RETURNED OUTPUT",
     reader: 'server/parser.ts:parseLine',
     investigate:
-      "seedeep's differentiator. If this line stops being written, every subagent renders output-less while everything else still 'works'.",
+      "seedeep's differentiator. If a child stops writing a closing text block, every subagent renders output-less while everything else still 'works'.",
     manual:
       'click that subagent and confirm seedeep shows the text it RETURNED. This is the differentiator — check it first.',
 
     kind: 'model',
     provoked: (ctx) => ctx.children.length > 0,
+    // Asserts the SHAPE the reader now depends on, and no longer `stop_reason: end_turn`. That
+    // value went away in 2.1.251 — 0 of 29 children carry it, against 202 of 207 before it — while
+    // the closing text stayed exactly where it was. A claim pinned to a marker Claude Code no
+    // longer writes can only ever come back UNPROVEN, which is the one outcome that teaches
+    // nothing: it cannot separate a schema change from the model having answered differently.
     holds: (ctx) =>
-      ctx.children.some((c) =>
-        c.lines.some(
-          (d) =>
-            d?.type === 'assistant' &&
-            d?.message?.stop_reason === 'end_turn' &&
-            (Array.isArray(d?.message?.content) ? d.message.content : []).some(
-              (b: any) => b?.type === 'text' && b.text,
-            ),
-        ),
-      ),
+      ctx.children.some((c) => {
+        let answer: unknown = null;
+        for (const d of c.lines) {
+          if (d?.type !== 'assistant') continue;
+          const blocks = Array.isArray(d?.message?.content) ? d.message.content : [];
+          for (const b of blocks as any[]) {
+            if (b?.type === 'text' && b.text) answer = b.text;
+            else if (b?.type === 'tool_use') answer = null; // work followed it: that was narration
+          }
+        }
+        return answer !== null;
+      }),
   },
 
   // ── Scene 5: Esc ───────────────────────────────────────────────────────────

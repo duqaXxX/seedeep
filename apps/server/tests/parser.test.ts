@@ -692,16 +692,41 @@ test('child end_turn assistant line yields a subagent-output event (returned out
   assert.equal(ev.outLen, 23);
 });
 
-test('mid-stream child text (stop_reason null) yields NO subagent-output', () => {
+test('child text with no stop_reason IS a candidate output; text beside a tool call is not', () => {
+  // This test used to assert that `stop_reason: null` yields nothing, which is the rule that broke
+  // on Claude Code 2.1.251: it stopped writing `end_turn` on child lines (0 of 29 children, against
+  // 202 of 207 before it) and every subagent went output-less. The parser now emits a CANDIDATE
+  // and the reducer withdraws it when the child calls another tool — so the guarantee this test
+  // defended, that narration is never shown as an answer, moved to `session-tree` and is pinned by
+  // the golden transcript. What the parser still decides on its own is the line-local half: text
+  // sharing a line with a tool_use is narration, since work stands right beside it.
   const childCtx = { sessionId: 's1', root: 'cli' as const, seq: 9, agentId: 'child_A' };
-  const line = JSON.stringify({
+  const bare = JSON.stringify({
     type: 'assistant',
     timestamp: '2026-07-12T00:02:00Z',
-    message: { role: 'assistant', stop_reason: null, content: [{ type: 'text', text: 'thinking...' }] },
+    message: { role: 'assistant', stop_reason: null, content: [{ type: 'text', text: 'the answer' }] },
+  });
+  const withTool = JSON.stringify({
+    type: 'assistant',
+    timestamp: '2026-07-12T00:02:00Z',
+    message: {
+      role: 'assistant',
+      stop_reason: null,
+      content: [
+        { type: 'text', text: 'let me look' },
+        { type: 'tool_use', id: 't1', name: 'Read', input: {} },
+      ],
+    },
   });
   assert.equal(
-    parseLine(line, childCtx).some((e) => e.type === 'subagent-output'),
+    parseLine(bare, childCtx).some((e) => e.type === 'subagent-output'),
+    true,
+    'the shape 2.1.251 writes still reaches the reducer',
+  );
+  assert.equal(
+    parseLine(withTool, childCtx).some((e) => e.type === 'subagent-output'),
     false,
+    'work on the same line makes it narration',
   );
 });
 

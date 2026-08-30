@@ -1282,14 +1282,24 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       if (e.description) a.description = e.description;
       if (owner === null && currentTurn) a.turnIndex = currentTurn.index;
     } else if (e.type === 'subagent-output') {
-      // The child's end_turn text = its returned output. Last one wins (a child can
-      // emit several end_turn lines over its life; the final is the real answer).
+      // The child's returned output. Last one wins, and `tool-start` below takes it away again:
+      // a text block with work after it was narration, not an answer. That pair is what replaced
+      // the `end_turn` marker Claude Code stopped writing on child lines in 2.1.251 — see
+      // `parseLine`, where the candidate is emitted.
       if (e.agentId) {
         const a = agentFor(e.agentId);
         a.outputFull = e.outputFull;
         a.outLen = e.outLen;
       }
     } else if (e.type === 'tool-start') {
+      // A subagent that calls a tool has not answered yet: whatever text it wrote before this is
+      // narration, so the candidate output is withdrawn. Without this the panel would show the
+      // model's last aside under the heading `returned`, and would keep changing while it worked.
+      if (e.agentId) {
+        const a = agentFor(e.agentId);
+        a.outputFull = null;
+        a.outLen = 0;
+      }
       tools.set(e.id, {
         name: e.name,
         startTs: e.timestamp,

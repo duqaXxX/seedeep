@@ -587,6 +587,79 @@ test('golden transcript: a tagged command marked human-origin still reaches the 
   );
 });
 
+// A child's line, as it sits in `<slug>/<uuid>/subagents/agent-*.jsonl`. `stop` is a parameter
+// because it is the thing that moved: every release up to 2.1.250 wrote `end_turn` on the child's
+// last text, and 2.1.251 writes null on all of them.
+const childText = (uuid: string, text: string, stop: string | null) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    isSidechain: true,
+    timestamp: '2026-07-14T10:00:03.000Z',
+    message: {
+      role: 'assistant',
+      id: `msg-${uuid}`,
+      model: 'claude-opus-4-8',
+      stop_reason: stop,
+      content: [{ type: 'text', text }],
+    },
+  });
+const childTool = (uuid: string, toolId: string) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    isSidechain: true,
+    timestamp: '2026-07-14T10:00:04.000Z',
+    message: {
+      role: 'assistant',
+      id: `msg-${uuid}`,
+      model: 'claude-opus-4-8',
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: toolId, name: 'Read', input: { file_path: '/tmp/x' } }],
+    },
+  });
+
+/** Reduce a child's own transcript, the way the server feeds it: every line under one agentId. */
+function childOf(lines: string[]) {
+  const tree = createSessionTree({ windowFor, mainModel: 'claude-opus-4-8' });
+  let seq = 0;
+  for (const l of lines) {
+    for (const e of parseLine(l, { ...ctx, agentId: 'agent-1', seq: seq++ }) as NormalizedEvent[]) tree.apply(e);
+  }
+  return tree.snapshot().subagents[0];
+}
+
+test("golden transcript: a subagent's returned output is the text no work follows", () => {
+  // Claude Code 2.1.251 stopped writing `stop_reason: end_turn` on child lines: 0 of 29 children,
+  // against 202 of 207 on every release before it. seedeep read the output off that value alone,
+  // so every subagent went output-less — its differentiator — while the rest of the panel still
+  // worked. The text was never missing; only the marker naming it went away.
+  const withMarker = childOf([
+    childText('c1', 'let me look at the queue', 'tool_use'),
+    childTool('c2', 'tool-a'),
+    childText('c3', 'THE ANSWER', 'end_turn'),
+  ]);
+  const without = childOf([
+    childText('c1', 'let me look at the queue', null),
+    childTool('c2', 'tool-a'),
+    childText('c3', 'THE ANSWER', null),
+  ]);
+
+  assert.equal(withMarker?.outputFull, 'THE ANSWER', 'the old shape still reads the same');
+  assert.equal(without?.outputFull, 'THE ANSWER', 'and so does the shape 2.1.251 writes');
+  assert.equal(without?.outLen, 'THE ANSWER'.length);
+});
+
+test('golden transcript: a subagent still working has returned nothing', () => {
+  // What keeps the rule honest: the narration before a tool call is not an answer. Without the
+  // withdrawal the panel would show the model's last aside under `returned`, and change it as the
+  // subagent went on. Measured over 253 real children, exactly one text block survives this rule
+  // in 241 of them, and none in the 12 that end on a tool call.
+  const midway = childOf([childText('c1', 'let me look at the queue', null), childTool('c2', 'tool-a')]);
+  assert.equal(midway?.outputFull, null, 'text with work after it is narration');
+  assert.equal(midway?.outLen, 0);
+});
+
 test('golden transcript: a command typed inside a sentence is counted, a path is not', () => {
   // Claude Code expands a slash command only when it stands ALONE, so one written mid-sentence
   // stays prose and produces no command event. The user typed it and says so, which is what the
