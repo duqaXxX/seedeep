@@ -141,6 +141,27 @@ const assistant = (uuid: string, fill: number, out = 100) =>
       },
     },
   });
+// The same call, carrying the split of `output_tokens` Claude Code writes as
+// `usage.output_tokens_details`. Both real shapes are reachable: an OBJECT with `thinking_tokens`,
+// and `null`. Measured 2026-08-29 over 1046 session files — 22,995 lines carry the object and 9
+// carry null, so a reader that dereferences without checking meets the null one eventually.
+const assistantThinking = (uuid: string, fill: number, out: number, details: { thinking_tokens: number } | null) =>
+  JSON.stringify({
+    type: 'assistant',
+    uuid,
+    timestamp: '2026-07-14T10:00:05.000Z',
+    message: {
+      role: 'assistant',
+      model: 'claude-opus-4-8',
+      usage: {
+        input_tokens: 10,
+        output_tokens: out,
+        cache_read_input_tokens: fill - 10,
+        cache_creation_input_tokens: 0,
+        output_tokens_details: details,
+      },
+    },
+  });
 // Field names taken from a real line: {type:'system', subtype:'turn_duration', durationMs, messageCount}
 const turnDuration = (uuid: string) =>
   JSON.stringify({
@@ -817,6 +838,7 @@ test('golden transcript: Token usage sums every call in the scope, by API catego
     output: 200,
     cacheRead: 445_000,
     cacheWrite: 187_203,
+    thinking: null,
     total: 632_419,
   });
   assert.deepEqual(snap.main.cacheTotals, { read: 445_000, created: 187_203 });
@@ -828,6 +850,7 @@ test('golden transcript: Token usage sums every call in the scope, by API catego
     output: 200,
     cacheRead: 445_000,
     cacheWrite: 187_203,
+    thinking: null,
     total: 632_419,
   });
 
@@ -4361,4 +4384,82 @@ test('golden transcript: the Trace closes a desktop-hosted turn too, not only th
     traceTurns.map((t) => t.state),
     'and the two surfaces never disagree about a turn',
   );
+});
+
+// ── The thinking split of output_tokens ─────────────────────────────────────────────────────
+// Claude Code reports how much of a call's output was reasoning. On a median call it is 39% of
+// the figure the Session card labels `Output` (p50 0.389, p90 0.809, >0 on 70.3% of 22,995 calls
+// measured 2026-08-29), so the card was stating a number whose larger part nobody reads as an
+// answer. What follows asserts the three things a reader can be wrong about.
+
+test('golden transcript: thinking sums over the session and never joins the total', () => {
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistantThinking('a1', 40_000, 100, { thinking_tokens: 40 }),
+    assistantThinking('a2', 45_000, 300, { thinking_tokens: 120 }),
+    turnDuration('t1'),
+  ]);
+
+  const u = tokenUsage(snap.main);
+  assert.equal(u.output, 400, 'output is the whole of it, unchanged');
+  assert.equal(u.thinking, 160, 'thinking is summed across the calls');
+  assert.equal(
+    u.total,
+    u.input + u.cacheWrite + u.cacheRead + u.output,
+    'thinking is INSIDE output, so adding it to the hero would count those tokens twice',
+  );
+});
+
+test('golden transcript: a scoped turn reports ITS thinking, not the session-wide figure', () => {
+  // The trap this catches: `scopeToTurn` overrides `outputTotal` with the turn's, so a
+  // `thinkingTotal` left to the spread would draw the SESSION's reasoning against ONE turn's
+  // output — a ratio that is wrong in a way nothing on screen would reveal.
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistantThinking('a1', 40_000, 100, { thinking_tokens: 40 }),
+    turnDuration('t1'),
+    typed('u2', 'second prompt'),
+    assistantThinking('a2', 45_000, 900, { thinking_tokens: 600 }),
+    turnDuration('t2'),
+  ]);
+
+  assert.equal(tokenUsage(snap.main).thinking, 640, 'the session sums both turns');
+  const first = tokenUsage(scopeToTurn(snap, snap.turnList[0]!.index).main);
+  assert.equal(first.output, 100);
+  assert.equal(first.thinking, 40, "the first turn's own reasoning");
+  const second = tokenUsage(scopeToTurn(snap, snap.turnList[1]!.index).main);
+  assert.equal(second.output, 900);
+  assert.equal(second.thinking, 600);
+});
+
+test('golden transcript: output_tokens_details null is not zero, and does not throw', () => {
+  // Both are real shapes. Reported-as-zero means the call did no thinking; not reported at all
+  // means the call said nothing about it, and a card that prints `0` for the second one states
+  // a fact Claude Code never gave it.
+  const none = timelineOf([
+    typed('u1', 'first prompt'),
+    assistantThinking('a1', 40_000, 100, null),
+    turnDuration('t1'),
+  ]);
+  assert.equal(tokenUsage(none.main).thinking, null, 'nothing reported stays null');
+  assert.equal(none.turnList[0]!.thinking, null);
+
+  const zero = timelineOf([
+    typed('u1', 'first prompt'),
+    assistantThinking('a1', 40_000, 100, { thinking_tokens: 0 }),
+    turnDuration('t1'),
+  ]);
+  assert.equal(tokenUsage(zero.main).thinking, 0, 'a reported zero is a fact, not an absence');
+  assert.equal(zero.turnList[0]!.thinking, 0);
+});
+
+test('golden transcript: one call reporting nothing does not erase what the others reported', () => {
+  const snap = timelineOf([
+    typed('u1', 'first prompt'),
+    assistantThinking('a1', 40_000, 100, { thinking_tokens: 40 }),
+    assistantThinking('a2', 45_000, 300, null),
+    turnDuration('t1'),
+  ]);
+  assert.equal(tokenUsage(snap.main).output, 400);
+  assert.equal(tokenUsage(snap.main).thinking, 40, 'the split covers the calls that stated one');
 });

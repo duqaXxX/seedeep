@@ -170,6 +170,11 @@ has **worked**: the sum of its turns, not the wall-clock span. The two differ by
 Three equal-height cards: **Session** (tokens by API category plus turn KPIs),
 **Skills used** beside **Commands**, and **Changed files**.
 
+In the Session card the **Output** row splits into reasoning and answer, so the figure is
+no longer one number whose larger part is not the answer: over 22,995 calls measured on
+2026-08-29 the reasoning is 39% of output on a median call, and above 80% on a tenth of them.
+The same split is in the call drawer, where it is one call rather than a session's average.
+
 In the Session card the main-thread categories are headed *main session*, and the
 **Subagents** figure below them opens into a **by-model** bar, so the subagent tokens
 split by which model actually burned them (charged per call, so a subagent that ran

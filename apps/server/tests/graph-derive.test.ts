@@ -23,6 +23,7 @@ function turn(over: Partial<TurnNode> = {}): TurnNode {
   return {
     index: 1,
     prompt: 'do the thing',
+    thinking: null,
     command: null,
     kind: 'work',
     startedAt: null,

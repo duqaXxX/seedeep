@@ -8,7 +8,10 @@ import { CLAIMS, CTRLB_COMMAND, claimsForScene, ECHO_MARKER, SCENE1_MARKER } fro
  * The scene-1 lines a real driven session produces. The SHAPE is not invented:
  * it is what the 2026-07-17 probe run actually wrote on CC 2.1.212 (verified
  * `origin.kind=human`, `promptSource=typed`, `system/turn_duration`,
- * `message.usage`, `entrypoint=cli`). Content is synthetic; shape is a fact.
+ * `message.usage`, `entrypoint=cli`), plus `output_tokens_details`, which Claude
+ * Code added later and writes on every line from a real model (measured 2026-08-29
+ * over 2.1.237+: 200/200 haiku, 12,233/12,233 opus, 650/650 sonnet). Content is
+ * synthetic; shape is a fact, and the fact moved.
  */
 const REAL_SHAPE_LINES = [
   {
@@ -34,7 +37,13 @@ const REAL_SHAPE_LINES = [
       model: 'claude-haiku-4-5-20251001',
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: 'ok' }],
-      usage: { input_tokens: 4, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 },
+      usage: {
+        input_tokens: 4,
+        output_tokens: 5,
+        cache_read_input_tokens: 100,
+        cache_creation_input_tokens: 20,
+        output_tokens_details: { thinking_tokens: 2 },
+      },
     },
     uuid: 'a-1',
   },
@@ -139,6 +148,33 @@ test('removing origin.kind from a real turn makes C1 BROKEN — the guard bites'
   const c1 = r.find((x) => x.claim.id === 'C1')!;
   assert.equal(c1.outcome, 'BROKEN');
   assert.ok(isBroken(r));
+});
+
+test('removing output_tokens_details makes C29 BROKEN — the split stops being drawn', () => {
+  // A guard that must bite on the SHAPE, not on the value: a model that did no thinking writes
+  // `thinking_tokens: 0`, which is a fact and must keep holding. What breaks the claim is the
+  // container going away, since the reader then has nothing to split Output with.
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  delete (lines[1] as any).message.usage.output_tokens_details;
+  const c29 = evaluate(claimsForScene(1), ctxOf(lines)).find((x) => x.claim.id === 'C29')!;
+  assert.equal(c29.outcome, 'BROKEN');
+});
+
+test('C29 holds on a call that reports zero thinking', () => {
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  (lines[1] as any).message.usage.output_tokens_details = { thinking_tokens: 0 };
+  const c29 = evaluate(claimsForScene(1), ctxOf(lines)).find((x) => x.claim.id === 'C29')!;
+  assert.equal(c29.outcome, 'HOLDS');
+});
+
+test('a synthetic line alone cannot satisfy C29', () => {
+  // `<synthetic>` lines carry `output_tokens_details: null` and made no call. Reading any
+  // assistant line would let one of them stand in for the model call the claim is about.
+  const lines = structuredClone(REAL_SHAPE_LINES);
+  (lines[1] as any).message.model = '<synthetic>';
+  (lines[1] as any).message.usage.output_tokens_details = null;
+  const c29 = evaluate(claimsForScene(1), ctxOf(lines)).find((x) => x.claim.id === 'C29')!;
+  assert.equal(c29.outcome, 'BROKEN');
 });
 
 test('removing turn_duration makes C4 BROKEN', () => {

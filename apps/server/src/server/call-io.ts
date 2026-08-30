@@ -22,6 +22,12 @@ export interface CallIO {
   callId: string;
   model: string | null;
   usage: TokenCounts | null;
+  /**
+   * Of `usage.output`, the part the call spent thinking. Null when the line reported no split:
+   * Claude Code writes `output_tokens_details: null` as well as the object, and a call that did
+   * no thinking writes 0, so the two must stay distinguishable.
+   */
+  thinking: number | null;
   input: CallSide;
   output: CallSide;
   /** True when the output contains a tool_use — the viewer renders it verbatim (code) not markdown. */
@@ -47,6 +53,9 @@ export interface CallIO {
 
 const CAP = 20000;
 
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
@@ -126,6 +135,7 @@ function scanForCall(lines: string[], callId: string, cap: number): CallIO | nul
   // Root-level on the assistant line, not inside `message` — verified across 977 files.
   const effort = typeof first.effort === 'string' && first.effort.length > 0 ? first.effort : null;
   let usage: TokenCounts | null = null;
+  let thinking: number | null = null;
   const u = first.message?.usage;
   if (u && typeof u === 'object') {
     usage = {
@@ -134,6 +144,10 @@ function scanForCall(lines: string[], callId: string, cap: number): CallIO | nul
       cacheRead: num(u.cache_read_input_tokens),
       cacheCreation: num(u.cache_creation_input_tokens),
     };
+    // Read through the container rather than off it: `output_tokens_details` is either an object
+    // or null, and reading `.thinking_tokens` off the null shape throws.
+    const det = (u as Record<string, unknown>).output_tokens_details;
+    thinking = det && typeof det === 'object' ? numOrNull((det as Record<string, unknown>).thinking_tokens) : null;
   }
   const outParts: string[] = [];
   // The intent is collected per LINE, because the stop_reason that tells an intent from the
@@ -181,6 +195,7 @@ function scanForCall(lines: string[], callId: string, cap: number): CallIO | nul
     model,
     effort,
     usage,
+    thinking,
     input: side(input, cap),
     output: side(outParts.join('\n'), cap),
     outputHasTools,

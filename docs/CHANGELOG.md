@@ -9,6 +9,22 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- The **Output** row of the Session card splits into the part the model spent reasoning and the
+  part it wrote as an answer, and the same split appears in the call drawer for a single call.
+  Claude Code reports it as `usage.output_tokens_details.thinking_tokens`, and it is a large share
+  of a figure that read as the answer: over 22,995 calls measured 2026-08-29 the reasoning is 39%
+  of output on a median call, above 80% on a tenth of them, and greater than zero on 70%. Two
+  tones of one hue rather than a fifth colour, because it is a subset of the row above and adding
+  it to the hero would count those tokens twice. A call that did no thinking reports zero, a
+  `<synthetic>` line reports null, and null draws nothing rather than a zero nobody asserted.
+- Contract claim **C29** holds Claude Code to that field, on a line that reached a real model:
+  every model line carries it (200 of 200 haiku, 12,233 of 12,233 opus, 650 of 650 sonnet,
+  measured over 2.1.237+), and every null belongs to a `<synthetic>` line that made no call. The
+  radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
+  would be blind to anything added beside `thinking_tokens`.
+
 ### Fixed
 
 - Custom slash commands are read as commands again. Claude Code 2.1.237 began writing
