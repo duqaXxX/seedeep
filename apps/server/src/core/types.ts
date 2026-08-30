@@ -328,6 +328,17 @@ interface EventBase {
 export interface UsageEvent extends EventBase {
   type: 'usage';
   delta: TokenCounts;
+  /**
+   * Of `delta.output`, the part the model spent thinking (`message.usage.
+   * output_tokens_details.thinking_tokens`). Deliberately NOT a fifth member of `TokenCounts`:
+   * it is a SPLIT of output, not a peer of it, and beside the four counters that do sum to the
+   * total it would eventually be added to one of them. Null when the call carries no split — the shape Claude Code writes on a
+   * `<synthetic>` line, which is not a model call at all (measured 2026-08-29 over 2.1.237+: the
+   * object is on 200 of 200 haiku, 12,233 of 12,233 opus and 650 of 650 sonnet lines, and every
+   * null is synthetic). A model that did no thinking reports 0, so zero and null are different
+   * answers and must stay so.
+   */
+  thinking: number | null;
   fill: number; // last absolute input + cacheRead + cacheCreation
   /**
    * Reasoning effort this call ran at, from the assistant line's ROOT `effort` (not inside

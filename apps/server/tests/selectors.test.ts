@@ -93,6 +93,7 @@ test('tokenUsage: the four API categories and their total, from the scope sums',
     cacheTotals: { read: 400_000, created: 200_000 },
     inputTotal: 12_000,
     outputTotal: 3_000,
+    thinkingTotal: 1_200,
     weighted: 0,
     weightedByModel: [],
   } as any;
@@ -101,6 +102,8 @@ test('tokenUsage: the four API categories and their total, from the scope sums',
     cacheWrite: 200_000,
     cacheRead: 400_000,
     output: 3_000,
+    // Inside `output`, so the total is unchanged by it. That is the point of the assertion.
+    thinking: 1_200,
     total: 615_000,
   });
 });
@@ -110,10 +113,11 @@ test('tokenUsage: an empty scope is all zeros, total zero', () => {
     cacheTotals: { read: 0, created: 0 },
     inputTotal: 0,
     outputTotal: 0,
+    thinkingTotal: null,
     weighted: 0,
     weightedByModel: [],
   } as any;
-  assert.deepEqual(tokenUsage(m), { input: 0, cacheWrite: 0, cacheRead: 0, output: 0, total: 0 });
+  assert.deepEqual(tokenUsage(m), { input: 0, cacheWrite: 0, cacheRead: 0, output: 0, thinking: null, total: 0 });
 });
 
 test('subagentsByWeight: ranks by tool count desc, without mutating the input', () => {

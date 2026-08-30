@@ -493,7 +493,7 @@ The parser flattens the raw log into a small set of events consumers care about:
 
 | Event             | Source field(s)                                              | Meaning                          |
 |-------------------|-------------------------------------------------------------|----------------------------------|
-| `usage`           | `message.usage` + `message.model` + root `effort`           | context fill + per-call delta, and the model/effort THAT CALL ran on; for a line flagged `isApiErrorMessage` also `apiError` (status + the message shown to the user), meaning the call FAILED |
+| `usage`           | `message.usage` + `message.model` + root `effort`           | context fill + per-call delta, and the model/effort THAT CALL ran on; `thinking` carries `usage.output_tokens_details.thinking_tokens`, the part of `output` spent reasoning, and is null when the line reported no split; for a line flagged `isApiErrorMessage` also `apiError` (status + the message shown to the user), meaning the call FAILED |
 | `attribution`     | `attributionSkill` / `attributionMcpServer` / `attributionMcpTool` | what is filling the context (skill turns are counted from this) |
 | `compaction`      | `compactMetadata` / `isCompactSummary`                     | a compaction (context deflate)   |
 | `user-turn`       | a user line that is `origin.kind: 'human'`, **or** carries `<command-name>`, **or** is the plain text of a command (see below) | the user sent something, which opens a timeline entry; `prompt` is the text (a command's `<command-args>`, or its arguments), `command` the slash command that carried it, `promptId` the invocation the line belongs to |
@@ -613,6 +613,15 @@ The **Session** card's ledger reports the four categories Anthropic names in the
 | Cache write  | `cache_creation_input_tokens`  |
 | Cache read   | `cache_read_input_tokens`      |
 | Output       | `output_tokens`                |
+
+The Output row is split in place into the part the model spent reasoning and the part it wrote
+as an answer, from `usage.output_tokens_details.thinking_tokens`. It is drawn as two tones of one
+hue rather than a fifth colour, because it is a subset of the row above it: adding it to the hero
+would count those tokens twice. The same split appears in the call drawer, on one call, which is
+the finer reading of the two: a session's median hides calls that were almost all reasoning and
+calls that were none. Drawn only when the scope reported a split at all. A call that did no
+thinking reports zero, a `<synthetic>` line reports null, and null renders as nothing rather than
+as a zero nobody asserted.
 
 The four category rows are the **main thread's** consumption and are headed *main session*,
 because they and the Subagents row measure different things, a category versus an actor, and

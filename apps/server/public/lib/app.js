@@ -128,6 +128,7 @@ function createSessionTree(opts) {
     mainModels.push(mainModel);
   let mainFill = 0;
   let usageInput = 0, usageOutput = 0;
+  let usageThinking = 0, usageThinkingReported = false;
   let weightedMain = 0;
   const weightedByModel = new Map;
   const mainWeightedByModel = new Map;
@@ -295,6 +296,10 @@ function createSessionTree(opts) {
           }
           usageInput += e.delta.input;
           usageOutput += e.delta.output;
+          if (e.thinking !== null) {
+            usageThinking += e.thinking;
+            usageThinkingReported = true;
+          }
           cacheTotals.read += e.delta.cacheRead;
           cacheTotals.created += e.delta.cacheCreation;
           const w = callWeight(e.model, e.delta);
@@ -308,6 +313,10 @@ function createSessionTree(opts) {
               currentTurn.state = "live";
             currentTurn.inputTotal += e.delta.input;
             currentTurn.out += e.delta.output;
+            if (e.thinking !== null) {
+              currentTurn.thinking += e.thinking;
+              currentTurn.thinkingReported = true;
+            }
             currentTurn.apiCalls++;
             currentTurn.cacheTotals.read += e.delta.cacheRead;
             currentTurn.cacheTotals.created += e.delta.cacheCreation;
@@ -369,6 +378,8 @@ function createSessionTree(opts) {
           cacheTotals: { read: 0, created: 0 },
           inputTotal: 0,
           out: 0,
+          thinking: 0,
+          thinkingReported: false,
           weighted: 0,
           skillTurns: new Map,
           skillInvokes: new Map,
@@ -821,6 +832,7 @@ function createSessionTree(opts) {
         state,
         cutoff: t.cutoff,
         durationMs: t.durationMs,
+        thinking: t.thinkingReported ? t.thinking : null,
         messageCount: t.messageCount,
         apiCalls: t.apiCalls,
         deltaFill: t.fillEnd - prevFill,
@@ -1029,6 +1041,7 @@ function createSessionTree(opts) {
         cacheTotals: { ...cacheTotals },
         inputTotal: usageInput,
         outputTotal: usageOutput,
+        thinkingTotal: usageThinkingReported ? usageThinking : null,
         weighted: weightedMain,
         weightedByModel: [...mainWeightedByModel].map(([model, weight]) => ({ model, weight })).sort((a, b) => b.weight - a.weight)
       },
@@ -4309,7 +4322,14 @@ function backgroundCommands(tools, opts) {
 }
 function tokenUsage(m) {
   const input = m.inputTotal, cacheWrite = m.cacheTotals.created, cacheRead = m.cacheTotals.read, output = m.outputTotal;
-  return { input, cacheWrite, cacheRead, output, total: input + cacheWrite + cacheRead + output };
+  return {
+    input,
+    cacheWrite,
+    cacheRead,
+    output,
+    thinking: m.thinkingTotal,
+    total: input + cacheWrite + cacheRead + output
+  };
 }
 function subagentsChronological(subagents) {
   return [...subagents].sort((a, b) => {
@@ -4355,6 +4375,7 @@ function scopeToTurn(s, turnIndex) {
       cacheTotals: { ...turn.cacheTotals },
       inputTotal: turn.inputTotal,
       outputTotal: turn.out,
+      thinkingTotal: turn.thinking,
       weighted: turn.weighted,
       weightedByModel: []
     },
@@ -6927,6 +6948,25 @@ function legendItem(color, txt) {
   g.append(sw, document.createTextNode(txt));
   return g;
 }
+function thinkingSplit(thinking, output) {
+  const box = E("div", "tsplit");
+  const bar = E("div", "tsbar");
+  const share = Math.max(0, Math.min(1, output > 0 ? thinking / output : 0));
+  const a = E("i");
+  a.style.width = share * 100 + "%";
+  const b = E("i", "answer");
+  b.style.width = (1 - share) * 100 + "%";
+  bar.append(a, b);
+  const key = E("div", "tskey");
+  const one = (cls, label, n) => {
+    const sp = E("span", cls);
+    sp.append(E("i"), document.createTextNode(label + " "), E("b", null, k(n)));
+    return sp;
+  };
+  key.append(one("think", "thinking", thinking), one("answer", "answer", output - thinking));
+  box.append(bar, key);
+  return box;
+}
 var scrollLocks = 0;
 function lockPageScroll() {
   if (scrollLocks++ === 0) {
@@ -7449,6 +7489,8 @@ function createGraph(container, state, opts = {}) {
       const led = E("div", "led");
       for (const [label, val, sep, est] of rows) {
         led.append(E("div", "lk" + (sep ? " sep" : ""), label), E("div", "ld" + (sep ? " sep" : "")), E("div", "lv" + (sep ? " sep" : ""), (est ? "~" : "") + k(val)));
+        if (label === "Output" && u.thinking !== null && val > 0)
+          led.append(thinkingSplit(u.thinking, val));
       }
       usageCard.append(led);
       appendSubagentModels(usageCard, s);
@@ -9039,6 +9081,12 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         setKV(inTile, kc(totalIn));
         setKV(newTile, kc(newThis));
         setKV(outTile, kc(u.output || 0));
+        const th = res.thinking;
+        if (typeof th === "number" && (u.output || 0) > 0) {
+          const bl = E("div", "block");
+          bl.append(E("div", "blabel", "Output composition"), thinkingSplit(th, u.output || 0));
+          compBlock.after(bl);
+        }
         compBlock.replaceChildren(stackBlock("Input composition", kc(totalIn) + " total", [
           { label: "cached", value: u.cacheRead || 0, color: "var(--cache)", detail: kc(u.cacheRead || 0) },
           {

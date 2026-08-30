@@ -143,6 +143,8 @@ export interface CallIOResult {
   model: string | null;
   effort?: string | null;
   usage?: { input?: number; output?: number; cacheRead?: number; cacheCreation?: number } | null;
+  /** Of `usage.output`, the part this call spent thinking; null when it reported no split. */
+  thinking?: number | null;
   input?: ToolOutputResult | null;
   output?: ToolOutputResult | null;
   outputHasTools?: boolean;
@@ -230,6 +232,30 @@ function legendItem(color: string, txt: string): HTMLElement {
   sw.style.background = color;
   g.append(sw, document.createTextNode(txt));
   return g;
+}
+
+// The Output row's split into reasoning and answer, shared by the Session card's ledger and the
+// turn drawer so the two cannot drift apart. Two tones of ONE hue on purpose: `thinking` is part
+// of the number above it, and a second colour off the category palette would read as a fifth
+// category adding to the hero. The caller decides WHETHER to draw it; this only draws it.
+function thinkingSplit(thinking: number, output: number): HTMLElement {
+  const box = E('div', 'tsplit');
+  const bar = E('div', 'tsbar');
+  const share = Math.max(0, Math.min(1, output > 0 ? thinking / output : 0));
+  const a = E('i');
+  a.style.width = share * 100 + '%';
+  const b = E('i', 'answer');
+  b.style.width = (1 - share) * 100 + '%';
+  bar.append(a, b);
+  const key = E('div', 'tskey');
+  const one = (cls: string, label: string, n: number) => {
+    const sp = E('span', cls);
+    sp.append(E('i'), document.createTextNode(label + ' '), E('b', null, k(n)));
+    return sp;
+  };
+  key.append(one('think', 'thinking', thinking), one('answer', 'answer', output - thinking));
+  box.append(bar, key);
+  return box;
 }
 
 // Page scroll-lock, ref-counted across ALL Graph instances (one per open tab).
@@ -1019,6 +1045,12 @@ export function createGraph(
           E('div', 'ld' + (sep ? ' sep' : '')),
           E('div', 'lv' + (sep ? ' sep' : ''), (est ? '~' : '') + k(val)),
         );
+        // The Output row splits in place: on a median call 39% of it is reasoning nobody reads
+        // as an answer (measured 2026-08-29 over 22,995 calls). Two tones of ONE hue, because
+        // thinking is a SUBSET of the row above and a fourth colour would read as a category
+        // that adds to the hero. Drawn only when the scope reported a split at all, and only
+        // when there is something to split: `0 of 0` is a bar of nothing.
+        if (label === 'Output' && u.thinking !== null && val > 0) led.append(thinkingSplit(u.thinking, val));
       }
       usageCard.append(led);
       appendSubagentModels(usageCard, s);
@@ -3515,6 +3547,15 @@ export function createGraph(
         setKV(inTile, kc(totalIn));
         setKV(newTile, kc(newThis));
         setKV(outTile, kc(u.output || 0));
+        // The same split the Session card's ledger draws, on ONE call. It is the finer of the two
+        // readings: a session's 39% median hides calls that were almost all reasoning and calls
+        // that were none, and this is where that shows.
+        const th = res.thinking;
+        if (typeof th === 'number' && (u.output || 0) > 0) {
+          const bl = E('div', 'block');
+          bl.append(E('div', 'blabel', 'Output composition'), thinkingSplit(th, u.output || 0));
+          compBlock.after(bl);
+        }
         compBlock.replaceChildren(
           stackBlock('Input composition', kc(totalIn) + ' total', [
             { label: 'cached', value: u.cacheRead || 0, color: 'var(--cache)', detail: kc(u.cacheRead || 0) },

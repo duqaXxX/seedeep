@@ -36,7 +36,16 @@ import { cliRoot } from './roots.ts';
  * the set of containers the parser dereferences — add a path here when it starts
  * reading a new one.
  */
-export const OBSERVED_CONTAINERS = ['message', 'message.usage', 'toolUseResult', 'compactMetadata', 'origin'] as const;
+export const OBSERVED_CONTAINERS = [
+  'message',
+  'message.usage',
+  // The parser dereferences this one for `thinking_tokens`, so without it here the radar would be
+  // blind INSIDE it: a field added beside thinking_tokens would never be reported.
+  'message.usage.output_tokens_details',
+  'toolUseResult',
+  'compactMetadata',
+  'origin',
+] as const;
 
 /** Keys observed per line type, plus the keys seen inside each {@link OBSERVED_CONTAINERS} path. */
 export interface ObservedSchema {

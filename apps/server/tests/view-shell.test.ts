@@ -27,6 +27,7 @@ function stubs() {
       cacheTotals: { read: 0, created: 0 },
       inputTotal: 0,
       outputTotal: 0,
+      thinkingTotal: null,
       weighted: 0,
       weightedByModel: [],
     },

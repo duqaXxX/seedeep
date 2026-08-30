@@ -254,6 +254,9 @@ export interface TurnNode {
   cacheTotals: CacheTotals; // summed over the turn's calls — see the type
   inputTotal: number; // input_tokens summed over the turn (Token usage card)
   out: number; // output tokens produced in this turn
+  /** Of `out`, the part the model spent thinking, and null when no call in the turn reported a
+   * split (see the session-level counter for why the two are told apart). */
+  thinking: number | null;
   /** This turn's MAIN-thread weight — see {@link callWeight}. Excludes its subagents, whose
    * weight is a fact about the child (and reaches the session total via `weightedSubagents`). */
   weighted: number;
@@ -341,6 +344,8 @@ export interface TreeSnapshot {
     cacheTotals: CacheTotals;
     inputTotal: number;
     outputTotal: number;
+    /** Of `outputTotal`, the part spent thinking; null when no call reported a split. */
+    thinkingTotal: number | null;
     weighted: number;
     /** `weighted` split by the model of the call, MAIN THREAD ONLY, weight descending. Distinct from
      * the session-level `weightedByModel`, which folds the subagents in. */
@@ -509,6 +514,8 @@ interface TurnAcc {
   cacheTotals: CacheTotals;
   inputTotal: number; // input_tokens SUMMED over the turn (breakdown.input is the last call)
   out: number;
+  thinking: number;
+  thinkingReported: boolean;
   weighted: number; // main-thread weight of this turn's calls (see TurnNode.weighted)
   skillTurns: Map<string, number>; // same two counters as the session, scoped to this turn
   skillInvokes: Map<string, number>;
@@ -677,6 +684,13 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
   // Token usage card has all four. Distinct from mainOut, which is the LAST call's output.
   let usageInput = 0,
     usageOutput = 0;
+  // Of `usageOutput`, the part spent thinking. A SUM beside a sum, never a member of the
+  // breakdown: it is a split of output, and a fifth counter next to the four that add up to the
+  // total is one refactor away from being added to it. `reported` is the whole reason this is two
+  // numbers: Claude Code writes `output_tokens_details: null` as well as the object, and a model
+  // that did no thinking writes 0 — "nothing to say" and "no thinking" must not render alike.
+  let usageThinking = 0,
+    usageThinkingReported = false;
   // Whole-session MAIN-thread weight. Subagent weight is summed from the agents, so
   // the two never double-count: they are the two sides of the reducer's `owner === null` branch.
   let weightedMain = 0;
@@ -985,6 +999,10 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           }
           usageInput += e.delta.input;
           usageOutput += e.delta.output;
+          if (e.thinking !== null) {
+            usageThinking += e.thinking;
+            usageThinkingReported = true;
+          }
           cacheTotals.read += e.delta.cacheRead;
           cacheTotals.created += e.delta.cacheCreation;
           // Charged to the model of THIS call, inside the same per-call guard as the sums above:
@@ -1002,6 +1020,10 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
             if (currentTurn.closedByResult && currentTurn.state === 'done') currentTurn.state = 'live';
             currentTurn.inputTotal += e.delta.input;
             currentTurn.out += e.delta.output;
+            if (e.thinking !== null) {
+              currentTurn.thinking += e.thinking;
+              currentTurn.thinkingReported = true;
+            }
             currentTurn.apiCalls++;
             currentTurn.cacheTotals.read += e.delta.cacheRead;
             currentTurn.cacheTotals.created += e.delta.cacheCreation;
@@ -1092,6 +1114,8 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
           cacheTotals: { read: 0, created: 0 },
           inputTotal: 0,
           out: 0,
+          thinking: 0,
+          thinkingReported: false,
           weighted: 0,
           skillTurns: new Map(),
           skillInvokes: new Map(),
@@ -1745,6 +1769,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         state,
         cutoff: t.cutoff,
         durationMs: t.durationMs,
+        thinking: t.thinkingReported ? t.thinking : null,
         messageCount: t.messageCount,
         apiCalls: t.apiCalls,
         deltaFill: t.fillEnd - prevFill,
@@ -2051,6 +2076,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
         cacheTotals: { ...cacheTotals },
         inputTotal: usageInput,
         outputTotal: usageOutput,
+        thinkingTotal: usageThinkingReported ? usageThinking : null,
         weighted: weightedMain,
         weightedByModel: [...mainWeightedByModel]
           .map(([model, weight]) => ({ model, weight }))

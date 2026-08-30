@@ -22,6 +22,7 @@ function baseSnapshot() {
       cacheTotals: { read: 4_120_000, created: 380_000 },
       inputTotal: 90_000,
       outputTotal: 60_000,
+      thinkingTotal: null as number | null,
       weighted: 0,
       weightedByModel: [],
     },
@@ -468,6 +469,7 @@ function makeTurn(index: number, opts: Partial<TurnNode> = {}): TurnNode {
   return {
     index,
     prompt: 'Turn ' + index + ' prompt',
+    thinking: null,
     startedAt: '2026-07-14T10:00:00Z',
     kind: opts.kind ?? 'work',
     command: opts.command ?? null,
@@ -2707,6 +2709,35 @@ test('Session card: footer carries whole-session turn KPIs and the Explore toggl
   assert.equal(findByClass(foot, 'obtn').length, 0, 'no Explore button without timeline entries');
 
   view.destroy();
+  g.document = prevDoc;
+});
+
+test('Session card: the Output row carries the thinking split, and only when there is one', () => {
+  const g = globalThis as any;
+  const prevDoc = g.document;
+  g.document = fakeDoc();
+
+  // Reported: the bar is drawn, inside the ledger, so it lines up with the row it splits.
+  const withSplit = g.document.createElement();
+  const snap = baseSnapshot();
+  snap.main.outputTotal = 1_000;
+  snap.main.thinkingTotal = 390;
+  const a = createGraph(withSplit, { snapshot: () => snap, onChange: () => () => {}, onEvent: () => () => {} });
+  const led = findByClass(findByClass(withSplit, 'burnw')[0], 'led')[0];
+  const split = findByClass(led, 'tsplit')[0];
+  assert.ok(split, 'the split is drawn inside the ledger, not appended after it');
+  assert.match(textOf(split), /thinking/, 'and it names which half is which');
+  a.destroy();
+
+  // Not reported: nothing is drawn. A `0 / 0` bar would state a fact Claude Code never gave.
+  const without = g.document.createElement();
+  const snap2 = baseSnapshot();
+  snap2.main.outputTotal = 1_000;
+  snap2.main.thinkingTotal = null;
+  const b = createGraph(without, { snapshot: () => snap2, onChange: () => () => {}, onEvent: () => () => {} });
+  assert.equal(findByClass(without, 'tsplit').length, 0, 'no split when the scope reported none');
+  b.destroy();
+
   g.document = prevDoc;
 });
 

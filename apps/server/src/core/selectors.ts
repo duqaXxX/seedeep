@@ -201,13 +201,24 @@ export function tokenUsage(m: TreeSnapshot['main']): {
   cacheWrite: number;
   cacheRead: number;
   output: number;
+  /** Of `output`, the part spent thinking; null when nothing in the scope reported a split. */
+  thinking: number | null;
   total: number;
 } {
   const input = m.inputTotal,
     cacheWrite = m.cacheTotals.created,
     cacheRead = m.cacheTotals.read,
     output = m.outputTotal;
-  return { input, cacheWrite, cacheRead, output, total: input + cacheWrite + cacheRead + output };
+  // NOT part of the total: it is already inside `output`, and adding it would count those
+  // tokens twice in the figure the card puts at the top.
+  return {
+    input,
+    cacheWrite,
+    cacheRead,
+    output,
+    thinking: m.thinkingTotal,
+    total: input + cacheWrite + cacheRead + output,
+  };
 }
 
 /** Subagents ranked by tool count (desc) — the "output size" order. Does not mutate the input. */
@@ -288,6 +299,9 @@ export function scopeToTurn(s: TreeSnapshot, turnIndex: number): TreeSnapshot {
       cacheTotals: { ...turn.cacheTotals },
       inputTotal: turn.inputTotal,
       outputTotal: turn.out,
+      // Scoped with `outputTotal`, never left to the spread above: the session's thinking drawn
+      // against this turn's output is the same silent lie `weightedByModel` avoids below.
+      thinkingTotal: turn.thinking,
       weighted: turn.weighted,
       // LIMIT: a turn carries its total weight but no per-model split of it, so the scoped view
       // reports none rather than handing back the SESSION's split — an empty list renders as

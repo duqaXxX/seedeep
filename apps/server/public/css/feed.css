@@ -262,3 +262,54 @@
 }
 
 /* Result preview block at the top of the activity card */
+
+/* The Output row's thinking/answer split. Spans the ledger's three columns so the bar lines up
+   with the row it belongs to rather than starting at the value column. Two tones of one indigo:
+   the darker is the reasoning, the lighter the answer, and neither is a category colour from the
+   Context segbar, which would make this read as a fifth thing that adds to the total. */
+.led .tsplit {
+  grid-column: 1 / -1;
+  margin: 0.1rem 0 0.35rem;
+}
+.tsbar {
+  display: flex;
+  height: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.tsbar > i {
+  display: block;
+  height: 100%;
+  background: #818cf8;
+}
+.tsbar > i.answer {
+  background: #c7d2fe;
+}
+.tskey {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 0.3rem;
+  font: 0.68rem var(--mono);
+  color: var(--lo);
+}
+.tskey span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tskey i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+  background: #818cf8;
+}
+.tskey span.answer i {
+  background: #c7d2fe;
+}
+.tskey b {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}

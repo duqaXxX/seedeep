@@ -323,6 +323,14 @@ export function parseLine(
         cacheRead: num(usage.cache_read_input_tokens),
         cacheCreation: num(usage.cache_creation_input_tokens),
       };
+      // `output_tokens_details` is EITHER an object or null, so reading `.thinking_tokens` off it
+      // directly throws on the null one. Measured 2026-08-29 over 2.1.237+: every line from a real
+      // model carries the object (200/200 haiku, 12,233/12,233 opus, 650/650 sonnet) and every
+      // null sits on a `<synthetic>` line, which made no call. Null is therefore "nothing was
+      // asked of a model", not zero: a model that did no thinking reports 0.
+      const details = usage.output_tokens_details;
+      const thinking =
+        details && typeof details === 'object' ? numOrNull((details as Record<string, unknown>).thinking_tokens) : null;
       const callId = typeof d.message?.id === 'string' ? d.message.id : null;
       const effort = typeof d.effort === 'string' && d.effort.length > 0 ? d.effort : null;
       // `<synthetic>` is not a model — it is the placeholder Claude Code stamps on assistant lines
@@ -336,6 +344,7 @@ export function parseLine(
         type: 'usage',
         ...base,
         delta,
+        thinking,
         fill: delta.input + delta.cacheRead + delta.cacheCreation,
         callId,
         effort,

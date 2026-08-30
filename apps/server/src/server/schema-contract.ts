@@ -183,6 +183,28 @@ export const CLAIMS: Claim[] = [
       }),
   },
   {
+    id: 'C29',
+    scene: 1,
+    describe: 'message.usage.output_tokens_details.thinking_tokens splits the output figure',
+    reader: 'server/parser.ts:parseLine, server/call-io.ts:readCallIO',
+    investigate:
+      'the Session card and the call drawer split their Output row with it. If it goes, the split silently stops being drawn and Output goes back to being a number whose larger part nobody reads as an answer (39% of it on a median call).',
+    kind: 'gesture',
+    provoked: (ctx) => typed(ctx, 'assistant').length > 0,
+    // The container is asserted on a line that REACHED a model, never on any assistant line:
+    // `<synthetic>` lines carry `output_tokens_details: null`, and measured 2026-08-29 over
+    // 2.1.237+ that is the only null there is (the object is on 200/200 haiku, 12,233/12,233
+    // opus, 650/650 sonnet). Reading the whole set would let one synthetic line satisfy a claim
+    // about model calls.
+    holds: (ctx) =>
+      anyAssistant(ctx, (d) => {
+        if (typeof d?.message?.model !== 'string' || d.message.model === '<synthetic>') return false;
+        const det = d?.message?.usage?.output_tokens_details;
+        return !!det && typeof det === 'object' && typeof det.thinking_tokens === 'number';
+      }),
+  },
+
+  {
     id: 'C3',
     scene: 1,
     describe: 'message.id identifies the API call',
