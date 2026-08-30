@@ -9,6 +9,31 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.32.0 (2026-08-30)
+
+### Added
+
+- The **Output** row of the Session card splits into the part the model spent reasoning and the
+  part it wrote as an answer, and the same split appears in the call drawer for a single call.
+  Claude Code reports it as `usage.output_tokens_details.thinking_tokens`, and it is a large share
+  of a figure that read as the answer: over 22,995 calls measured 2026-08-29 the reasoning is 39%
+  of output on a median call, above 80% on a tenth of them, and greater than zero on 70%. Two
+  tones of one hue rather than a fifth colour, because it is a subset of the row above and adding
+  it to the hero would count those tokens twice. A call that did no thinking reports zero, a
+  `<synthetic>` line reports null, and null draws nothing rather than a zero nobody asserted.
+- Contract claim **C29** holds Claude Code to that field, on a line that reached a real model:
+  every model line carries it (200 of 200 haiku, 12,233 of 12,233 opus, 650 of 650 sonnet,
+  measured over 2.1.237+), and every null belongs to a `<synthetic>` line that made no call. The
+  radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
+  would be blind to anything added beside `thinking_tokens`.
+
+- Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
+  `human` and `task-notification`, and to writing the field at all. The untagged command shape is
+  admitted on exactly those two plus no origin, so a third kind makes one command read as a prompt,
+  and an `origin` that went away leaves that shape with no gate, admitting any user line whose whole
+  content reads `/name …`. Neither has anything anywhere reporting it.
+  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
+
 ### Changed
 
 - The schema radar's known set is accepted, so it reports nothing again. What each newly seen
@@ -28,24 +53,6 @@ Everything released before `0.20.0` — including the pre-publication developmen
   Two numbers that disagree on one screen with neither being wrong is the trap the Changed files
   card was moved off this same ledger to avoid. It is also absent from 81 of 93 sessions on
   2.1.251 and written at exit.
-
-### Added
-
-- The **Output** row of the Session card splits into the part the model spent reasoning and the
-  part it wrote as an answer, and the same split appears in the call drawer for a single call.
-  Claude Code reports it as `usage.output_tokens_details.thinking_tokens`, and it is a large share
-  of a figure that read as the answer: over 22,995 calls measured 2026-08-29 the reasoning is 39%
-  of output on a median call, above 80% on a tenth of them, and greater than zero on 70%. Two
-  tones of one hue rather than a fifth colour, because it is a subset of the row above and adding
-  it to the hero would count those tokens twice. A call that did no thinking reports zero, a
-  `<synthetic>` line reports null, and null draws nothing rather than a zero nobody asserted.
-- Contract claim **C29** holds Claude Code to that field, on a line that reached a real model:
-  every model line carries it (200 of 200 haiku, 12,233 of 12,233 opus, 650 of 650 sonnet,
-  measured over 2.1.237+), and every null belongs to a `<synthetic>` line that made no call. The
-  radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
-  would be blind to anything added beside `thinking_tokens`.
-
-### Changed
 
 - The Background commands catalogue reads as a table. Its chips trailed the command, whose length
   is arbitrary, so `done`, `turn 7` and `exit 0` landed at a different x on every row and none of
@@ -180,15 +187,6 @@ Everything released before `0.20.0` — including the pre-publication developmen
   figure is replaced by one that names its date, its corpus and its method.
 - `docs/features.md` gains *Checking the numbers yourself*: the ten lines that recompute the token
   split straight from the session files, including the deduplication that a naive sum gets wrong.
-
-### Added
-
-- Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
-  `human` and `task-notification`, and to writing the field at all. The untagged command shape is
-  admitted on exactly those two plus no origin, so a third kind makes one command read as a prompt,
-  and an `origin` that went away leaves that shape with no gate, admitting any user line whose whole
-  content reads `/name …`. Neither has anything anywhere reporting it.
-  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
 
 ## 0.31.2 (2026-08-25)
 
