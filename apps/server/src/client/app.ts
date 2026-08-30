@@ -548,13 +548,23 @@ roster.onChange((rows) => {
   // clear. Same confirmation window, and `stillGone` already answers this case ("gone from the
   // roster entirely counts as gone") — it was simply never armed for it.
   //
-  // Safe to arm on an EMPTY roster only because a reading that did not land never gets here: a
-  // scan that could not be made throws instead of reporting zero sessions (discovery.ts), the
-  // response is read as a failure instead of as data (`readRoster`), and the poll then serves the
-  // previous rows unchanged. Without that chain an unreadable `~/.claude/projects` would end every
-  // tab on the page while the sessions behind them were still running.
-  const listed = new Set(rows.map((r) => r.sessionId));
-  for (const [sessionId, t] of openTabs) if (!t.ended && !listed.has(sessionId)) endGuard.gone(sessionId);
+  // Guarded on the reading being WHOLE, which is the difference between this and every other line
+  // in this listener: they act on what a session IS, and a partial list still states that
+  // correctly, while this one acts on a session being ABSENT, which a partial list cannot support.
+  // Three ways a reading can fail to support it, each needing its own mechanism, because each
+  // reaches a different consumer:
+  //   - a ROOT that will not answer throws, comes back as a failed reading (`readRoster`), and
+  //     never reaches this listener at all;
+  //   - one PROJECT directory that will not answer serves the rest and says `complete: false`,
+  //     since an EACCES there is usually permanent and refusing the whole roster for as long as it
+  //     stands would be worse than the sessions it hides;
+  //   - and a catalogue entry the partial payload did not claim is dropped by `mergeRoster` rather
+  //     than reported not-live, which is the path the loop above walks and this flag never sees.
+  // Without all three an EMFILE would close tabs whose sessions are still running.
+  if (roster.complete()) {
+    const listed = new Set(rows.map((r) => r.sessionId));
+    for (const [sessionId, t] of openTabs) if (!t.ended && !listed.has(sessionId)) endGuard.gone(sessionId);
+  }
   // Free, and NOT guarded by `booted`: Home's empty box states whether this machine has any
   // session at all, and it paints before the first roster reading lands. Without this the box
   // keeps saying "there is none on this machine" over a picker that lists one — measured on a

@@ -141,10 +141,17 @@ Returns `LivePayload` (`core/roster.ts`): `{ total, sessions, pidVisible }`.
 The two halves rejoin client-side: `mergeRoster(catalogue, live)` is the same roster the server
 would have produced whole.
 
-Both roster endpoints answer `500` when the session directory exists but cannot be read. A `200`
-listing zero sessions therefore means the machine has none, never that the scan failed; a client
-must treat the `500` as a reading that did not land and keep the rows it already has, since the
-alternative is reporting every running session as gone.
+Both roster endpoints answer `500` when a session ROOT exists but cannot be read. A `200` listing
+zero sessions therefore means the machine has none, never that the scan failed; a client must treat
+the `500` as a reading that did not land and keep the rows it already has, since the alternative is
+reporting every running session as gone.
+
+One project directory that cannot be read is the case in between, and `LivePayload.complete` is
+where it is stated. The reading still lands, and the sessions it lists are correct; what it cannot
+support is the opposite reading, that a session it does NOT list is over. `false` therefore means
+absence from `sessions` proves nothing. It is not folded into the `500` because an `EACCES` on one
+project directory is usually permanent, and refusing the whole roster for as long as those
+permissions stand would hide more than it protects.
 
 ### `GET /api/session-stats`
 

@@ -138,6 +138,17 @@ async function scanHead(path: string): Promise<{ meta: FirstLineMeta; complete: 
   }
 }
 
+/** One session's file exists and would not be read. Carries no path into any surface: it is
+ * caught by the scan itself, which turns it into `complete: false`. */
+class UnreadableSession extends Error {
+  constructor(
+    readonly path: string,
+    readonly cause: unknown,
+  ) {
+    super('seedeep: a session file could not be read');
+  }
+}
+
 async function recordFor(
   path: string,
   root: Root,
@@ -147,8 +158,12 @@ async function recordFor(
   let st: Stats;
   try {
     st = await stat(path);
-  } catch {
-    return null;
+  } catch (e: any) {
+    // Null twice over, and the caller has to tell them apart: ENOENT is the file having been
+    // removed between the readdir and this stat, which is an answer; anything else is this
+    // session not being read, which must make the scan say it is partial.
+    if (e?.code === 'ENOENT') return null;
+    throw new UnreadableSession(path, e);
   }
   const meta = await firstLineMeta(path, st.size);
   const sessionId = meta.sessionId ?? basename(path).replace(/\.jsonl$/, '');
@@ -182,12 +197,26 @@ async function recordFor(
   };
 }
 
+/** What one scan of the session roots found, and whether it could read everything it met. */
+export interface Scan {
+  sessions: SessionRecord[];
+  /** Every root and every project directory under it answered. False means sessions are MISSING
+   * from `sessions`, so absence from the list is not evidence that a session is gone. */
+  complete: boolean;
+}
+
 async function scanCliDir(
   slugParent: string,
   now: number,
   openById: Map<string, OpenSession> | null,
-): Promise<SessionRecord[]> {
+): Promise<{ records: SessionRecord[]; complete: boolean }> {
   const out: SessionRecord[] = [];
+  // Flipped by any project directory that exists and would not be read. Those cannot throw the
+  // way the root does: an EACCES on ONE project is usually permanent, and propagating it would
+  // leave the whole roster unreadable for the life of that directory, which is worse than the
+  // partial list it replaces. So the list is served AND declared partial, and the caller that
+  // acts on a missing session (the GUI's tab sweep) abstains instead.
+  let complete = true;
   let slugs: string[];
   try {
     slugs = await readdir(slugParent);
@@ -200,7 +229,7 @@ async function scanCliDir(
     // PID scan already follows through `isOpen: null` (see roster.ts): absence of an answer must
     // never be served as a negative answer. The throw reaches the client as a failed reading,
     // which the roster poll already handles by keeping the last good rows.
-    if (e?.code === 'ENOENT') return out;
+    if (e?.code === 'ENOENT') return { records: out, complete: true };
     throw e;
   }
   for (const slug of slugs) {
@@ -208,23 +237,36 @@ async function scanCliDir(
     let s: Stats;
     try {
       s = await stat(dir);
-    } catch {
+    } catch (e: any) {
+      // ENOENT is the ordinary race: a project directory removed while this loop walks the list
+      // it read a moment ago. Anything else is this entry not being read, which is not the same
+      // as it holding nothing.
+      if (e?.code !== 'ENOENT') complete = false;
       continue;
     }
     if (!s.isDirectory()) continue;
     let files: string[];
     try {
       files = await readdir(dir);
-    } catch {
+    } catch (e: any) {
+      if (e?.code !== 'ENOENT') complete = false;
       continue;
     }
     for (const f of files) {
       if (!f.endsWith('.jsonl') || f === 'audit.jsonl') continue;
-      const rec = await recordFor(join(dir, f), 'cli', now, openById);
-      if (rec) out.push(rec);
+      try {
+        const rec = await recordFor(join(dir, f), 'cli', now, openById);
+        if (rec) out.push(rec);
+      } catch (e) {
+        // One session that could not be read is one session missing from the roster, and under
+        // an EMFILE that is the likeliest shape of all: the error arrives while OPENING files,
+        // which is what this loop does. The rest of the scan is still worth serving.
+        if (!(e instanceof UnreadableSession)) throw e;
+        complete = false;
+      }
     }
   }
-  return out;
+  return { records: out, complete };
 }
 
 /**
@@ -237,10 +279,31 @@ async function scanCliDir(
  * All inputs are injectable via {@link DiscoverOptions} for testing (home, now,
  * roots, openSessions).
  *
- * THROWS when a root directory exists but cannot be read. An empty array therefore always
- * means "no sessions", never "the scan failed" — every caller acts on that distinction.
+ * THROWS when a ROOT exists but cannot be read. An empty array therefore always means "no
+ * sessions", never "the scan failed" — every caller acts on that distinction.
+ *
+ * A partial reading is the case in between, and it is why {@link scanSessions} exists: use this
+ * when you act on the sessions that ARE there, and that one when you act on a session's ABSENCE.
  */
 export async function discoverSessions(opts: DiscoverOptions = {}): Promise<SessionRecord[]> {
+  return (await scanSessions(opts)).sessions;
+}
+
+/**
+ * The sessions, and whether every directory that exists was actually read.
+ *
+ * `complete: false` says the list is missing sessions this machine has, so absence from it proves
+ * nothing. Only a caller that acts on a session NOT being listed needs to ask: the GUI ends the
+ * tab of a session the roster stopped carrying, and doing that on a scan an `EMFILE` truncated
+ * would close tabs whose sessions are still running.
+ *
+ * Not folded into a throw, which is what an unreadable ROOT does: an `EACCES` on one project
+ * directory is usually permanent, so propagating it would leave the whole roster unreadable for
+ * as long as those permissions stand — worse than the partial list it would replace. The same
+ * shape as `pidVisible` in `core/roster.ts`, and for the same reason: it is a property of the
+ * SCAN and not of any session in it.
+ */
+export async function scanSessions(opts: DiscoverOptions = {}): Promise<Scan> {
   const home = opts.home ?? homedir();
   const now = opts.now ?? Date.now();
   const openSessions = opts.openSessions !== undefined ? opts.openSessions : await listOpenSessions({ home });
@@ -248,9 +311,12 @@ export async function discoverSessions(opts: DiscoverOptions = {}): Promise<Sess
 
   const cliDirs = opts.roots ?? [cliRoot(home)];
   const records: SessionRecord[] = [];
+  let complete = true;
   for (const dir of cliDirs) {
-    records.push(...(await scanCliDir(dir, now, openById)));
+    const scan = await scanCliDir(dir, now, openById);
+    records.push(...scan.records);
+    if (!scan.complete) complete = false;
   }
   records.sort((a, b) => b.lastActivity - a.lastActivity);
-  return records;
+  return { sessions: records, complete };
 }

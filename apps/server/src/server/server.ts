@@ -28,6 +28,7 @@ import {
   writeConfig,
 } from './config.ts';
 import { type DigestEntry, digestEntry } from './digest.ts';
+import type { Scan } from './discovery.ts';
 import { createLiveTrees } from './live-trees.ts';
 import { createNotifyEngine } from './notify-engine.ts';
 import { sendWebhook } from './notify-webhook.ts';
@@ -46,6 +47,16 @@ import { FROM_SOURCE, VERSION } from './version.ts';
 export interface ServerDeps {
   watcher: EventEmitter;
   discover: () => Promise<SessionRecord[]>;
+  /**
+   * The same reading, with the one thing `discover` cannot express: whether the scan actually
+   * read everything (`scanSessions`, discovery.ts). Only `/api/live` asks, because only the
+   * client's tab sweep acts on a session being ABSENT.
+   *
+   * Optional, and it defaults to `discover` reported as complete. That keeps a caller who injects
+   * one function from silently getting the real filesystem for the other, which is the failure
+   * mode a second dep invites: every endpoint then answers from the same list.
+   */
+  scan?: () => Promise<Scan>;
   port: number;
   /** Bind address for the HTTP(S) server. Defaults to `'127.0.0.1'`. */
   host?: string;
@@ -584,6 +595,10 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
   // for a session nobody is watching, which is what keeps an idle process idle.
   const liveTrees = createLiveTrees({ watcher: deps.watcher });
 
+  /** One reading, with its completeness. See `ServerDeps.scan` for why the fallback says true. */
+  const readScan = async (): Promise<Scan> =>
+    deps.scan ? deps.scan() : { sessions: await deps.discover(), complete: true };
+
   /**
    * Every live session's digest entry — what `/api/digest` answers with, and what the notification
    * engine reads. One session's failure must not answer for the others: a seed that throws would
@@ -927,7 +942,8 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       // The LIVE half: the handful of sessions that are actually running, in full. This is
       // the only thing the client polls, and it is ~1 KB against the catalogue's ~550 KB.
       if (pathname === '/api/live') {
-        return json(req, liveOf(await deps.discover()));
+        const scan = await readScan();
+        return json(req, liveOf(scan.sessions, scan.complete));
       }
 
       // Live derived state for a client that does NOT own the reducer: the roster's liveness

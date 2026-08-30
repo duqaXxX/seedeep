@@ -308,6 +308,17 @@ A throwaway working directory cleaned up under a driven session does this, and s
 cannot see are collected separately and offered to the same guard; the guard's own question
 already treats an absent row as gone.
 
+That inverts what a failed scan costs, so absence has to be trusted before it is acted on, and
+three mechanisms say when it can be. A ROOT that exists and will not be read makes
+`scanSessions` throw, the endpoints answer `500`, and the poll keeps its last rows. One PROJECT
+directory that will not be read is served with the rest and reported through
+`LivePayload.complete`, since an `EACCES` there is usually permanent and refusing the whole roster
+for as long as it stands would hide more than it protects. And on such a reading `mergeRoster`
+DROPS a catalogue entry the payload did not claim rather than passing it through `ended`, because
+that path reaches the row loop, which never sees the flag. Only the sweep is gated on `complete`
+directly: every other consumer acts on what a session IS, which a partial reading still states
+correctly.
+
 Ending a tab is **reversible**, and has to be: `claude --resume` continues the SAME session id,
 so a resumed session can never be handed a new tab, and nothing auto-opens it
 (`sessionsToAutoOpen` excludes both `known` and the ids on screen) and picking it from the

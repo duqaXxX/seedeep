@@ -69,6 +69,18 @@ Everything released before `0.20.0` — including the pre-publication developmen
   and handed to it. Only a page reload cleared them before. It is reached by any session whose file
   disappears under it: a driven session in a throwaway working directory, or `~/.claude/projects`
   pruned by hand.
+- A scan that read only PART of the machine no longer lets a session be reported as over. The rule
+  above covers a root that will not answer at all; one project directory that will not answer is
+  the case in between, and it is the likelier of the two under an `EMFILE`, which arrives while
+  files are being opened. Those failures were swallowed one directory at a time, so the roster came
+  back short and in silence. `scanSessions` now serves the readable part and says `complete: false`
+  beside it, carried on `LivePayload` next to `pidVisible` and for the same reason: it is a property
+  of the SCAN, not of a session. Not folded into the throw, since an `EACCES` on one project is
+  usually permanent and refusing the whole roster for as long as it stands would hide more than it
+  protects. Two consumers act on it, because absence reaches them by different paths: the tab sweep
+  asks before it runs, and `mergeRoster` drops a catalogue entry the payload did not claim instead
+  of reporting it not-live. Everything else reads what a session IS, which a partial scan still
+  states correctly.
 - A scan that cannot be made is no longer reported as an empty machine. The session directory was
   read with every failure swallowed, so an `EMFILE` under load or a home that stops answering
   produced zero sessions rather than an error — indistinguishable from a machine with none, and

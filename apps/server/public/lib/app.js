@@ -1602,7 +1602,7 @@ function createIdChip(sessionId, opts = {}) {
 // apps/server/src/core/roster.ts
 function mergeRoster(catalogue, live, now = Date.now()) {
   const liveById = new Map(live.sessions.map((s) => [s.sessionId, s]));
-  const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? ended(c, live.pidVisible, now));
+  const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? (live.complete ? ended(c, live.pidVisible, now) : null)).filter((r) => r !== null);
   const known = new Set(catalogue.map((c) => c.sessionId));
   for (const s of live.sessions)
     if (!known.has(s.sessionId))
@@ -1687,6 +1687,7 @@ function createRoster(deps) {
   let timer = null;
   let stopped = false;
   let taken = 0;
+  let complete = false;
   const listeners = new Set;
   async function refresh() {
     let live;
@@ -1706,6 +1707,7 @@ function createRoster(deps) {
     const next = mergeRoster(catalogue, live);
     rows = next;
     taken++;
+    complete = live.complete;
     const nextKey = rosterKey(next);
     if (nextKey !== key) {
       key = nextKey;
@@ -1732,6 +1734,7 @@ function createRoster(deps) {
     },
     current: () => rows,
     readings: () => taken,
+    complete: () => complete,
     onChange(cb) {
       listeners.add(cb);
       return () => listeners.delete(cb);
@@ -10360,10 +10363,12 @@ roster.onChange((rows) => {
       }
     }
   }
-  const listed = new Set(rows.map((r) => r.sessionId));
-  for (const [sessionId, t] of openTabs)
-    if (!t.ended && !listed.has(sessionId))
-      endGuard.gone(sessionId);
+  if (roster.complete()) {
+    const listed = new Set(rows.map((r) => r.sessionId));
+    for (const [sessionId, t] of openTabs)
+      if (!t.ended && !listed.has(sessionId))
+        endGuard.gone(sessionId);
+  }
   if (rows.length !== lastPaintedLen) {
     lastPaintedLen = rows.length;
     homeView.repaint();

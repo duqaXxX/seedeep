@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { isLive } from '../src/core/types.ts';
-import { discoverSessions } from '../src/server/discovery.ts';
+import { discoverSessions, scanSessions } from '../src/server/discovery.ts';
 
 function makeRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'seedeep-disc-'));
@@ -272,6 +272,36 @@ test('head cache: an incomplete head is re-scanned when the file grows', async (
   const grown = (await discover(root))[0]!;
   assert.equal(grown.model, 'claude-opus-4-8');
   assert.equal(grown.subject, 'now the task exists');
+});
+
+test('a project directory that cannot be read makes the scan say it is partial', async () => {
+  // The ROOT throws, because refusing the whole roster is right when nothing at all was read. One
+  // project directory is the case in between: an EACCES there is usually permanent, so throwing
+  // would leave seedeep unusable for as long as those permissions stand. The readable half is
+  // served AND the scan says so, and the one caller that acts on a session's ABSENCE abstains.
+  const root = makeRoot();
+  const locked = join(root, '-home-dev-other');
+  mkdirSync(locked, { recursive: true });
+  writeFileSync(
+    join(locked, 'cccccccc-0000-0000-0000-000000000003.jsonl'),
+    JSON.stringify({ type: 'assistant', sessionId: 'cccccccc-0000-0000-0000-000000000003', cwd: '/home/dev/other' }) +
+      '\n',
+  );
+
+  const whole = await scanSessions({ roots: [root], openSessions: [] });
+  assert.equal(whole.sessions.length, 3, 'all three are found while all three can be read');
+  assert.equal(whole.complete, true);
+
+  chmodSync(locked, 0o000);
+  try {
+    const partial = await scanSessions({ roots: [root], openSessions: [] });
+    assert.equal(partial.sessions.length, 2, 'the readable half is still served');
+    assert.ok(!partial.sessions.some((r) => r.sessionId.endsWith('003')), 'the locked project is the one missing');
+    assert.equal(partial.complete, false, 'and the scan says the list is missing sessions');
+  } finally {
+    chmodSync(locked, 0o755);
+  }
+  assert.equal((await scanSessions({ roots: [root], openSessions: [] })).complete, true, 'and it heals');
 });
 
 test('a root that does not exist is zero sessions; one that cannot be read is an error', async () => {
