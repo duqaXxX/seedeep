@@ -9,6 +9,31 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.32.0 (2026-08-30)
+
+### Added
+
+- The **Output** row of the Session card splits into the part the model spent reasoning and the
+  part it wrote as an answer, and the same split appears in the call drawer for a single call.
+  Claude Code reports it as `usage.output_tokens_details.thinking_tokens`, and it is a large share
+  of a figure that read as the answer: over 22,995 calls measured 2026-08-29 the reasoning is 39%
+  of output on a median call, above 80% on a tenth of them, and greater than zero on 70%. Two
+  tones of one hue rather than a fifth colour, because it is a subset of the row above and adding
+  it to the hero would count those tokens twice. A call that did no thinking reports zero, a
+  `<synthetic>` line reports null, and null draws nothing rather than a zero nobody asserted.
+- Contract claim **C29** holds Claude Code to that field, on a line that reached a real model:
+  every model line carries it (200 of 200 haiku, 12,233 of 12,233 opus, 650 of 650 sonnet,
+  measured over 2.1.237+), and every null belongs to a `<synthetic>` line that made no call. The
+  radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
+  would be blind to anything added beside `thinking_tokens`.
+
+- Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
+  `human` and `task-notification`, and to writing the field at all. The untagged command shape is
+  admitted on exactly those two plus no origin, so a third kind makes one command read as a prompt,
+  and an `origin` that went away leaves that shape with no gate, admitting any user line whose whole
+  content reads `/name …`. Neither has anything anywhere reporting it.
+  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
+
 ### Changed
 
 - The schema radar's known set is accepted, so it reports nothing again. What each newly seen
@@ -29,24 +54,67 @@ Everything released before `0.20.0` — including the pre-publication developmen
   card was moved off this same ledger to avoid. It is also absent from 81 of 93 sessions on
   2.1.251 and written at exit.
 
-### Added
-
-- The **Output** row of the Session card splits into the part the model spent reasoning and the
-  part it wrote as an answer, and the same split appears in the call drawer for a single call.
-  Claude Code reports it as `usage.output_tokens_details.thinking_tokens`, and it is a large share
-  of a figure that read as the answer: over 22,995 calls measured 2026-08-29 the reasoning is 39%
-  of output on a median call, above 80% on a tenth of them, and greater than zero on 70%. Two
-  tones of one hue rather than a fifth colour, because it is a subset of the row above and adding
-  it to the hero would count those tokens twice. A call that did no thinking reports zero, a
-  `<synthetic>` line reports null, and null draws nothing rather than a zero nobody asserted.
-- Contract claim **C29** holds Claude Code to that field, on a line that reached a real model:
-  every model line carries it (200 of 200 haiku, 12,233 of 12,233 opus, 650 of 650 sonnet,
-  measured over 2.1.237+), and every null belongs to a `<synthetic>` line that made no call. The
-  radar's `OBSERVED_CONTAINERS` gains `message.usage.output_tokens_details`, without which it
-  would be blind to anything added beside `thinking_tokens`.
+- The Background commands catalogue reads as a table. Its chips trailed the command, whose length
+  is arbitrary, so `done`, `turn 7` and `exit 0` landed at a different x on every row and none of
+  them could be read down the list. State, turn and exit now have a column each, **kept even when
+  a row has nothing to put in it**, since each row is a grid of its own and a column only exists
+  when every row spends the same width on it. Those widths come from what the code can write (the
+  longest state is `unknown`; turn and exit take a space and up to three digits), never from the
+  commands one machine happens to hold. The fields that vary in length, who backgrounded it and a
+  monitor's event count, share a flexible cell to their left. The command is set in the same size,
+  colour and family as the card's own description: sixteen rows of bright mono read as sixteen
+  headlines, and the command is what a row is about rather than a title it carries.
+- The schema contract gains a fourth outcome, **RETIRED**, for a claim whose scene Claude Code no
+  longer offers any way to cause. Two claims move to it, each carrying the measurement that
+  justifies it. **C18** asserts the inline result of a synchronous subagent, which exists only when
+  the Agent tool is called with `run_in_background: false`: that parameter was passed 100 times up
+  to 2.1.233 and appears in none of the 39 Agent calls on 2.1.245 and later. **C21** asserts a text
+  written by a `TaskCreate` tool, used in 5 sessions up to 2.1.231 and in 0 of 611 across 2.1.239
+  to 2.1.251. Left as `model` claims they returned UNPROVEN on every run for ever, sat in the
+  `open` list of a certified version, and made each report print an instruction nobody could carry
+  out. They are retired rather than deleted for two reasons: their readers still run, on sessions
+  written while the shape existed, and `holds` is still evaluated, so the day either shape comes
+  back the claim flips to HOLDS and says so.
 
 ### Fixed
 
+- Every subagent went output-less on Claude Code 2.1.251, which is seedeep's differentiator. The
+  reader took a child's returned answer from a line carrying `stop_reason: "end_turn"`, and 2.1.251
+  stopped writing that value on child lines: 0 of 29 children have it, against 202 of 207 across the
+  fifteen releases before it. The text was never missing, only the marker naming it, so the panel
+  showed a subagent that ran for six minutes and returned nothing while every other number on it was
+  right. Reducing the local corpus, subagents rendering their output fell from 83-100% per release
+  to **0%** on 2.1.251.
+  The answer is now the child's last text block with no tool call after it, which needs no marker: a
+  text with work after it was narration. It agrees with the old rule 202 times out of 202 wherever
+  that rule applied, and it selects rather than accepts, since most children write several text
+  blocks and exactly one survives in 241 of 253 real children. Repeating the measurement with the
+  fix, 2.1.251 goes to 76% (the rest are the children that end on a tool call, having answered
+  nothing) and no earlier release loses a single one, while 2.1.219 and 2.1.220 gain the few they
+  were missing. Contract claim **C16c** is rewritten to assert the shape rather than the marker,
+  and now HOLDS on evidence from 102 real 2.1.251 sessions; pinned to a value Claude Code no longer
+  writes it could only ever return UNPROVEN, which teaches nothing.
+- A slash command typed inside a sentence is counted as one. Claude Code expands a command only
+  when it stands alone, so `…testing this /paste-image and I see…` stays prose, opens no turn and
+  emitted no command event, while the user typed it and the card says *commands you typed*. Over
+  the local corpus that is not a corner: 122 of the 153 slash words found inside typed prompts are
+  a single command written that way. The word is admitted only when the SESSION vouches for the
+  name, by loading the skill it names or running the same command elsewhere in the same file, so
+  nothing global is consulted and the answer cannot drift with the machine. That rule is what
+  separates a command from a path: of 258 slash words inside typed prompts, 119 are paths
+  (`/Users`, `/tmp`, `/opt`, `/dev`) and not one survives it. Reducing all 1037 local sessions, the
+  Commands card gains fourteen names and every one is a real command. The counts merge with the
+  expanded ones rather than sitting apart, since a command you typed is a command you typed.
+- A session's commits survive the squash merge that ships them. `readCommits` lists what
+  `git log --all` walks, so when a pull request is squashed and its branch deleted, every commit
+  the session made stops being listed while the object stays readable — and the Commits card went
+  blank saying `Nothing committed in this session.` on a session that had committed and shipped.
+  Since squash is how a pull request normally ends, the card lost its content at the exact moment
+  it was worth reading. Those commits are now recovered by hash, which the session's own output
+  named, and marked `superseded`: shown, with the subject and the time, and with no forge link,
+  since nothing was pushed under a name the forge can serve. `local` is kept for what it always
+  meant, a commit on its way. `isReachable` asks `for-each-ref --contains` and then HEAD, because
+  `git log --all` honours HEAD as well and a detached checkout would otherwise read as superseded.
 - Automated sessions no longer notify. A headless run (`entrypoint` `sdk-cli` or `sdk-py`) has
   nobody sitting at it, so `Turn finished` on the tray and on the webhook was a request to get up
   for a machine, and seedeep's own docs-freshness gate raised one on every push. The exclusion had
@@ -119,15 +187,6 @@ Everything released before `0.20.0` — including the pre-publication developmen
   figure is replaced by one that names its date, its corpus and its method.
 - `docs/features.md` gains *Checking the numbers yourself*: the ten lines that recompute the token
   split straight from the session files, including the deduplication that a naive sum gets wrong.
-
-### Added
-
-- Contract claim **C28** holds Claude Code to the two values `origin.kind` takes on a `user` line,
-  `human` and `task-notification`, and to writing the field at all. The untagged command shape is
-  admitted on exactly those two plus no origin, so a third kind makes one command read as a prompt,
-  and an `origin` that went away leaves that shape with no gate, admitting any user line whose whole
-  content reads `/name …`. Neither has anything anywhere reporting it.
-  `docs/claude-code-upgrades.md` gains the same row in its closed-vocabulary table.
 
 ## 0.31.2 (2026-08-25)
 

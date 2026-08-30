@@ -222,6 +222,31 @@ export async function unpushedHashes(repo: RepoRef): Promise<Set<string>> {
 }
 
 /**
+ * Whether any ref still leads to `hash`.
+ *
+ * `readCommits` walks refs (`git log --all`), so a commit no branch points at is invisible to it
+ * while the OBJECT is still there and `readCommit` reads it happily. That is not an edge case: a
+ * squash merge replaces the branch's commits with one new commit and the branch is then deleted,
+ * so every commit of a finished pull request ends up here. The card needs the difference, because
+ * such a commit is real and worth showing but has no page on the forge to link to.
+ *
+ * HEAD is asked separately and only when no ref answered, because `git log --all` — the listing
+ * this exists to explain the gaps in — documents itself as "all refs in refs/, ALONG WITH HEAD".
+ * `for-each-ref` walks refs/ alone, so a detached HEAD sitting on the commit would otherwise be
+ * reported as superseded while `readCommits` lists it perfectly well.
+ *
+ * `--count=1` stops at the first ref that qualifies rather than listing them all. Measured on a
+ * 200-ref repository: 13 ms either way.
+ */
+export async function isReachable(repo: RepoRef, hash: string): Promise<boolean> {
+  const refs = await git(repo.toplevel, ['for-each-ref', '--contains', hash, '--count=1', '--format=%(refname)']);
+  if (refs?.trim()) return true;
+  // `--is-ancestor` answers through the exit code, which `git()` reports as null output on
+  // failure; an equality is an ancestor of itself, so HEAD sitting exactly on it counts.
+  return (await git(repo.toplevel, ['merge-base', '--is-ancestor', hash, 'HEAD'])) !== null;
+}
+
+/**
  * `origin`'s URL as a browsable https base (`https://host/owner/repo`), or null when the repo has
  * no origin. Normalises the three shapes git stores: `git@host:owner/repo.git`,
  * `ssh://git@host/owner/repo.git`, `https://host/owner/repo.git`.

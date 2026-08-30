@@ -9,6 +9,7 @@ import {
 import type { SessionRecord } from '../core/types.ts';
 import {
   commitUrl,
+  isReachable,
   type RepoRef,
   readCommit,
   readCommits,
@@ -182,9 +183,64 @@ export async function commitsForSession(rec: SessionRecord, others: readonly Ses
         evidence: a.evidence,
         // An unpushed commit has no page yet: a link would 404, so it gets none.
         url: unpushed.has(c.hash) ? null : commitUrl(base, c.hash),
+        reachable: true,
       });
     }
   }
+  out.push(...(await orphaned(scan, repos, out)));
   out.sort((a, b) => b.at - a.at);
   return { commits: out, remote };
+}
+
+/**
+ * The commits this session made that no ref leads to any more.
+ *
+ * `readCommits` walks refs, so a squash merge erases a session's whole account of itself the
+ * moment the branch is deleted — which is the end of every pull request, and the moment the card
+ * is worth reading. The object survives, and the session's own output named its hash, so both
+ * halves of the evidence are still here; only git's own listing has moved on.
+ *
+ * Evidence is `proof` and nothing weaker: the hash was printed by a `git commit` this session
+ * ran. Testimony has no counterpart here, since it works by matching a subject against commits
+ * the repo listed, and these are exactly the ones it did not.
+ *
+ * Costs nothing on the ordinary path: a hash already attributed is skipped before git is asked,
+ * so a session whose commits are all reachable runs no extra subprocess.
+ */
+async function orphaned(
+  scan: Scan,
+  repos: Map<string, RepoRef>,
+  found: readonly SessionCommit[],
+): Promise<SessionCommit[]> {
+  const claimed = new Set(found.map((c) => c.hash));
+  const out: SessionCommit[] = [];
+  const seen = new Set<string>();
+  for (const call of scan.commits) {
+    for (const short of call.outputHashes) {
+      if (seen.has(short)) continue;
+      seen.add(short);
+      for (const repo of repos.values()) {
+        // `readCommit` resolves an abbreviation and reads an unreachable object, which is the
+        // whole reason it is asked instead of searching the list `readCommits` returned.
+        const c = await readCommit(repo, short);
+        if (!c || claimed.has(c.hash)) continue;
+        // Reachable means it was simply outside the window `readCommits` asked for, or belongs to
+        // another session's attribution. Neither is this function's business.
+        if (await isReachable(repo, c.hash)) continue;
+        claimed.add(c.hash);
+        out.push({
+          hash: c.hash,
+          short: c.hash.slice(0, 7),
+          subject: c.subject,
+          at: c.authoredAt,
+          evidence: 'proof',
+          // No ref leads to it, so it was never pushed under a name the forge can serve.
+          url: null,
+          reachable: false,
+        });
+        break;
+      }
+    }
+  }
+  return out;
 }

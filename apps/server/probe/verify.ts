@@ -6,8 +6,12 @@ import type { Claim, ClaimContext } from '../src/server/schema-contract.ts';
  * Three outcomes, never two. A two-state check would have to call an unprovoked
  * claim either "pass" (a lie that makes the whole guard worthless) or "fail" (an
  * alarm about Claude's routing, not about the schema).
+ *
+ * RETIRED is the fourth, and it is not a weaker UNPROVEN: it says the shape can no longer be
+ * CAUSED, so no future run will learn anything by trying. Without it such a claim sits in the
+ * open list for ever, and every run prints an instruction nobody can carry out.
  */
-export type Outcome = 'HOLDS' | 'BROKEN' | 'UNPROVEN';
+export type Outcome = 'HOLDS' | 'BROKEN' | 'UNPROVEN' | 'RETIRED';
 
 export interface ClaimResult {
   claim: Claim;
@@ -32,6 +36,12 @@ export function evaluate(claims: Claim[], ctx: ClaimContext): ClaimResult[] {
       holds = provoked ? claim.holds(ctx) : false;
     } catch (err) {
       return { claim, outcome: 'UNPROVEN' as const, reason: `the check itself threw: ${(err as Error).message}` };
+    }
+    // Read BEFORE `provoked`, because for a retired claim not being provoked is the expected
+    // state rather than a gap. If it somehow WAS provoked and holds, the shape is back and the
+    // HOLDS below says so — which is the whole reason the claim is kept instead of deleted.
+    if (claim.kind === 'retired' && !holds) {
+      return { claim, outcome: 'RETIRED', reason: claim.retired ?? 'no longer possible to provoke' };
     }
     if (!provoked) {
       return { claim, outcome: 'UNPROVEN', reason: `scene ${claim.scene} never happened, so nothing was learned` };
@@ -86,7 +96,7 @@ export function closeWithEvidence(results: ClaimResult[], contexts: ClaimContext
   });
 }
 
-const ICON: Record<Outcome, string> = { HOLDS: '  ok  ', BROKEN: 'BROKEN', UNPROVEN: ' ??   ' };
+const ICON: Record<Outcome, string> = { HOLDS: '  ok  ', BROKEN: 'BROKEN', UNPROVEN: ' ??   ', RETIRED: 'gone  ' };
 
 /**
  * A verdict plus an instruction — never a field dump. A report that only says
@@ -96,6 +106,7 @@ const ICON: Record<Outcome, string> = { HOLDS: '  ok  ', BROKEN: 'BROKEN', UNPRO
 export function report(results: ClaimResult[], version: string): string {
   const broken = results.filter((r) => r.outcome === 'BROKEN');
   const unproven = results.filter((r) => r.outcome === 'UNPROVEN');
+  const retired = results.filter((r) => r.outcome === 'RETIRED');
   const held = results.filter((r) => r.outcome === 'HOLDS');
   const out: string[] = [];
 
@@ -103,7 +114,7 @@ export function report(results: ClaimResult[], version: string): string {
   out.push(`seedeep schema probe — Claude Code ${version}`);
   out.push('─'.repeat(72));
 
-  if (broken.length === 0 && unproven.length === 0) {
+  if (broken.length === 0 && unproven.length === 0 && retired.length === 0) {
     out.push(`seedeep is OK on ${version}: all ${held.length} claims provoked and present.`);
     out.push('─'.repeat(72));
     return out.join('\n');
@@ -121,6 +132,18 @@ export function report(results: ClaimResult[], version: string): string {
     out.push(`        → ${r.claim.reader}`);
     out.push(`        ${r.reason}`);
     out.push(`        Verify: ${r.claim.investigate}`);
+    out.push('');
+  }
+
+  // Listed after the open ones and never among them: nothing here is pending. Printed rather
+  // than hidden, because a reader counting the claims has to be able to see where they went,
+  // and because the day one of these flips to HOLDS the shape has come back.
+  if (retired.length > 0) {
+    out.push(`${retired.length} claim(s) can no longer be provoked at all — the reader stays for older sessions:`);
+    for (const r of retired) {
+      out.push(`${ICON[r.outcome]}  ${r.claim.id}  ${r.claim.describe}`);
+      out.push(`        ${r.reason}`);
+    }
     out.push('');
   }
 
@@ -160,7 +183,9 @@ export function canCertify(results: ClaimResult[]): boolean {
  * The probe is honest about its reach instead of pretending the gap is fine.
  */
 export function manualChecklist(results: ClaimResult[]): string {
-  const open = results.filter((r) => r.outcome !== 'HOLDS');
+  // RETIRED is excluded on purpose: its instruction cannot be carried out any more, and a
+  // checklist that asks for the impossible teaches the reader to skim the whole list.
+  const open = results.filter((r) => r.outcome !== 'HOLDS' && r.outcome !== 'RETIRED');
   if (open.length === 0) return '';
   const out: string[] = [];
   out.push('');

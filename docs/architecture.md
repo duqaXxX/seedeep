@@ -516,8 +516,8 @@ The parser flattens the raw log into a small set of events consumers care about:
 | `compaction`      | `compactMetadata` / `isCompactSummary`                     | a compaction (context deflate)   |
 | `user-turn`       | a user line that is `origin.kind: 'human'`, **or** carries `<command-name>`, **or** is the plain text of a command (see below) | the user sent something, which opens a timeline entry; `prompt` is the text (a command's `<command-args>`, or its arguments), `command` the slash command that carried it, `promptId` the invocation the line belongs to |
 | `command`         | the same three shapes as `user-turn`                       | a slash command was used         |
-| `turn-narration`  | an assistant `text` block on a line whose `stop_reason` is anything but `end_turn`; main session only; never the auto-continue receipt (see `turn-interrupted`), whose text no model wrote | mid-turn narration, the model saying what it is about to do: `text` (anonymized, capped at 2000) and `callId` (`message.id`), which is also the call whose tools form the Trace's round. A subagent's narration has no consumer and is dropped |
-| `turn-result`     | an assistant `text` block on a line whose `stop_reason` is `end_turn` | the turn's final answer: `outputFull` (anonymized, capped at 20k) and `outLen`. The same shape on a CHILD line becomes `subagent-output` instead |
+| `turn-narration`  | an assistant `text` block on a line whose `stop_reason` is anything but `end_turn`; MAIN session only, since a child's text is read as its answer instead (see `subagent-output`); never the auto-continue receipt (see `turn-interrupted`), whose text no model wrote | mid-turn narration, the model saying what it is about to do: `text` (anonymized, capped at 2000) and `callId` (`message.id`), which is also the call whose tools form the Trace's round. A subagent's narration has no consumer and is dropped |
+| `turn-result`     | an assistant `text` block on a line whose `stop_reason` is `end_turn` | the turn's final answer: `outputFull` (anonymized, capped at 20k) and `outLen`. A CHILD line becomes `subagent-output` instead, and by a different test: `end_turn` is not written on child lines any more |
 | `turn-interrupted` | `interruptedMessageId` on the next user line after an Esc, **or** Claude Code's auto-continue receipt, a `<synthetic>` assistant line that is not an API error, which it writes when it re-enters a session whose last round never finished | the previous turn was interrupted. After an Esc it is emitted BEFORE that line's `user-turn`, so the reducer closes the old turn before opening the new one. The receipt is recognised by its TEXT, not by the `<synthetic>` marker: the marker says only that no model wrote the line, while "this round is over" is read off the one wording measured to mean it, since a future notice Claude Code writes the same way would otherwise close a turn that is still working. It is the ONLY record that a killed round is over: the `turn_duration` that would have closed it was owed by a process that died, and a transcript only appends, so without it the turn stays `live` for good, running a clock nobody is working under and counting it into the session's total. It carries `cutoff`, and a cutoff closes only a round that made a call: an Esc says the user stopped something, while a killed session says only that nothing more is coming, so a bare `/model` is left to the 0-call → done presentation rather than promoted to an interrupted work turn. `cutoff` rides on to `TurnNode`, because the distinction outlives the event: a cut round IS interrupted, but it is not an **Esc**, and every surface that reads an interruption as the user's CORRECTION (the retrospective's "abandoned to Esc", the verdict's "second correction in a row") must exclude it. A crash is not a correction |
 | `turn-end`        | a `system` line with `subtype: 'turn_duration'`; main session only | the turn finished: `durationMs` and `messageCount`, both nullable. Claude Code's own measure, not one seedeep derives |
 | `agent-launch`    | `<forked-skill-launch>` on a `system`/`local_command` line  | a forked skill (`/code-review`) started a background agent: `launchedAgentId`, `skillName`, `description`. It is NOT a `tool_use`: this line is the only record that the agent exists, when it started and which turn asked for it |
@@ -531,7 +531,7 @@ The parser flattens the raw log into a small set of events consumers care about:
 | `command-vanished` | NO LINE; the server's liveness probe                     | nothing holds a background command's output file open any more, so its process is gone: `toolUseId`, `lastSeenAlive`. The only event with no source in the transcript, because the fact is not in it; see [Is a background command still alive?](#is-a-background-command-still-alive). It says a command STOPPED and never what it stopped with, so the reducer turns it into `unknown`, refuses it outright when an `outcome` is already there, and applies it idempotently (`seq: -1`, out of band, like `subagent-meta`) |
 | `workflow-agent`  | a run's `subagents/workflows/wf_<runId>/` dir + its `journal.jsonl` | one subagent of a Workflow run: `runId`, `phase` (`seen`/`started`/`result`). `started` minus `result` is the only record of how many are still working |
 | `subagent-meta`   | `agent-*.meta.json` sidecar + the child's model            | agentId → toolUseId link, type, model, and the sidecar's `description`, which is what the agent was launched to do, which for a forked skill is the ONLY name it has |
-| `subagent-output` | a child assistant line with `stop_reason: "end_turn"`     | the verbatim text a subagent returned to the main session (its final answer) |
+| `subagent-output` | a child assistant `text` block with no `tool_use` on the same line | the verbatim text a subagent returned (its final answer). A CANDIDATE: the reducer withdraws it when the child calls another tool, since work after a text means that text was narration |
 
 ### The Task family takes references, not arguments
 
@@ -574,13 +574,22 @@ shows one working. The real end arrives later, on its own line type
 foreground result ends a subagent.
 
 Subagent returned output: the child jsonl is authoritative. A subagent's
-final answer is read from its child file (the last `end_turn` assistant line),
+final answer is read from its child file (its last text block with no tool call after it),
 not from the parent's `Agent` tool_result: a *background* (`isAsync`) subagent's
 parent tool_result is only a launch acknowledgement and carries no output. The
 inline parent `returned` payload is kept as a fallback for the synchronous case.
 A subagent's real duration likewise comes from the span of its own child-line
 timestamps, not the parent spawn↔result round-trip (which is ~0 for a background
 subagent that returns immediately while it keeps working).
+
+**Why not `stop_reason`.** Until 2.1.250 that answer carried `stop_reason: "end_turn"` and the
+reader keyed on it. Claude Code 2.1.251 stopped writing the value on child lines (0 of 29 children,
+against 202 of 207 across the fifteen releases before it) while the text itself stayed exactly
+where it was, so every subagent rendered output-less: the differentiator, gone, with nothing else
+on the panel looking wrong. The rule that replaced it needs no marker. It agrees with the old one
+wherever the old one applied, 202 times out of 202, and it selects rather than merely accepts:
+most children write several text blocks, and exactly one survives in 241 of 253 real children
+(none in the 12 that end on a tool call, which is the shape of a subagent that answered nothing).
 
 **Context fill** is the last absolute `input + cache_read + cache_creation` of a
 `usage` line (how full the window is right now), while the delta between

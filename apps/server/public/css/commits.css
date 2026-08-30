@@ -68,6 +68,14 @@
   white-space: nowrap;
 }
 
+/* `superseded` is a state, not a warning: the commit was made and the work shipped, only under a
+   different hash. Dimmer than `local` and with a dashed edge, so the two chips are told apart at
+   a glance without either reading as an error. */
+.cmtgone {
+  color: var(--lo3, var(--lo2));
+  border-style: dashed;
+}
+
 /* An unpushed commit has no page to open — the hash goes quiet so the row still reads as a
    commit but not as a link. */
 .cmtrow.nolink .cmth,

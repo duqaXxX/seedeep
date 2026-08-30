@@ -197,6 +197,13 @@ model called the Skill tool) and active turns, distinct from user-typed
 *Two different things, deliberately kept apart: a **skill** the model invoked, and the
 **commands you typed**. Each chip opens a drawer listing the turns it appeared in.*
 
+A command typed **inside a sentence** counts too. Claude Code expands a slash command only when it
+stands alone, so `look at this /paste-image and tell me` stays prose and opens no turn of its own,
+but you typed it and the card says commands you typed. The word is admitted only when the session
+itself can vouch for the name, by loading the skill it names or by running the same command
+somewhere else, which is what keeps `/tmp` and `/home/dev/notes` from being read as commands: measured
+over 1037 local sessions, the rule admits fourteen names and every one of them is a real command.
+
 The **Changed files** widget answers *what did this touch*: a total plus a
 proportional bar per file extension, counted from **git**: the files of the
 commits that session produced, so the number is one you can reproduce with
@@ -298,6 +305,14 @@ the grid with the ~100 it spawns.
 A session launches shell commands into the background as readily as it launches
 subagents, and each one gets a catalogue row that outlives it, so a command that
 **failed** is still there to be found, which is the one thing you needed to be told.
+
+Every row states the same fields in the same places: the state, the turn it was launched from,
+the exit code, then how long it ran. Each of those has a **column of its own, kept even when the
+row has nothing to put in it**, so the eye reads down `done` or down `exit 0` rather than hunting
+along a shell command whose length is arbitrary. What varies in length (who backgrounded it, how
+many events a monitor produced) sits to the left of those columns, where growing pushes nothing
+out of true. The command itself is set as the card's prose rather than as a heading, since it is
+what the row is about and not a title it carries.
 
 The card holds both lists behind two tabs, and it grows them only when both have
 something in them: with commands and no subagents (or the reverse) it is simply

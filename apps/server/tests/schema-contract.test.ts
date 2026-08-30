@@ -111,6 +111,37 @@ test('a MODEL claim whose field is missing is UNPROVEN, NEVER broken', () => {
   assert.ok(!isBroken(r));
 });
 
+test('a RETIRED claim is not open work, and its instruction is never printed', () => {
+  // The state that neither of the other two could express. C18 needs `run_in_background: false`,
+  // which is gone from the Agent tool's schema; C21 needs TaskCreate, which Claude Code no longer
+  // offers. Left as `model` they came back UNPROVEN on every run for ever, sat in the certified
+  // file's `open` list, and made each report print an instruction nobody could carry out.
+  const claim = fake({ id: 'CR', kind: 'retired', retired: 'the tool that wrote it is gone', holds: () => false });
+  const r = evaluate([claim], ctxOf(REAL_SHAPE_LINES));
+
+  assert.equal(r[0]!.outcome, 'RETIRED');
+  assert.equal(r[0]!.reason, 'the tool that wrote it is gone', 'the report says WHY, from the claim itself');
+  assert.ok(!isBroken(r), 'never a finding: nothing broke, the scene went away');
+  assert.ok(canCertify(r), 'and it cannot hold certification back');
+  assert.equal(manualChecklist(r), '', 'nobody is asked to provoke the impossible');
+});
+
+test('a RETIRED claim that starts holding again says so — that is why it is kept', () => {
+  // The reason the claim is retired rather than deleted: it is the only thing that would notice
+  // the shape coming back. `holds` is still evaluated, and a hit outranks the retirement.
+  const r = evaluate([fake({ kind: 'retired', retired: 'gone since 2.1.245', holds: () => true })], ctxOf([]));
+  assert.equal(r[0]!.outcome, 'HOLDS');
+});
+
+test('every retired claim states the measurement that retired it', () => {
+  // A retirement is a claim about the world, so it carries its evidence like any other fact here:
+  // without a date and a corpus nobody can tell a measured retirement from a guess made in a hurry.
+  for (const c of CLAIMS.filter((c) => c.kind === 'retired')) {
+    assert.ok(c.retired && c.retired.length > 60, `${c.id} must say why it can no longer be provoked`);
+    assert.match(c.retired, /\d{4}-\d{2}-\d{2}/, `${c.id} must date the measurement`);
+  }
+});
+
 test('an unprovoked claim is UNPROVEN even if it is a gesture — nothing was learned', () => {
   const r = evaluate([fake({ provoked: () => false, holds: () => false })], ctxOf([]));
   assert.equal(r[0]!.outcome, 'UNPROVEN');

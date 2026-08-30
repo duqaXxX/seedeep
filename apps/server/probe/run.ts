@@ -42,6 +42,9 @@ interface CertRecord {
   proven: number;
   /** Claims certification does NOT cover — they need the manual checklist. */
   open: string[];
+  /** Claims whose scene Claude Code no longer offers any way to cause. NOT pending: nobody can
+   * work them, and the reader each names stays for sessions written while the shape existed. */
+  retired?: string[];
 }
 
 async function certified(): Promise<Record<string, CertRecord>> {
@@ -55,11 +58,20 @@ async function certified(): Promise<Record<string, CertRecord>> {
 
 async function certify(version: string, results: ClaimResult[], when: string): Promise<void> {
   const list = await certified();
-  const open = results.filter((r) => r.outcome !== 'HOLDS').map((r) => r.claim.id);
+  // RETIRED is not open: `open` is the list a human still has to work, and nobody can work a
+  // claim whose scene Claude Code no longer offers. Leaving them in kept certification looking
+  // permanently incomplete, for a reason no reader of the file could recover.
+  const open = results.filter((r) => r.outcome !== 'HOLDS' && r.outcome !== 'RETIRED').map((r) => r.claim.id);
+  const retired = results.filter((r) => r.outcome === 'RETIRED').map((r) => r.claim.id);
   // Record WHAT was covered, not just that it passed: certification only ever
   // covers the claims the probe can prove itself, so a bare "passed" would
   // overstate it. `open` is exactly what a human still has to check.
-  list[version] = { certifiedAt: when, proven: results.filter((r) => r.outcome === 'HOLDS').length, open };
+  list[version] = {
+    certifiedAt: when,
+    proven: results.filter((r) => r.outcome === 'HOLDS').length,
+    open,
+    ...(retired.length ? { retired } : {}),
+  };
   const sorted = Object.fromEntries(
     Object.entries(list).sort(([a], [b]) => {
       const pa = a.split('.').map(Number);
@@ -75,7 +87,9 @@ async function certify(version: string, results: ClaimResult[], when: string): P
           'Claude Code versions the schema probe has passed, with what each run actually covered. ' +
           "A version is listed ONLY when every claim the probe can prove by itself holds — 'nothing broke' is not " +
           "'I checked'. `open` lists claims certification does NOT cover: they need the manual checklist the run prints. " +
-          'The probe runs only on a version absent from here, so the guard cannot be forgotten.',
+          'The probe runs only on a version absent from here, so the guard cannot be forgotten. `retired` ' +
+          'lists claims whose scene Claude Code no longer offers any way to cause: they are not pending, and the ' +
+          'reader they name stays for sessions written while the shape still existed.',
         versions: sorted,
       },
       null,

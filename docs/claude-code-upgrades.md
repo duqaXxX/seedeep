@@ -175,13 +175,14 @@ launched in the FOREGROUND, then Ctrl+B, and a receipt that must say who did it.
 shape of that receipt (a foreground launch that came back with a task id and no timeout) and never
 the field under test.
 
-## Three outcomes, never two
+## Four outcomes, never two
 
 | | meaning |
 |---|---|
 | **HOLDS** | the event was provoked and the field is there |
 | **BROKEN** | the event was provoked and the field did NOT appear, so seedeep is broken on this release. **Gesture claims only**: a model claim in this state is UNPROVEN, never BROKEN (see below) |
 | **UNPROVEN** | the probe could not make the event happen, so it learned *nothing* |
+| **RETIRED** | Claude Code no longer offers any way to CAUSE the event, so no run will ever learn anything by trying |
 
 UNPROVEN is an honest "I don't know" rather than a soft failure. Calling it a pass
 would be the one lie that makes the whole guard worthless.
@@ -193,6 +194,19 @@ Claims split by what the probe can guarantee:
 - **model:** someone else decides. Claude may route differently, an MCP server
   may be absent, Claude Code may refuse to compact a small session. Absence proves
   nothing, so these are never reported as broken.
+- **retired:** the scene itself is gone. Not a weaker UNPROVEN: an unproven claim
+  might come good on the next run, while this one cannot, so it leaves the manual
+  checklist and the `open` list of a certified version. The claim is kept rather than
+  deleted for two reasons. Its reader still runs, on sessions written while the shape
+  existed, which replay exactly as they always did. And `holds` is still evaluated, so
+  the day the shape comes back the claim flips to HOLDS and says so.
+
+  A retirement carries the measurement that justifies it, with a date and a corpus,
+  in the claim's `retired` field. Two exist today: **C18**, whose inline subagent
+  result needs `run_in_background: false`, a parameter absent from all 39 Agent calls
+  on 2.1.245 and later after being passed 100 times before that; and **C21**, written
+  by a `TaskCreate` tool used in 5 sessions up to 2.1.231 and in 0 of 611 from 2.1.239
+  on.
 
 ## What "certified" means
 

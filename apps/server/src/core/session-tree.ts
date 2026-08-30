@@ -217,6 +217,48 @@ export interface CommandNode {
  *             run the model", which is exactly what would rot.
  */
 export type TurnKind = 'work' | 'local' | 'context';
+/**
+ * The slash-shaped words in a prompt: `/paste-image`, never `/home/dev/notes` and never `apps/src`.
+ *
+ * Claude Code expands a slash command only when it stands alone, so one written mid-sentence stays
+ * prose and produces no `command` event at all. The user typed it, though, and the Commands widget
+ * says "commands you typed" — so the word is collected here and vouched for later by
+ * {@link withTypedSlashes}, which is what keeps a path from being read as a command.
+ *
+ * Two guards, both measured against 2221 real typed prompts: nothing may precede the slash except
+ * whitespace or an opening bracket (or `apps/server` becomes `/server`), and nothing may follow the
+ * word (`/home/dev/notes`, `/api/live`). What survives is still only a CANDIDATE.
+ */
+export function slashWords(prompt: string): string[] {
+  return [...prompt.matchAll(/(?<![\w./~-])\/([a-zA-Z][\w-]*)(?!\/)/g)].map((m) => m[1] as string);
+}
+
+/**
+ * Fold the candidates the session can vouch for into the commands it actually ran.
+ *
+ * A name counts when the SESSION ITSELF proves it is a command: it loaded the skill of that name,
+ * or expanded the same command somewhere else. Nothing global is consulted, so the answer depends
+ * on one file and cannot drift with the machine. Measured over the local corpus: of 258 slash words
+ * inside typed prompts, this admits 139 and not one of the 119 that are paths (`/Users`, `/tmp`,
+ * `/opt`). What it misses is a command typed in a session that never went on to run it.
+ *
+ * The counts are merged rather than kept apart, which is the product rule: a command the user typed
+ * is a command the user typed, whether or not Claude Code went on to expand it.
+ */
+export function withTypedSlashes(
+  ran: ReadonlyMap<string, number>,
+  typed: ReadonlyMap<string, number>,
+  skillTurns: ReadonlyMap<string, number>,
+  skillInvokes: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const out = new Map(ran);
+  for (const [name, n] of typed) {
+    if (!ran.has(name) && !skillTurns.has(name) && !skillInvokes.has(name)) continue;
+    out.set(name, (out.get(name) ?? 0) + n);
+  }
+  return out;
+}
+
 // The commands that exist to mutate the context window. /compact costs real tokens (it
 // summarizes) and /clear costs none — cost cannot separate them from a normal turn, only
 // intent can, so these two are named here and nowhere else.
@@ -738,6 +780,11 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
   const skillTurns = new Map<string, number>(); // skill name → assistant lines it drove
   const skillInvokes = new Map<string, number>(); // skill name → explicit Skill tool calls
   const commandCounts = new Map<string, number>(); // slash command name → times the user typed it
+  // Slash-shaped words found INSIDE a typed prompt, before anything vouches for them. Claude Code
+  // only expands a command that stands alone, so `/paste-image` written mid-sentence stays prose
+  // and no `command` event is ever emitted for it — while the user did type it, and says so.
+  // Kept apart until the snapshot, where the session can say which of these names is real.
+  const typedSlashCounts = new Map<string, number>();
   // Every timeline entry the user sent (prompts AND slash commands) gets an index; how many
   // of them are real work turns is a property of the built list, not of this counter.
   let entries = 0;
@@ -1086,6 +1133,9 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       const twinKey = e.command && e.promptId ? e.promptId + ':' + e.command : null;
       if (owner === null && !appliedLineSeqs.has(e.seq) && !(twinKey && appliedCommandKeys.has(twinKey))) {
         appliedLineSeqs.add(e.seq);
+        // Only a prompt Claude Code did NOT read as a command: one it did already carries its own
+        // `command` event, and counting the word again would double it.
+        if (e.command === null) for (const n of slashWords(e.prompt)) bump(typedSlashCounts, n);
         if (twinKey) appliedCommandKeys.add(twinKey);
         entries++;
         if (currentTurn) {
@@ -1232,14 +1282,24 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       if (e.description) a.description = e.description;
       if (owner === null && currentTurn) a.turnIndex = currentTurn.index;
     } else if (e.type === 'subagent-output') {
-      // The child's end_turn text = its returned output. Last one wins (a child can
-      // emit several end_turn lines over its life; the final is the real answer).
+      // The child's returned output. Last one wins, and `tool-start` below takes it away again:
+      // a text block with work after it was narration, not an answer. That pair is what replaced
+      // the `end_turn` marker Claude Code stopped writing on child lines in 2.1.251 — see
+      // `parseLine`, where the candidate is emitted.
       if (e.agentId) {
         const a = agentFor(e.agentId);
         a.outputFull = e.outputFull;
         a.outLen = e.outLen;
       }
     } else if (e.type === 'tool-start') {
+      // A subagent that calls a tool has not answered yet: whatever text it wrote before this is
+      // narration, so the candidate output is withdrawn. Without this the panel would show the
+      // model's last aside under the heading `returned`, and would keep changing while it worked.
+      if (e.agentId) {
+        const a = agentFor(e.agentId);
+        a.outputFull = null;
+        a.outLen = 0;
+      }
       tools.set(e.id, {
         name: e.name,
         startTs: e.timestamp,
@@ -2044,7 +2104,7 @@ export function createSessionTree(opts: { windowFor: WindowFor; mainModel?: stri
       };
     });
     const skills = skillNodes(skillTurns, skillInvokes);
-    const commands = commandNodes(commandCounts);
+    const commands = commandNodes(withTypedSlashes(commandCounts, typedSlashCounts, skillTurns, skillInvokes));
     const turnList = buildTurnList(subagents);
     const subagentsTotal = subagents.reduce((n, a) => n + a.volume, 0);
     const subagentsEstimated = subagents.some((a) => a.volumeEstimated);

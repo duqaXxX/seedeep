@@ -104,6 +104,18 @@ var SPAWN_TOOL_NAMES = new Set(["Agent", "Task"]);
 function hasStarted(a) {
   return a.agentType !== null || a.fill > 0 || a.tools.length > 0 || a.outputFull !== null;
 }
+function slashWords(prompt) {
+  return [...prompt.matchAll(/(?<![\w./~-])\/([a-zA-Z][\w-]*)(?!\/)/g)].map((m) => m[1]);
+}
+function withTypedSlashes(ran, typed, skillTurns, skillInvokes) {
+  const out = new Map(ran);
+  for (const [name, n] of typed) {
+    if (!ran.has(name) && !skillTurns.has(name) && !skillInvokes.has(name))
+      continue;
+    out.set(name, (out.get(name) ?? 0) + n);
+  }
+  return out;
+}
 var CONTEXT_COMMANDS = new Set(["clear", "compact"]);
 function sumTokensByModel(subagents) {
   const byModel = new Map;
@@ -147,6 +159,7 @@ function createSessionTree(opts) {
   const skillTurns = new Map;
   const skillInvokes = new Map;
   const commandCounts = new Map;
+  const typedSlashCounts = new Map;
   let entries = 0;
   let apiCalls = 0;
   let sessionHadRealCall = false;
@@ -357,6 +370,9 @@ function createSessionTree(opts) {
       const twinKey = e.command && e.promptId ? e.promptId + ":" + e.command : null;
       if (owner === null && !appliedLineSeqs.has(e.seq) && !(twinKey && appliedCommandKeys.has(twinKey))) {
         appliedLineSeqs.add(e.seq);
+        if (e.command === null)
+          for (const n of slashWords(e.prompt))
+            bump(typedSlashCounts, n);
         if (twinKey)
           appliedCommandKeys.add(twinKey);
         entries++;
@@ -480,6 +496,11 @@ function createSessionTree(opts) {
         a.outLen = e.outLen;
       }
     } else if (e.type === "tool-start") {
+      if (e.agentId) {
+        const a = agentFor(e.agentId);
+        a.outputFull = null;
+        a.outLen = 0;
+      }
       tools.set(e.id, {
         name: e.name,
         startTs: e.timestamp,
@@ -1014,7 +1035,7 @@ function createSessionTree(opts) {
       };
     });
     const skills = skillNodes(skillTurns, skillInvokes);
-    const commands = commandNodes(commandCounts);
+    const commands = commandNodes(withTypedSlashes(commandCounts, typedSlashCounts, skillTurns, skillInvokes));
     const turnList = buildTurnList(subagents);
     const subagentsTotal = subagents.reduce((n, a) => n + a.volume, 0);
     const subagentsEstimated = subagents.some((a) => a.volumeEstimated);
@@ -5213,11 +5234,23 @@ function hhmm2(at) {
 function openCommit(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
+function chip(c) {
+  if (!c.reachable) {
+    return {
+      word: "superseded",
+      why: "No branch leads to it any more — squash-merged or rebased away. The work is in the history under another hash."
+    };
+  }
+  if (!c.url)
+    return { word: "local", why: "Not pushed yet — it has no page on the forge" };
+  return null;
+}
 function commitRow(c, withTime) {
   const row = el6("div", "cmtrow" + (c.url ? "" : " nolink"));
+  const mark = chip(c);
   row.append(el6("span", "cmth", c.short));
-  if (!c.url)
-    row.append(el6("span", "cmtlocal", "local"));
+  if (mark)
+    row.append(el6("span", c.reachable ? "cmtlocal" : "cmtlocal cmtgone", mark.word));
   row.append(el6("span", "cmts", c.subject));
   if (withTime)
     row.append(el6("span", "cmtt", hhmm2(c.at)));
@@ -5226,22 +5259,28 @@ function commitRow(c, withTime) {
     row.title = "Open on the forge";
     row.onclick = () => openCommit(url);
   } else {
-    row.title = "Not pushed yet — it has no page on the forge";
+    row.title = mark?.why ?? "";
   }
   return row;
 }
 function describe2(commits) {
   if (commits.some((c) => c.url))
     return "Commits this session produced. Click one to open it on the forge.";
+  if (commits.every((c) => !c.reachable))
+    return "Commits this session produced. The history has moved past them, so none has a page to open.";
   return "Commits this session produced. None is pushed yet, so none has a page to open.";
 }
 function commitsList(commits) {
   const box = el6("div", "cmtdlist");
   for (const c of [...commits].reverse()) {
     const row = el6("div", "cmtdrow" + (c.url ? "" : " nolink"));
+    const mark = chip(c);
     row.append(el6("span", "cmth", c.short));
-    if (!c.url)
-      row.append(el6("span", "cmtlocal", "local"));
+    if (mark) {
+      const span = el6("span", c.reachable ? "cmtlocal" : "cmtlocal cmtgone", mark.word);
+      span.title = mark.why;
+      row.append(span);
+    }
     row.append(el6("span", "cmts wrap", c.subject), el6("span", "cmtt", hhmm2(c.at)));
     if (c.url) {
       const url = c.url;
@@ -7703,12 +7742,12 @@ function createGraph(container, state, opts = {}) {
   function appendModelChips(host, models, efforts) {
     if (models.length) {
       const current = models[models.length - 1];
-      const chip = E("span", "sbmodel", modelLabel3(current));
+      const chip2 = E("span", "sbmodel", modelLabel3(current));
       if (models.length > 1) {
-        chip.classList.add("mixed");
-        chip.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
+        chip2.classList.add("mixed");
+        chip2.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
       }
-      host.append(chip);
+      host.append(chip2);
     }
     if (efforts.length)
       host.append(E("span", "sbeffort", efforts.join(" · ")));
@@ -7776,15 +7815,15 @@ function createGraph(container, state, opts = {}) {
     const running = runningBackground(fullSnap.mainTools);
     if (!running.length || ended2)
       return null;
-    const chip = E("span", "sbbg");
+    const chip2 = E("span", "sbbg");
     const oldest = Date.parse(running[0].since);
     const label = running.length === 1 ? "1 background command" : running.length + " background commands";
     const renderAge = () => label + (Number.isNaN(oldest) ? "" : " · " + formatDuration(Math.max(0, Date.now() - oldest)));
-    chip.textContent = renderAge();
-    liveCounters.push({ el: chip, render: renderAge });
-    chip.title = running.map((c) => c.command).join(`
+    chip2.textContent = renderAge();
+    liveCounters.push({ el: chip2, render: renderAge });
+    chip2.title = running.map((c) => c.command).join(`
 `);
-    return chip;
+    return chip2;
   }
   function renderScopeBanner(fullSnap) {
     scopeBanner.replaceChildren();
@@ -7881,17 +7920,17 @@ function createGraph(container, state, opts = {}) {
       scopeBanner.append(E("span", "sbstats", statParts.join(" · ")));
     const v = verdicts.get(turn.index);
     if (v && v.severity !== "good") {
-      const chip = E("button", "sbverdict " + v.severity);
-      chip.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
-      chip.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
+      const chip2 = E("button", "sbverdict " + v.severity);
+      chip2.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
+      chip2.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
 `);
-      chip.onclick = (ev) => {
+      chip2.onclick = (ev) => {
         ev.stopPropagation();
         stripOpen = true;
         activeFilter = "waste";
         render();
       };
-      scopeBanner.append(chip);
+      scopeBanner.append(chip2);
     }
     if (turn.state === "live" && !ended2)
       scopeBanner.append(liveElapsed(turn));
@@ -7973,10 +8012,10 @@ function createGraph(container, state, opts = {}) {
     const cmds = s.commands || [];
     if (cmds.length) {
       for (const c of cmds) {
-        const chip = E("span", "tchip clk");
-        chip.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
-        chip.onclick = () => openCommand(c);
-        chips.append(chip);
+        const chip2 = E("span", "tchip clk");
+        chip2.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
+        chip2.onclick = () => openCommand(c);
+        chips.append(chip2);
       }
     } else {
       chips.append(E("span", "wdesc", "none yet"));
@@ -8065,9 +8104,10 @@ function createGraph(container, state, opts = {}) {
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
     mid.append(E("b", null, a.title));
+    const meta = E("div", "smeta");
     if (a.model)
-      mid.append(E("span", "schip", shortModel2(a.model)));
-    r.append(mid);
+      meta.append(E("span", "schip", shortModel2(a.model)));
+    r.append(mid, meta);
     r.append(E("span", "sdur", a.durationMs != null ? formatDuration(a.durationMs) : "—"));
     return r;
   }
@@ -8076,8 +8116,10 @@ function createGraph(container, state, opts = {}) {
     r.onclick = () => subsCard.scrollIntoView({ behavior: "smooth" });
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
-    mid.append(E("b", null, a.workflow?.name || "workflow"), E("span", "schip", "workflow"));
-    r.append(mid);
+    mid.append(E("b", null, a.workflow?.name || "workflow"));
+    const meta = E("div", "smeta");
+    meta.append(E("span", "schip", "workflow"));
+    r.append(mid, meta);
     r.append(E("span", "sdur", a.durationMs != null ? formatDuration(a.durationMs) : "—"));
     return r;
   }
@@ -8231,22 +8273,26 @@ function createGraph(container, state, opts = {}) {
     return r;
   }
   function bgEndedRow(c) {
-    const r = E("div", "subrow done");
+    const r = E("div", "subrow done bgrow");
     r.onclick = () => openBlock({ kind: "tool", toolUseId: c.toolUseId });
     r.append(E("span", "sdot"));
     const mid = E("div", "smid");
     mid.append(E("b", null, c.label));
-    mid.append(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state));
-    if (c.turnIndex !== null)
-      mid.append(E("span", "schip", "turn " + c.turnIndex));
+    const meta = E("div", "smeta");
+    const extra = E("div", "sxtra");
     if (c.by !== "agent")
-      mid.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
-    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
-    if (exit)
-      mid.append(E("span", "schip", "exit " + exit[1]));
+      extra.append(E("span", "schip", BG_AUTHOR_LABEL[c.by]));
     if (c.events > 0)
-      mid.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
-    r.append(mid);
+      extra.append(E("span", "schip", c.events + (c.events === 1 ? " event" : " events")));
+    const exit = c.sentence ? /exit code (\d+)/.exec(c.sentence) : null;
+    const cell = (child) => {
+      const d = E("div", "scell");
+      if (child)
+        d.append(child);
+      return d;
+    };
+    meta.append(extra, cell(E("span", `badge b-${c.state === "done" ? "done" : c.state}`, c.state)), cell(c.turnIndex !== null ? E("span", "schip", "turn " + c.turnIndex) : null), cell(exit ? E("span", "schip", "exit " + exit[1]) : null));
+    r.append(mid, meta);
     const since = c.state === "running" ? Date.parse(c.since) : Number.NaN;
     if (Number.isFinite(since)) {
       const age = E("span", "sdur run");
@@ -8653,9 +8699,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     if (w.models.length) {
       const chips = E("div", "wfmodels");
       for (const m of w.models) {
-        const chip = E("span", "amodel-chip");
-        chip.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
-        chips.append(chip);
+        const chip2 = E("span", "amodel-chip");
+        chip2.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
+        chips.append(chip2);
       }
       c.append(chips);
     }
