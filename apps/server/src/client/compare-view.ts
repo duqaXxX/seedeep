@@ -1,5 +1,5 @@
 import type { CompareRow, CompareWindow, Comparison } from '../core/types.ts';
-import { COMPARE_TOP_N } from '../core/types.ts';
+import { COMPARE_TOP_N, isAutomated } from '../core/types.ts';
 
 // The Compare tab: which session weighed the most in a time window. The unit is a token
 // count weighted by the kind of token and by the model that spent it — NEVER a cost in dollars,
@@ -84,7 +84,7 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
  * (95 of 996 local sessions have no subject — an sdk run such as the docs gate). */
 function labelOf(row: CompareRow): string {
   if (row.subject) return row.subject.replace(/\s+/g, ' ').trim();
-  if (row.entrypoint && row.entrypoint.startsWith('sdk')) return 'Automated run · ' + row.entrypoint;
+  if (isAutomated(row)) return 'Automated run · ' + row.entrypoint;
   return 'Session ' + row.sessionId.slice(0, 8);
 }
 

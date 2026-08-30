@@ -336,7 +336,7 @@ test('a provisional record for a session that is not live is refreshed, not carr
   const settled = toCatalogue(rec('B', false, { lastActivity: 777 }));
   const r = createRoster({
     fetchCatalogue: async () => [calls++ === 0 ? bornLive : settled],
-    fetchLive: async () => ({ total: 1, sessions: [], pidVisible: true }),
+    fetchLive: async () => ({ total: 1, sessions: [], pidVisible: true, complete: true }),
     schedule: sched.schedule as any,
   });
   await r.start();

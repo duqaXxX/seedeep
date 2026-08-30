@@ -92,7 +92,8 @@ window is, with no browser tab open. ([rules](docs/tray.md))
 <img src="docs/assets/notifications.png" width="420" alt="Three tray notifications: waiting for approval on Bash, a failed API call, and a finished turn">
 
 Three events are worth interrupting you for, and each has its own switch. Nothing else
-notifies: not a subagent finishing, not a tool error.
+notifies: not a subagent finishing, not a tool error, and never an automated run, since
+nobody is sitting at a `claude -p` to get up.
 
 | Banner | Ships | Why |
 | -- | -- | -- |

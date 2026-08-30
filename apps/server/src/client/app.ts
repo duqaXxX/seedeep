@@ -1,6 +1,7 @@
 import type { SessionCommits } from '../core/commit-attribution.ts';
 import { windowFor } from '../core/context-windows.ts';
 import type { SessionFiles } from '../core/file-attribution.ts';
+import type { CatalogueRecord, LivePayload } from '../core/roster.ts';
 import { createSessionTree } from '../core/session-tree.ts';
 import type { SessionCards } from '../core/tracker-cards.ts';
 import { tabLabel } from '../core/tree-format.ts';
@@ -109,6 +110,18 @@ const navMenu = createNavMenu(navEl, {
   onSwitch: switchTo,
 });
 const dropdown = createDropdown(dropdownEl, { onOpen: openFromDropdown });
+/**
+ * A roster reading, or a throw. `authFetch` resolves on any status, so a 500 — which is what a
+ * scan that could not be made answers with (see discovery.ts) — would otherwise be parsed as
+ * data, and an unparseable body is only accidentally a failure. Throwing is what puts it on the
+ * path the poll already has for a reading that did not land: keep the last good rows, retry in
+ * 3s. Serving `[]` there would say every session on the machine is gone.
+ */
+function readRoster<T>(r: Response): Promise<T> {
+  if (!r.ok) throw new Error(`roster reading failed: ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 // Named here rather than left to createRoster's default because the end-of-session
 // confirmation window below is defined RELATIVE to it: a confirmation that does not outlast
 // one poll would re-read the very same reading it is meant to check.
@@ -118,8 +131,8 @@ const ROSTER_POLL_MS = 3000;
 const roster = createRoster({
   // The signal is the roster's deadline (see READING_TIMEOUT_MS): honouring it is what lets a
   // request the network will never answer be dropped instead of held open forever.
-  fetchCatalogue: (signal) => authFetch('/api/sessions', { signal }).then((r) => r.json()),
-  fetchLive: (signal) => authFetch('/api/live', { signal }).then((r) => r.json()),
+  fetchCatalogue: (signal) => authFetch('/api/sessions', { signal }).then((r) => readRoster<CatalogueRecord[]>(r)),
+  fetchLive: (signal) => authFetch('/api/live', { signal }).then((r) => readRoster<LivePayload>(r)),
   pollMs: ROSTER_POLL_MS,
 });
 // Committing "this session is over": it costs the tab its live presentation, so it happens only
@@ -526,6 +539,31 @@ roster.onChange((rows) => {
         tabBar.setLabel(row.sessionId, newLabel);
       }
     }
+  }
+  // And the tabs the loop above cannot reach: it walks `rows`, so it only ever visits sessions
+  // the roster still lists. A session whose FILE is gone — a throwaway cwd cleaned up under it,
+  // `~/.claude/projects` pruned by hand — leaves the roster entirely, and its tab was never
+  // handed to the guard at all: it kept the live chrome for the life of the page, a turn clock
+  // ticking on a session that ended an hour ago and a pending-approval banner nothing could
+  // clear. Same confirmation window, and `stillGone` already answers this case ("gone from the
+  // roster entirely counts as gone") — it was simply never armed for it.
+  //
+  // Guarded on the reading being WHOLE, which is the difference between this and every other line
+  // in this listener: they act on what a session IS, and a partial list still states that
+  // correctly, while this one acts on a session being ABSENT, which a partial list cannot support.
+  // Three ways a reading can fail to support it, each needing its own mechanism, because each
+  // reaches a different consumer:
+  //   - a ROOT that will not answer throws, comes back as a failed reading (`readRoster`), and
+  //     never reaches this listener at all;
+  //   - one PROJECT directory that will not answer serves the rest and says `complete: false`,
+  //     since an EACCES there is usually permanent and refusing the whole roster for as long as it
+  //     stands would be worse than the sessions it hides;
+  //   - and a catalogue entry the partial payload did not claim is dropped by `mergeRoster` rather
+  //     than reported not-live, which is the path the loop above walks and this flag never sees.
+  // Without all three an EMFILE would close tabs whose sessions are still running.
+  if (roster.complete()) {
+    const listed = new Set(rows.map((r) => r.sessionId));
+    for (const [sessionId, t] of openTabs) if (!t.ended && !listed.has(sessionId)) endGuard.gone(sessionId);
   }
   // Free, and NOT guarded by `booted`: Home's empty box states whether this machine has any
   // session at all, and it paints before the first roster reading lands. Without this the box

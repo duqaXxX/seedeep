@@ -71,10 +71,26 @@ test('a session that ends drops out of the live payload and its tab can see it e
   // merge reads a settled record and only has to strip the liveness.
   const settled = [rec('a', { lastActivity: ago(1_000), isOpen: false, status: null })];
   const { catalogue } = split(settled);
-  const after = mergeRoster(catalogue, { total: 1, sessions: [], pidVisible: true }, NOW);
+  const after = mergeRoster(catalogue, { total: 1, sessions: [], pidVisible: true, complete: true }, NOW);
   assert.equal(isLive(after[0]!), false, 'the tab must be able to end');
   assert.equal(after[0]!.status, null);
   assert.equal(after[0]!.lastActivity, ago(1_000));
+});
+
+test('a PARTIAL reading drops the rows it cannot answer for instead of ending them', () => {
+  // The same absence, with the scan admitting it did not read everything. Absence is then not a
+  // signal at all: `ended()` would report a running session as closed, and the GUI acts on that by
+  // freezing its tab into history. Dropping the row costs the picker one poll and lets no consumer
+  // conclude anything — which is the only honest answer when the directory was never opened.
+  const running = [rec('a', { lastActivity: ago(1_000), isOpen: true, status: 'busy' })];
+  const { catalogue } = split(running);
+
+  const whole = mergeRoster(catalogue, { total: 1, sessions: [], pidVisible: true, complete: true }, NOW);
+  assert.equal(whole.length, 1, 'a COMPLETE reading still reports the session, as ended');
+  assert.equal(isLive(whole[0]!), false);
+
+  const partial = mergeRoster(catalogue, { total: 1, sessions: [], pidVisible: true, complete: false }, NOW);
+  assert.deepEqual(partial, [], 'a partial one says nothing about it rather than saying it is over');
 });
 
 test('isOpen stays null when the PID mechanism itself is unavailable', () => {
@@ -94,7 +110,7 @@ test('isOpen stays null when the PID mechanism itself is unavailable', () => {
 test('a session born after the catalogue is still offered now, not in three seconds', () => {
   const catalogue: CatalogueRecord[] = [toCatalogue(rec('old', { lastActivity: ago(86_400_000) }))];
   const born = rec('new', { lastActivity: ago(500), isOpen: true });
-  const rows = mergeRoster(catalogue, { total: 2, sessions: [born], pidVisible: true }, NOW);
+  const rows = mergeRoster(catalogue, { total: 2, sessions: [born], pidVisible: true, complete: true }, NOW);
   assert.deepEqual(
     rows.map((s) => s.sessionId),
     ['new', 'old'],
@@ -110,7 +126,12 @@ test('merged order follows lastActivity, not the order the catalogue froze', () 
     toCatalogue(rec('fresh-then', { lastActivity: ago(60_000) })),
     toCatalogue(rec('live', { lastActivity: ago(120_000), isOpen: true })),
   ];
-  const live = { total: 2, sessions: [rec('live', { lastActivity: ago(200), isOpen: true })], pidVisible: true };
+  const live = {
+    total: 2,
+    sessions: [rec('live', { lastActivity: ago(200), isOpen: true })],
+    pidVisible: true,
+    complete: true,
+  };
   assert.deepEqual(
     mergeRoster(catalogue, live, NOW).map((s) => s.sessionId),
     ['live', 'fresh-then'],

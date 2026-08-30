@@ -887,3 +887,10 @@ the same title and line, and nothing more.
 A turn that ends says **`Turn finished`**, not "finished", because the session has not
 ended, it has become yours again. A turn **you** interrupted is never announced:
 if you pressed Esc you already know.
+
+An **automated session never notifies at all**, on either channel. A notification asks you to
+get up, and nobody is sitting at a `claude -p`: a git hook that runs one on every push would
+otherwise announce a finished turn every time. The rule is the picker's own Human/Automated split
+(`entrypoint` starting with `sdk`), so the same sessions the picker files under Automated are the
+ones that stay silent. The desktop app's **Code** tab is not one of them, since somebody is
+sitting at it; what it shares with a headless run is only how Claude Code is driven there.

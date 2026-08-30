@@ -79,6 +79,9 @@ var HIST_BINS = [
 function isLive(s) {
   return s.isOpen ?? s.isActive;
 }
+function isAutomated(s) {
+  return !!s.entrypoint && s.entrypoint.startsWith("sdk");
+}
 function isWorking(s) {
   return s.status === "busy" || s.status === "shell";
 }
@@ -1371,7 +1374,7 @@ function el(tag, className, text) {
 function labelOf(row) {
   if (row.subject)
     return row.subject.replace(/\s+/g, " ").trim();
-  if (row.entrypoint && row.entrypoint.startsWith("sdk"))
+  if (isAutomated(row))
     return "Automated run · " + row.entrypoint;
   return "Session " + row.sessionId.slice(0, 8);
 }
@@ -1599,7 +1602,7 @@ function createIdChip(sessionId, opts = {}) {
 // apps/server/src/core/roster.ts
 function mergeRoster(catalogue, live, now = Date.now()) {
   const liveById = new Map(live.sessions.map((s) => [s.sessionId, s]));
-  const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? ended(c, live.pidVisible, now));
+  const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? (live.complete ? ended(c, live.pidVisible, now) : null)).filter((r) => r !== null);
   const known = new Set(catalogue.map((c) => c.sessionId));
   for (const s of live.sessions)
     if (!known.has(s.sessionId))
@@ -1653,9 +1656,6 @@ function withDeadline(read, ms) {
 }
 
 // apps/server/src/client/sessions.ts
-function isAutomated(s) {
-  return !!s.entrypoint && s.entrypoint.startsWith("sdk");
-}
 function sessionsToAutoOpen(rows, known, openIds) {
   return rows.filter((s) => isLive(s) && !isAutomated(s) && !known.has(s.sessionId) && !openIds.has(s.sessionId));
 }
@@ -1687,6 +1687,7 @@ function createRoster(deps) {
   let timer = null;
   let stopped = false;
   let taken = 0;
+  let complete = false;
   const listeners = new Set;
   async function refresh() {
     let live;
@@ -1706,6 +1707,7 @@ function createRoster(deps) {
     const next = mergeRoster(catalogue, live);
     rows = next;
     taken++;
+    complete = live.complete;
     const nextKey = rosterKey(next);
     if (nextKey !== key) {
       key = nextKey;
@@ -1732,6 +1734,7 @@ function createRoster(deps) {
     },
     current: () => rows,
     readings: () => taken,
+    complete: () => complete,
     onChange(cb) {
       listeners.add(cb);
       return () => listeners.delete(cb);
@@ -2814,7 +2817,7 @@ function appendHighlighted(into, text, terms) {
 function labelOf2(r) {
   if (r.subject && r.subject.trim())
     return r.subject.replace(/\s+/g, " ").trim();
-  if (r.entrypoint && r.entrypoint.startsWith("sdk"))
+  if (isAutomated(r))
     return "Automated run · " + r.entrypoint;
   return "Session " + r.sessionId.slice(0, 8);
 }
@@ -10117,10 +10120,15 @@ var navMenu = createNavMenu(navEl, {
   onSwitch: switchTo
 });
 var dropdown = createDropdown(dropdownEl, { onOpen: openFromDropdown });
+function readRoster(r) {
+  if (!r.ok)
+    throw new Error(`roster reading failed: ${r.status}`);
+  return r.json();
+}
 var ROSTER_POLL_MS = 3000;
 var roster = createRoster({
-  fetchCatalogue: (signal) => authFetch("/api/sessions", { signal }).then((r) => r.json()),
-  fetchLive: (signal) => authFetch("/api/live", { signal }).then((r) => r.json()),
+  fetchCatalogue: (signal) => authFetch("/api/sessions", { signal }).then((r) => readRoster(r)),
+  fetchLive: (signal) => authFetch("/api/live", { signal }).then((r) => readRoster(r)),
   pollMs: ROSTER_POLL_MS
 });
 var endGuard = createEndGuard({
@@ -10354,6 +10362,12 @@ roster.onChange((rows) => {
         tabBar.setLabel(row.sessionId, newLabel);
       }
     }
+  }
+  if (roster.complete()) {
+    const listed = new Set(rows.map((r) => r.sessionId));
+    for (const [sessionId, t] of openTabs)
+      if (!t.ended && !listed.has(sessionId))
+        endGuard.gone(sessionId);
   }
   if (rows.length !== lastPaintedLen) {
     lastPaintedLen = rows.length;

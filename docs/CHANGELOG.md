@@ -47,6 +47,48 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ### Fixed
 
+- Automated sessions no longer notify. A headless run (`entrypoint` `sdk-cli` or `sdk-py`) has
+  nobody sitting at it, so `Turn finished` on the tray and on the webhook was a request to get up
+  for a machine, and seedeep's own docs-freshness gate raised one on every push. The exclusion had
+  been holding by accident until `0.31.0`: those hosts drive Claude Code over stream-json and
+  publish no session state, so the entry never left `null`, could not transition, and the detector
+  never saw one. Reading their state off the transcript gave them the `busy` to `idle` they had
+  always lacked, and nothing was filtering the detector's input. `isAutomated` moves to
+  `core/types.ts` beside the other session predicates, and the detector drops those entries before
+  it remembers anything about them. The desktop app's Code tab keeps its notifications, which is
+  the distinction `0.31.0` was after: it is driven over the same interface, but somebody is sitting
+  at it. An entrypoint seedeep does not recognise still notifies, since one banner too many is
+  ignored while a session that silently stops being watched is not.
+- A tab whose session left the roster entirely stayed live for the life of the page. The roster
+  listener walks the rows it is handed, so it can only ever visit sessions the roster still lists;
+  a session whose transcript is DELETED, rather than merely closed, was never offered to the end
+  guard at all. The tab kept its live chrome, its turn clock ticking on a session that had ended
+  (one measured at `1h 1m turn` against `6s total`), and a pending-approval banner nothing could
+  clear. The guard's own question already answered this case, absence from the roster counting as
+  gone; it was simply never armed for it, so the tabs the row loop cannot reach are now collected
+  and handed to it. Only a page reload cleared them before. It is reached by any session whose file
+  disappears under it: a driven session in a throwaway working directory, or `~/.claude/projects`
+  pruned by hand.
+- A scan that read only PART of the machine no longer lets a session be reported as over. The rule
+  above covers a root that will not answer at all; one project directory that will not answer is
+  the case in between, and it is the likelier of the two under an `EMFILE`, which arrives while
+  files are being opened. Those failures were swallowed one directory at a time, so the roster came
+  back short and in silence. `scanSessions` now serves the readable part and says `complete: false`
+  beside it, carried on `LivePayload` next to `pidVisible` and for the same reason: it is a property
+  of the SCAN, not of a session. Not folded into the throw, since an `EACCES` on one project is
+  usually permanent and refusing the whole roster for as long as it stands would hide more than it
+  protects. Two consumers act on it, because absence reaches them by different paths: the tab sweep
+  asks before it runs, and `mergeRoster` drops a catalogue entry the payload did not claim instead
+  of reporting it not-live. Everything else reads what a session IS, which a partial scan still
+  states correctly.
+- A scan that cannot be made is no longer reported as an empty machine. The session directory was
+  read with every failure swallowed, so an `EMFILE` under load or a home that stops answering
+  produced zero sessions rather than an error — indistinguishable from a machine with none, and
+  now acted upon: the sweep above would have ended every tab on the page while the sessions behind
+  them were still running. `ENOENT` stays an answer (there is nothing there); anything else throws,
+  the roster endpoints answer `500`, and the poll keeps the last rows it had. The watcher survives
+  the same failure and logs it once per outage instead of on every 300 ms tick. This is the rule
+  `isOpen` already followed as `null`: absence of an answer is never served as a negative one.
 - Custom slash commands are read as commands again. Claude Code 2.1.237 began writing
   `origin: {kind:"human"}` on a command defined by a `.md` file (measured over 1046 session files:
   0 of 97 such lines up to 2.1.234, then 25 of 25; built-in commands like `/clear` still carry

@@ -37,6 +37,14 @@ export interface LivePayload {
    * travels once per poll and lets the merge rebuild the tri-state instead of flattening it.
    */
   pidVisible: boolean;
+  /**
+   * Whether every directory the scan met was actually read. The second property of the SCAN
+   * rather than of a session, and the one that says what ABSENCE from this payload means: on
+   * `false` the list is missing sessions this machine has, so a client must not read a session's
+   * absence as the session being over. Only the tab sweep asks (`app.ts`); everything else acts
+   * on the sessions that ARE listed, which a partial scan still states correctly.
+   */
+  complete: boolean;
 }
 
 /** Project a full record onto the catalogue half; `lastActivity` survives only if final. */
@@ -53,13 +61,21 @@ export function toCatalogue(s: SessionRecord): CatalogueRecord {
   };
 }
 
-/** Split a roster into what the poll sends: the live sessions, and how many exist in total. */
-export function liveOf(roster: readonly SessionRecord[]): LivePayload {
+/**
+ * Split a roster into what the poll sends: the live sessions, and how many exist in total.
+ *
+ * `complete` cannot be derived from the records the way `pidVisible` is — a directory that was
+ * not read leaves none — so the scan has to hand it over. It defaults to true so a caller
+ * holding a roster and no scan beside it (every test that builds one by hand) keeps the meaning
+ * it always had: this list is everything.
+ */
+export function liveOf(roster: readonly SessionRecord[], complete = true): LivePayload {
   return {
     total: roster.length,
     sessions: roster.filter(isLive),
     // Vacuously true for an empty roster: there is nothing to rebuild the tri-state for.
     pidVisible: roster.every((r) => r.isOpen !== null),
+    complete,
   };
 }
 
@@ -85,7 +101,15 @@ export function mergeRoster(
   now: number = Date.now(),
 ): SessionRecord[] {
   const liveById = new Map(live.sessions.map((s) => [s.sessionId, s]));
-  const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? ended(c, live.pidVisible, now));
+  // A catalogue entry the payload did not claim is normally an ENDED session, and `ended()` says
+  // so. On a PARTIAL reading it is not: the scan did not read the directory that session lives in,
+  // so the payload's silence about it is not an answer, and turning it into `isOpen: false` hands
+  // the GUI a session reported as over while it runs. Dropped from the reading instead, which
+  // costs that row one poll in the picker and keeps every consumer from concluding anything: the
+  // tab sweep is guarded on `complete` too, but this is the path that does not go through it.
+  const rows = catalogue
+    .map((c) => liveById.get(c.sessionId) ?? (live.complete ? ended(c, live.pidVisible, now) : null))
+    .filter((r): r is SessionRecord => r !== null);
   const known = new Set(catalogue.map((c) => c.sessionId));
   for (const s of live.sessions) if (!known.has(s.sessionId)) rows.push(s);
   // Most recent first — discovery's own order (discovery.ts), reapplied here because the

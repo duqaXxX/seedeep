@@ -1,23 +1,22 @@
 import { type CatalogueRecord, type LivePayload, mergeRoster } from '../core/roster.ts';
-import { isLive, isModelBusy, isWorking, type PendingKind, pendingInput, type SessionRecord } from '../core/types.ts';
+import {
+  isAutomated,
+  isLive,
+  isModelBusy,
+  isWorking,
+  type PendingKind,
+  pendingInput,
+  type SessionRecord,
+} from '../core/types.ts';
 import { withDeadline } from './deadline.ts';
 
 type Timer = { cancel(): void };
 
-/**
- * A headless/programmatic run (`sdk-cli`, `sdk-py`) rather than an interactive session.
- * One definition, because the picker and the auto-open rule must never disagree on what
- * "automated" means — and because they are 1017 of 1217 sessions on a real machine.
- */
-export function isAutomated(s: Pick<SessionRecord, 'entrypoint'>): boolean {
-  return !!s.entrypoint && s.entrypoint.startsWith('sdk');
-}
-
-// `isLive`, `isWorking` and `pendingInput` moved to types.ts, beside SessionRecord: the watcher
-// needs the same answer as the picker, the digest the same answer as the NOW panel, and the tray's
-// band the same answer as the browser's tab badge (see their JSDoc). Re-exported here so the client
-// keeps one import site for the session predicates.
-export { isLive, isModelBusy, isWorking, type PendingKind, pendingInput };
+// `isAutomated`, `isLive`, `isWorking` and `pendingInput` all live in types.ts, beside
+// SessionRecord: the watcher needs the same answer as the picker, the digest the same answer as
+// the NOW panel, and the tray's band the same answer as the browser's tab badge (see their
+// JSDoc). Re-exported here so the client keeps one import site for the session predicates.
+export { isAutomated, isLive, isModelBusy, isWorking, type PendingKind, pendingInput };
 
 /**
  * The sessions that should be handed a tab right now: live, interactive, never offered
@@ -148,6 +147,9 @@ export function createRoster(deps: {
   let timer: Timer | null = null;
   let stopped = false;
   let taken = 0; // readings actually completed — a failed poll serves the previous rows unchanged
+  // Whether the LAST landed reading read everything it met. Starts false so a consumer asking
+  // before the first reading cannot act on a list that does not exist yet.
+  let complete = false;
   const listeners = new Set<(rows: SessionRecord[]) => void>();
 
   async function refresh(): Promise<void> {
@@ -186,6 +188,7 @@ export function createRoster(deps: {
     // left a repaired record — a refetched catalogue, a settled `lastActivity` — invisible.
     rows = next;
     taken++;
+    complete = live.complete;
     const nextKey = rosterKey(next);
     if (nextKey !== key) {
       key = nextKey;
@@ -226,6 +229,12 @@ export function createRoster(deps: {
      * needs a SECOND, independent opinion (end-guard.ts) counts these instead of waiting.
      */
     readings: () => taken,
+    /**
+     * Whether the last landed reading read every directory it met. False means sessions this
+     * machine has are MISSING from `current()`, so a consumer must not read a session's absence
+     * as the session being over — see `LivePayload.complete`.
+     */
+    complete: () => complete,
     onChange(cb: (rows: SessionRecord[]) => void): () => void {
       listeners.add(cb);
       return () => listeners.delete(cb);

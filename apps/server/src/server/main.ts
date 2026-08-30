@@ -5,7 +5,7 @@ import { openBrowser } from './browser.ts';
 import { planClaudeCommand } from './claude-command.ts';
 import { defaultConfig, readConfigStrict, resolveConfig, type SeedDeepConfig } from './config.ts';
 import { useAsciiConsole } from './console-encoding.ts';
-import { discoverSessions } from './discovery.ts';
+import { discoverSessions, type Scan, scanSessions } from './discovery.ts';
 import { usage, versionLine } from './help.ts';
 import { refreshOwnedCommandFile, runInstallCommand, staleCommandNotice } from './install-command.ts';
 import { openCommand, startCommand } from './open-cmd.ts';
@@ -24,6 +24,9 @@ export interface MainDeps {
   watcher: Pick<EventEmitter, 'on' | 'off'> & { start(): void; stop(): void };
   startServer: typeof startServer;
   discover: () => Promise<SessionRecord[]>;
+  /** The same reading plus its completeness, for the one endpoint that needs it (see ServerDeps).
+   * Optional here too: a test that injects only `discover` gets it reported as complete. */
+  scan?: () => Promise<Scan>;
   openBrowser: (url: string) => void;
   /**
    * Pre-resolved config. When provided, the CLI flags are still applied on top but
@@ -75,6 +78,7 @@ export async function run(argv: string[], deps: MainDeps): Promise<{ stop(): voi
   const server = await deps.startServer({
     watcher: deps.watcher as unknown as EventEmitter,
     discover: deps.discover,
+    scan: deps.scan,
     port: config.port,
     host: config.host,
     config,
@@ -249,6 +253,7 @@ function serve(): void {
     watcher: new Watcher(),
     startServer,
     discover: () => discoverSessions(),
+    scan: () => scanSessions(),
     openBrowser,
     // no `config` → reads from disk
   })
