@@ -9,6 +9,15 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Changed
+
+- The Bun version is pinned, in `package.json` under `packageManager`. CI and the release workflow
+  install Bun through an action that reads that field, so five call sites now take one version.
+  Until now they took whatever was latest on the day, and the last step of the CI suite compares
+  the committed `apps/server/public/lib/app.js` against a fresh build byte for byte. Bun 1.4.2
+  renamed bundled identifiers differently from 1.4.0 and turned that step red on a main nobody had
+  touched. Raising the pin is now a deliberate change that rebuilds the bundle in the same commit.
+
 ## 0.32.0 (2026-08-30)
 
 ### Added
