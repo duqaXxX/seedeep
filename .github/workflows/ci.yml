@@ -59,6 +59,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # No `bun-version` here on purpose: with none given the action reads `packageManager` from
+      # package.json, so all five setup-bun call sites across this workflow and release.yml take
+      # their version from one line. It has to be pinned somewhere, because the last step of this
+      # job compares the committed bundle byte for byte against a fresh build, and Bun's bundler
+      # renames identifiers differently between releases. A floating `latest` turned that gate red
+      # on an untouched main the day Bun went 1.4.0 → 1.4.2, which renamed `el8` back to `el`.
+      # Raising the pin is therefore a deliberate commit that also rebuilds public/lib/app.js.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - run: bun install --frozen-lockfile

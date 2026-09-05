@@ -58,7 +58,11 @@ Two expectations beyond it, both about this project's shape rather than about co
 ## Prerequisites
 
 - [Bun](https://bun.sh) (the project is developed against Bun; a Node path
-  exists via `tsx` but is not the primary target).
+  exists via `tsx` but is not the primary target). The version is pinned in
+  `package.json` under `packageManager`, and CI installs exactly that one. Use it
+  locally too: Bun's bundler renames identifiers differently between releases, so
+  a different version rebuilds `apps/server/public/lib/app.js` into bytes CI will
+  reject even when your source change is correct.
 
 That is everything the server and the browser GUI need: no other runtime, no
 global CLIs, no services.
