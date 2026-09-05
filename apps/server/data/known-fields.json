@@ -21,6 +21,7 @@
     ],
     "assistant": [
       "agentId",
+      "apiBlockIndex",
       "apiError",
       "apiErrorStatus",
       "attributionAgent",
@@ -43,6 +44,7 @@
       "session_id",
       "slug",
       "timestamp",
+      "truncatedAfterOutput",
       "type",
       "userType",
       "uuid",
@@ -152,8 +154,21 @@
       "timestamp",
       "type"
     ],
+    "result": [
+      "agentId",
+      "key",
+      "result",
+      "type"
+    ],
+    "started": [
+      "agentId",
+      "key",
+      "type"
+    ],
     "system": [
       "agentId",
+      "apiRefusalCategory",
+      "apiRefusalExplanation",
       "compactMetadata",
       "content",
       "cwd",
@@ -170,10 +185,13 @@
       "level",
       "logicalParentUuid",
       "messageCount",
+      "originalModel",
       "parentUuid",
       "pendingBackgroundAgentCount",
       "pendingWorkflowCount",
       "preventedContinuation",
+      "refusedUserMessageUuid",
+      "requestId",
       "sessionId",
       "session_id",
       "slug",
@@ -222,17 +240,6 @@
       "userType",
       "uuid",
       "version"
-    ],
-    "result": [
-      "agentId",
-      "key",
-      "result",
-      "type"
-    ],
-    "started": [
-      "agentId",
-      "key",
-      "type"
     ],
     "agent-name": [
       "agentName",
@@ -311,6 +318,9 @@
       "filenames",
       "findings",
       "gitOperation",
+      "harnessNoteCount",
+      "harnessSectionHash",
+      "harnessTailCount",
       "interrupted",
       "isAgent",
       "isAsync",
