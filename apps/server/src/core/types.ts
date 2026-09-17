@@ -1,9 +1,16 @@
-// Only Claude Code (CLI) sessions are observable: they are the sole source that
-// writes per-API-call logs to disk. Claude Chat persists no session log locally
-// (only editor drafts + UI state), and the current Cowork runs the session
-// remotely — neither leaves anything to read. Kept as a named type so the data
-// model still carries an explicit source tag.
-export type Root = 'cli';
+// Which CLI wrote the session files seedeep is reading. `cli` is Claude Code, kept as that
+// string so existing records, tests, and the wire format do not change. The others are
+// local JSONL (or JSONL-like) logs on the same machine: Grok Build, Codex, Gemini CLI, and
+// Antigravity CLI (`agy`).
+export type Root = 'cli' | 'grok' | 'codex' | 'gemini' | 'agy';
+
+export const ROOT_LABEL: Record<Root, string> = {
+  cli: 'Claude',
+  grok: 'Grok',
+  codex: 'Codex',
+  gemini: 'Gemini',
+  agy: 'Antigravity',
+};
 
 // Personal baseline types — defined here (no node deps) so both the corpus scanner
 // (`baseline.ts`) and the verdict (`core/verdict.ts`) can share the shape.
@@ -546,7 +553,7 @@ export interface ToolStartEvent extends EventBase {
  * prompt/type from it, and the reducer puts the spawn on the subagent list — a second copy in
  * either would let one recognise a spawn the other silently ignores.
  */
-export const SPAWN_TOOL_NAMES = new Set(['Agent', 'Task']);
+export const SPAWN_TOOL_NAMES = new Set(['Agent', 'Task', 'spawn_subagent', 'spawn_agent']);
 
 /** What a Task-family tool points AT. `kind` says which map resolves it. */
 export interface TaskRef {

@@ -11,7 +11,17 @@ var context_windows_default = {
   "claude-haiku-4-5": 200000,
   "claude-sonnet-4-5": 200000,
   "claude-opus-4-5": 200000,
-  "claude-opus-4-1": 200000
+  "claude-opus-4-1": 200000,
+  "grok-4.6": 2000000,
+  "grok-4": 2000000,
+  "grok-3": 1e6,
+  "gpt-6": 258400,
+  "gpt-5": 256000,
+  "gpt-4.1": 1047576,
+  "gpt-4o": 128000,
+  "gemini-3": 1e6,
+  "gemini-2.5": 1e6,
+  "gemini-2.0": 1e6
 };
 
 // apps/server/src/core/context-windows.ts
@@ -46,7 +56,10 @@ var FAMILY_WEIGHT = [
   [/^claude-haiku/, 1],
   [/^claude-sonnet/, 3],
   [/^claude-opus/, 5],
-  [/^claude-fable/, 10]
+  [/^claude-fable/, 10],
+  [/^grok/, 5],
+  [/^gpt-/, 5],
+  [/^gemini/, 3]
 ];
 function modelWeight(model) {
   if (!model)
@@ -67,6 +80,13 @@ function callWeight(model, t) {
 }
 
 // apps/server/src/core/types.ts
+var ROOT_LABEL = {
+  cli: "Claude",
+  grok: "Grok",
+  codex: "Codex",
+  gemini: "Gemini",
+  agy: "Antigravity"
+};
 var HIST_BINS = [
   { label: "<1k", min: 0, max: 1000 },
   { label: "1–3k", min: 1000, max: 3000 },
@@ -98,7 +118,7 @@ function pendingInput(s) {
   return null;
 }
 var ACTIVE_WINDOW_MS = 300000;
-var SPAWN_TOOL_NAMES = new Set(["Agent", "Task"]);
+var SPAWN_TOOL_NAMES = new Set(["Agent", "Task", "spawn_subagent", "spawn_agent"]);
 
 // apps/server/src/core/session-tree.ts
 function hasStarted(a) {
@@ -1125,7 +1145,8 @@ function entryText(prompt, command, max = 200) {
   return line && !line.startsWith("/") ? "/" + command + " " + line : line || "/" + command;
 }
 function tabLabel(s, max = 30) {
-  return `${s.project} · ${promptLine(s.subject, max) || s.sessionId.slice(0, 8)}`;
+  const src = s.root && s.root !== "cli" ? ROOT_LABEL[s.root] + " · " : "";
+  return `${src}${s.project} · ${promptLine(s.subject, max) || s.sessionId.slice(0, 8)}`;
 }
 function modelFamily(model) {
   if (!model)
@@ -1134,6 +1155,12 @@ function modelFamily(model) {
   for (const fam of ["opus", "sonnet", "haiku", "fable"])
     if (m.includes(fam))
       return fam;
+  if (m.includes("grok"))
+    return "grok";
+  if (m.includes("gemini"))
+    return "gemini";
+  if (m.includes("gpt-") || m.startsWith("gpt"))
+    return "gpt";
   return null;
 }
 function formatDuration(ms) {
@@ -1621,6 +1648,9 @@ function createIdChip(sessionId, opts = {}) {
 }
 
 // apps/server/src/core/roster.ts
+function usesPid(root) {
+  return root === "cli" || root === "grok";
+}
 function mergeRoster(catalogue, live, now = Date.now()) {
   const liveById = new Map(live.sessions.map((s) => [s.sessionId, s]));
   const rows = catalogue.map((c) => liveById.get(c.sessionId) ?? (live.complete ? ended(c, live.pidVisible, now) : null)).filter((r) => r !== null);
@@ -1643,7 +1673,7 @@ function ended(c, pidVisible, now) {
     path: c.path,
     lastActivity,
     isActive: now - lastActivity <= ACTIVE_WINDOW_MS,
-    isOpen: pidVisible ? false : null,
+    isOpen: usesPid(c.root) ? pidVisible ? false : null : null,
     status: null,
     waitingFor: null,
     waitingSince: null
@@ -1866,6 +1896,7 @@ function createDropdown(mount, { onOpen }) {
       line1.append(el2("span", "pk-badge pin", "\uD83D\uDCCC"));
     body.append(line1);
     const meta = el2("div", "pk-meta");
+    meta.append(el2("span", "pk-source s-" + s.root, ROOT_LABEL[s.root]));
     const model = shortModel(s.model);
     meta.append(el2("span", "pk-mchip m-" + model, model));
     meta.append(el2("span", "pk-sep", "·"), el2("span", null, fmtWhen(s.lastActivity)));

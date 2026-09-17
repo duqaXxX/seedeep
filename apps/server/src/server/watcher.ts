@@ -31,6 +31,8 @@ export interface WatcherOptions {
   discover?: () => Promise<SessionRecord[]>;
   /** The open-session mechanism, injectable for tests. `null` means it is unavailable. */
   openSessions?: () => Promise<OpenSession[] | null>;
+  /** Codex / Gemini / Antigravity live set (mtime only). Tests leave this unset. */
+  discoverMtime?: () => Promise<SessionRecord[]>;
 }
 
 /** Where a session's transcript lives — all a tick needs once it knows the session is live. */
@@ -65,6 +67,7 @@ export class Watcher extends EventEmitter {
   private readonly intervalMs: number;
   private readonly discover: () => Promise<SessionRecord[]>;
   private readonly openSessions: () => Promise<OpenSession[] | null>;
+  private readonly discoverMtime: () => Promise<SessionRecord[]>;
   // sessionId → where its transcript is. A path does not move, so this is filled by the
   // discoveries that do run and read by every tick in between.
   private readonly located = new Map<string, Located>();
@@ -81,12 +84,16 @@ export class Watcher extends EventEmitter {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false; // a tick is walking the files; see the guard in tick()
   private passFailing = false; // a pass is failing and has already been logged; see tick()
+  // Live Codex / Gemini / Antigravity sessions (no PID file). Refreshed on the RESCAN cadence.
+  private mtimeLive: Located[] = [];
+  private mtimeAt = 0;
 
   constructor(opts: WatcherOptions = {}) {
     super();
     this.intervalMs = opts.intervalMs ?? 300;
     this.discover = opts.discover ?? (() => discoverSessions());
     this.openSessions = opts.openSessions ?? (() => listOpenSessions());
+    this.discoverMtime = opts.discoverMtime ?? (async () => []);
   }
 
   start(): void {
@@ -169,13 +176,24 @@ export class Watcher extends EventEmitter {
     const worthScanning = ids.some(
       (id) => !this.located.has(id) && now - (this.unplaced.get(id) ?? -Infinity) >= RESCAN_MS,
     );
+    const refreshMtime = now - this.mtimeAt >= RESCAN_MS;
     if (worthScanning) {
       for (const rec of await this.discover()) {
         this.located.set(rec.sessionId, { sessionId: rec.sessionId, path: rec.path, root: rec.root });
       }
       for (const id of ids) if (!this.located.has(id)) this.unplaced.set(id, now);
     }
-    return ids.map((id) => this.located.get(id)).filter((l): l is Located => l !== undefined);
+    if (refreshMtime) {
+      this.mtimeLive = (await this.discoverMtime()).map((s) => ({
+        sessionId: s.sessionId,
+        path: s.path,
+        root: s.root,
+      }));
+      this.mtimeAt = now;
+    }
+    const pidLive = ids.map((id) => this.located.get(id)).filter((l): l is Located => l !== undefined);
+    const seen = new Set(pidLive.map((l) => l.sessionId));
+    return [...pidLive, ...this.mtimeLive.filter((l) => !seen.has(l.sessionId))];
   }
 
   private async pass(): Promise<void> {

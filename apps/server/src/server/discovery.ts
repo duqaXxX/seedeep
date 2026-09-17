@@ -6,6 +6,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { anon } from '../core/text.ts';
 import { ACTIVE_WINDOW_MS, type Root, type SessionRecord } from '../core/types.ts';
 import { deriveStatus } from './derived-status.ts';
+import { scanExtraSessions } from './discover-extra.ts';
 import { listOpenSessions, type OpenSession } from './open-sessions.ts';
 import { CONTROL_COMMANDS, userLineIntent } from './parser.ts';
 import { cliRoot, slugToProject } from './roots.ts';
@@ -316,6 +317,13 @@ export async function scanSessions(opts: DiscoverOptions = {}): Promise<Scan> {
     const scan = await scanCliDir(dir, now, openById);
     records.push(...scan.records);
     if (!scan.complete) complete = false;
+  }
+  // Tests pass `roots` to pin a Claude-only fixture. Extra CLIs are scanned only in the
+  // real home layout, where each source has its own directory under $HOME.
+  if (!opts.roots) {
+    const extra = await scanExtraSessions(home, now, openById);
+    records.push(...extra.sessions);
+    if (!extra.complete) complete = false;
   }
   records.sort((a, b) => b.lastActivity - a.lastActivity);
   return { sessions: records, complete };

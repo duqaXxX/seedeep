@@ -250,6 +250,44 @@
   color: #6ee7b7;
   border-color: rgba(110, 231, 183, 0.3);
 }
+.pk-mchip.m-Grok {
+  color: #f9a8d4;
+  border-color: rgba(249, 168, 212, 0.35);
+}
+.pk-mchip.m-Gpt {
+  color: #86efac;
+  border-color: rgba(134, 239, 172, 0.35);
+}
+.pk-mchip.m-Gemini {
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.35);
+}
+.pk-source {
+  border-radius: 5px;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border2);
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+}
+.pk-source.s-cli {
+  color: #fdba74;
+  border-color: rgba(253, 186, 116, 0.35);
+}
+.pk-source.s-grok {
+  color: #f9a8d4;
+  border-color: rgba(249, 168, 212, 0.35);
+}
+.pk-source.s-codex {
+  color: #86efac;
+  border-color: rgba(134, 239, 172, 0.35);
+}
+.pk-source.s-gemini,
+.pk-source.s-agy {
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.35);
+}
 .pk-sep {
   opacity: 0.4;
 }

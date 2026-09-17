@@ -1,11 +1,13 @@
 # Architecture
 
-seedeep makes the invisible inside a Claude Code session visible: in real time
-during a turn, how the **context window** fills and what the **subagents** are
-doing, assembled live from the local session logs.
+seedeep makes the invisible inside a local coding-agent session visible: in real
+time during a turn, how the **context window** fills and what the **subagents** are
+doing, assembled live from the session logs each CLI already writes.
 
-The design principle is **read-only**: seedeep only reads the session files Claude
-Code already writes. It never writes, proxies, or intercepts anything Claude Code owns.
+The design principle is **read-only**: seedeep only reads those files. It never
+writes, proxies, or intercepts anything the CLI owns. Claude Code is the original
+source; Grok Build, Codex, Gemini CLI, and Antigravity CLI are additional roots
+with their own parsers and the same reducer.
 
 The one write it does make is to a file it **owns**: an aggregate cache under
 `~/.seedeep/`, a distillation of the corpus it read (see
@@ -196,13 +198,20 @@ is much tighter: `tool_use` is p50 0.23s / p90 0.29s. Tailing is therefore a
 sub-second event stream for tool activity, and no faster than a block's own
 duration for anything else.
 
-Sessions live under one local root:
+Sessions live under local roots, one per CLI:
 
-- **Claude Code (CLI):** `~/.claude/projects/<slug>/<sessionId>.jsonl`, or under `CLAUDE_CONFIG_DIR`
+- **Claude Code:** `~/.claude/projects/<slug>/<sessionId>.jsonl`, or under `CLAUDE_CONFIG_DIR`
   when it is set, which moves Claude Code's whole directory and therefore the transcripts too
   (`claudeDir` in `roots.ts`). `<slug>` is the session's working directory with its separators
-  turned into dashes: verified against all 16 project directories on this machine, each compared
-  with the `cwd` its own transcript records.
+  turned into dashes.
+- **Grok Build:** `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl`. Live processes
+  are listed in `~/.grok/active_sessions.json`. Subagent sessions carry `session_kind`
+  `subagent` / `subagent_resume` and are filed as automated.
+- **Codex:** `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. No pid file; liveness is the
+  mtime window.
+- **Gemini CLI:** `~/.gemini/tmp/<project>/chats/session-*.jsonl`. Same mtime window.
+- **Antigravity CLI:** `~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl`
+  when that file exists.
 
 Claude Chat and Cowork are deliberately NOT observed: the chat writes no
 per-API-call log to disk (only editor drafts and UI state), and the current
@@ -239,7 +248,7 @@ derivation, no second source of truth.
 
 ### discovery
 
-Enumerates Claude Code (CLI) sessions and returns a record per session:
+Enumerates local CLI sessions and returns a record per session:
 
 ```ts
 interface SessionRecord {
@@ -254,7 +263,7 @@ interface SessionRecord {
   waitingSince: number | null; // and when it stopped there (CC's statusUpdatedAt)
   subject: string | null;    // first real prompt, anonymized: the readable picker/tab label
   entrypoint: string | null; // 'cli' (interactive) vs 'sdk-cli'/'sdk-py' (headless)
-  root: 'cli';
+  root: 'cli' | 'grok' | 'codex' | 'gemini' | 'agy';
   path: string;
 }
 ```

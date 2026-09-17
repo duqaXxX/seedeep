@@ -133,7 +133,8 @@ response becomes several lines, each stamped with its call's token usage. `seede
 tails those files and reconstructs the picture. No network interception, no
 `ANTHROPIC_BASE_URL` override, nothing written back. It watches every active Claude
 Code session at once, and identifies its own launching session so it never counts
-itself.
+itself. The same pipeline tails Grok Build, Codex, Gemini CLI, and Antigravity CLI
+logs when those files exist on the machine.
 
 Session data flows one way: the server pushes to the browser over Server-Sent Events.
 See [`docs/architecture.md`](docs/architecture.md) for the full design.
@@ -195,7 +196,7 @@ the model asks you does light amber there
 
 ## Design principles
 
-- **Read-only.** seedeep only reads what Claude Code already writes. It never
+- **Read-only.** seedeep only reads the session files each CLI already writes. It never
   modifies, proxies, or intercepts your session.
 - **Live.** The target is watching a turn as it happens, not analyzing spend after
   the fact.

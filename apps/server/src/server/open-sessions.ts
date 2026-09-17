@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { open, readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { claudeDir } from './roots.ts';
@@ -97,6 +97,92 @@ export function isAlive(pid: number): boolean {
  * Claude Code internal, so callers must tolerate it vanishing in a future release and fall
  * back to the mtime window; collapsing the two into `[]` made that fallback unreachable.
  */
+async function grokWaiting(eventsPath: string): Promise<{
+  status: OpenSession['status'];
+  waitingFor: string | null;
+  waitingSince: number | null;
+}> {
+  let text = '';
+  try {
+    const fh = await open(eventsPath, 'r');
+    try {
+      const st = await fh.stat();
+      const start = Math.max(0, st.size - 32_768);
+      const buf = Buffer.allocUnsafe(Math.min(st.size, 32_768));
+      const { bytesRead } = await fh.read(buf, 0, buf.length, start);
+      text = buf.subarray(0, bytesRead).toString('utf8');
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return { status: 'busy', waitingFor: null, waitingSince: null };
+  }
+  let pending: { tool: string; ts: string } | null = null;
+  let lastPhase: string | null = null;
+  let lastTs: string | null = null;
+  for (const line of text.split('\n')) {
+    if (!line.trim() || line[0] !== '{') continue;
+    try {
+      const d = JSON.parse(line);
+      if (d.type === 'permission_requested') pending = { tool: d.tool_name ?? 'tool', ts: d.ts ?? '' };
+      if (d.type === 'permission_resolved') pending = null;
+      if (d.type === 'phase_changed') lastPhase = d.phase;
+      if (typeof d.ts === 'string') lastTs = d.ts;
+    } catch {
+      /* skip a truncated first line from the byte window */
+    }
+  }
+  if (pending || lastPhase === 'permission_prompt') {
+    const when = pending?.ts || lastTs;
+    return {
+      status: 'waiting',
+      waitingFor: 'permission prompt',
+      waitingSince: when ? Date.parse(when) || null : null,
+    };
+  }
+  return { status: 'busy', waitingFor: null, waitingSince: null };
+}
+
+/** Live Grok Build sessions from `~/.grok/active_sessions.json`. Null if that file is absent. */
+export async function listGrokOpenSessions(
+  opts: { home?: string; isAlive?: (pid: number) => boolean } = {},
+): Promise<OpenSession[] | null> {
+  const home = opts.home ?? homedir();
+  const alive = opts.isAlive ?? isAlive;
+  let raw: string;
+  try {
+    raw = await readFile(join(home, '.grok', 'active_sessions.json'), 'utf8');
+  } catch {
+    return null;
+  }
+  let rows: any[];
+  try {
+    const parsed = JSON.parse(raw);
+    rows = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+  const out: OpenSession[] = [];
+  for (const row of rows) {
+    const pid = typeof row?.pid === 'number' ? row.pid : Number.parseInt(String(row?.pid ?? ''), 10);
+    const sessionId = typeof row?.session_id === 'string' ? row.session_id : '';
+    const cwd = typeof row?.cwd === 'string' ? row.cwd : '';
+    if (!Number.isFinite(pid) || !sessionId || !cwd || !alive(pid)) continue;
+    const events = join(home, '.grok', 'sessions', encodeURIComponent(cwd), sessionId, 'events.jsonl');
+    const wait = await grokWaiting(events);
+    out.push({
+      pid,
+      sessionId,
+      cwd,
+      status: wait.status,
+      waitingFor: wait.waitingFor,
+      waitingSince: wait.waitingSince,
+      publishesStatus: true,
+    });
+  }
+  return out;
+}
+
 export async function listOpenSessions(
   opts: { home?: string; isAlive?: (pid: number) => boolean } = {},
 ): Promise<OpenSession[] | null> {
@@ -108,14 +194,14 @@ export async function listOpenSessions(
   // closed, `isLive` never fell back to the mtime window, and a session being written right then
   // rendered as ENDED. This is the second head of the bug roots.ts was created to kill.
   const dir = join(claudeDir(home), 'sessions');
-  let files: string[];
+  let files: string[] | null;
   try {
     files = await readdir(dir);
   } catch {
-    return null;
+    files = null;
   }
   const out: OpenSession[] = [];
-  for (const f of files) {
+  for (const f of files ?? []) {
     if (!f.endsWith('.json')) continue;
     let d: any;
     try {
@@ -137,5 +223,7 @@ export async function listOpenSessions(
     const waitingSince = waitingFor !== null && typeof d?.statusUpdatedAt === 'number' ? d.statusUpdatedAt : null;
     out.push({ pid, sessionId, cwd, status, waitingFor, waitingSince, publishesStatus });
   }
-  return out;
+  const grok = await listGrokOpenSessions(opts);
+  if (files === null && grok === null) return null;
+  return grok ? [...out, ...grok] : out;
 }

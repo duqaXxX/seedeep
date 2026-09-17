@@ -1,10 +1,12 @@
 import type { EventEmitter } from 'node:events';
-import type { SessionRecord } from '../core/types.ts';
+import { homedir } from 'node:os';
+import { isLive, type SessionRecord } from '../core/types.ts';
 import { type CliOptions, parseArgs } from './args.ts';
 import { openBrowser } from './browser.ts';
 import { planClaudeCommand } from './claude-command.ts';
 import { defaultConfig, readConfigStrict, resolveConfig, type SeedDeepConfig } from './config.ts';
 import { useAsciiConsole } from './console-encoding.ts';
+import { scanMtimeSessions } from './discover-extra.ts';
 import { discoverSessions, type Scan, scanSessions } from './discovery.ts';
 import { usage, versionLine } from './help.ts';
 import { refreshOwnedCommandFile, runInstallCommand, staleCommandNotice } from './install-command.ts';
@@ -250,7 +252,9 @@ function main(): void {
 
 function serve(): void {
   run(process.argv.slice(2), {
-    watcher: new Watcher(),
+    watcher: new Watcher({
+      discoverMtime: async () => (await scanMtimeSessions(homedir(), Date.now())).filter(isLive),
+    }),
     startServer,
     discover: () => discoverSessions(),
     scan: () => scanSessions(),

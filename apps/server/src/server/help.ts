@@ -42,7 +42,7 @@ const pad = (rows: [string, string][]): string[] => {
 /** The whole `--help` text. */
 export function usage(version = VERSION): string {
   return [
-    `seedeep ${version} — see deep into what Claude Code is doing.`,
+    `seedeep ${version} — see deep into what Claude Code, Grok, Codex, Gemini, and Antigravity are doing.`,
     '',
     'Commands',
     ...pad(COMMANDS),

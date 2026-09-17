@@ -2,6 +2,9 @@ import { anon, renderedText } from '../core/text.ts';
 import type { NormalizedEvent, Root, TaskRef, TokenCounts } from '../core/types.ts';
 import { SPAWN_TOOL_NAMES } from '../core/types.ts';
 import { toolOutcome } from './failure.ts';
+import { parseCodexLine } from './parse-codex.ts';
+import { parseGeminiLine } from './parse-gemini.ts';
+import { parseGrokLine } from './parse-grok.ts';
 
 // Only these types carry no signal we use. `user`/`system` are now inspected
 // (tool_result blocks, compactMetadata) so they are no longer blanket-ignored.
@@ -248,6 +251,9 @@ export function parseLine(
   line: string,
   ctx: { sessionId: string; root: Root; seq: number; agentId?: string | null },
 ): NormalizedEvent[] {
+  if (ctx.root === 'grok') return parseGrokLine(line, ctx);
+  if (ctx.root === 'codex') return parseCodexLine(line, ctx);
+  if (ctx.root === 'gemini' || ctx.root === 'agy') return parseGeminiLine(line, ctx);
   const trimmed = line.trim();
   if (!trimmed) return [];
   let d: any;

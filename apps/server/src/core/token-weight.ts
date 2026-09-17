@@ -44,6 +44,9 @@ const FAMILY_WEIGHT: readonly [RegExp, number][] = [
   [/^claude-sonnet/, 3],
   [/^claude-opus/, 5],
   [/^claude-fable/, 10],
+  [/^grok/, 5],
+  [/^gpt-/, 5],
+  [/^gemini/, 3],
 ];
 
 /**

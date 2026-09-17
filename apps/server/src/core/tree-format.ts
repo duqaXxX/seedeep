@@ -1,4 +1,5 @@
 import type { ToolNode } from './session-tree.ts';
+import { ROOT_LABEL, type Root } from './types.ts';
 
 /**
  * One-line summary of a (possibly multi-line) prompt, for a row/tooltip/banner that has
@@ -33,8 +34,12 @@ export function entryText(prompt: string | null | undefined, command: string | n
  * stands in — otherwise two subject-less tabs of one project collapse together again,
  * which is the very bug this fixes.
  */
-export function tabLabel(s: { project: string; subject: string | null; sessionId: string }, max = 30): string {
-  return `${s.project} · ${promptLine(s.subject, max) || s.sessionId.slice(0, 8)}`;
+export function tabLabel(
+  s: { project: string; subject: string | null; sessionId: string; root?: Root },
+  max = 30,
+): string {
+  const src = s.root && s.root !== 'cli' ? ROOT_LABEL[s.root] + ' · ' : '';
+  return `${src}${s.project} · ${promptLine(s.subject, max) || s.sessionId.slice(0, 8)}`;
 }
 
 /**
@@ -46,6 +51,9 @@ export function modelFamily(model: string | null | undefined): string | null {
   if (!model) return null;
   const m = model.toLowerCase();
   for (const fam of ['opus', 'sonnet', 'haiku', 'fable']) if (m.includes(fam)) return fam;
+  if (m.includes('grok')) return 'grok';
+  if (m.includes('gemini')) return 'gemini';
+  if (m.includes('gpt-') || m.startsWith('gpt')) return 'gpt';
   return null;
 }
 

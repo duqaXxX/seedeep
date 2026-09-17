@@ -129,12 +129,15 @@ test('modelFamily: extracts the family from a full model id, case-insensitive', 
   assert.equal(modelFamily('claude-opus-4-8'), 'opus');
   assert.equal(modelFamily('claude-haiku-4-5-20251001'), 'haiku');
   assert.equal(modelFamily('Claude-Fable-5'), 'fable');
+  assert.equal(modelFamily('grok-4.6'), 'grok');
+  assert.equal(modelFamily('gpt-6-astra'), 'gpt');
+  assert.equal(modelFamily('gemini-3.1-pro-preview'), 'gemini');
 });
 test('modelFamily: null for unset or unknown-family ids', () => {
   assert.equal(modelFamily(null), null);
   assert.equal(modelFamily(undefined), null);
   assert.equal(modelFamily(''), null);
-  assert.equal(modelFamily('gpt-9'), null);
+  assert.equal(modelFamily('unknown-model-9'), null);
 });
 
 // A session's working time reaches hours (measured: 18h on one real session), where

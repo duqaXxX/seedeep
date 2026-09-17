@@ -1,11 +1,18 @@
+# Dependencies
 node_modules/
+
+# Logs and OS junk
 *.log
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# Build output (the committed GUI bundle is apps/server/public/lib/app.js — not dist/)
 dist/
-.superpowers/
 
 # `bun run dev` and `bun run tray:dev` keep their state here (SEEDEEP_HOME, SEEDEEP_TRAY_HOME), so a
 # checkout can run beside an installed release without either rewriting the other's config.
+# That directory also holds cert.pem / key.pem when TLS is on.
 .seedeep-dev/
 
 # apps/tray: Rust build output and the panel UI's bundle
@@ -14,3 +21,29 @@ apps/tray/ui/dist/
 
 # apps/tray: Tauri regenerates these capability schemas on every build
 apps/tray/src-tauri/gen/schemas/
+
+# Local secrets (never a session file; still not for git)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and local tooling
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.superpowers/
+
+# Test / typecheck leftovers
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.cache/
+.turbo/
+.bun/
+

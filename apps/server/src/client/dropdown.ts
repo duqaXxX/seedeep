@@ -4,7 +4,7 @@
 // session-derived value (subject, project, id) can never inject markup.
 
 import { modelFamily } from '../core/tree-format.ts';
-import { isLive, type SessionRecord } from '../core/types.ts';
+import { isLive, ROOT_LABEL, type SessionRecord } from '../core/types.ts';
 import { authFetch } from './auth.ts';
 import { createIdChip } from './id-chip.ts';
 import { isAutomated } from './sessions.ts';
@@ -138,6 +138,7 @@ export function createDropdown(mount: HTMLElement, { onOpen }: { onOpen: (id: st
     body.append(line1);
 
     const meta = el('div', 'pk-meta');
+    meta.append(el('span', 'pk-source s-' + s.root, ROOT_LABEL[s.root]));
     const model = shortModel(s.model);
     meta.append(el('span', 'pk-mchip m-' + model, model));
     meta.append(el('span', 'pk-sep', '·'), el('span', null, fmtWhen(s.lastActivity)));

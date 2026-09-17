@@ -9,6 +9,16 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- Session sources besides Claude Code: Grok Build (`~/.grok/sessions`), Codex
+  (`~/.codex/sessions`), Gemini CLI (`~/.gemini/tmp/*/chats`), and Antigravity CLI
+  transcripts under `~/.gemini/antigravity*/brain`. Each adapter tails the JSONL
+  that CLI already writes and emits the same events the reducer already consumes.
+  The picker labels the source. Grok live state also reads `active_sessions.json`
+  (pid + permission prompts). Codex and Gemini have no pid file, so liveness is
+  the existing 5-minute mtime window.
+
 ### Changed
 
 - The Bun version is pinned, in `package.json` under `packageManager`. CI and the release workflow

@@ -1,5 +1,10 @@
 import { ACTIVE_WINDOW_MS, isLive, type Root, type SessionRecord } from './types.ts';
 
+/** Claude and Grok publish a live-process file; the others only have mtime. */
+function usesPid(root: Root): boolean {
+  return root === 'cli' || root === 'grok';
+}
+
 /**
  * A session as the CATALOGUE knows it: everything that stops changing once the session's
  * file exists. This is what the picker needs to list a session and what the workspace needs
@@ -74,7 +79,7 @@ export function liveOf(roster: readonly SessionRecord[], complete = true): LiveP
     total: roster.length,
     sessions: roster.filter(isLive),
     // Vacuously true for an empty roster: there is nothing to rebuild the tri-state for.
-    pidVisible: roster.every((r) => r.isOpen !== null),
+    pidVisible: roster.filter((r) => usesPid(r.root)).every((r) => r.isOpen !== null),
     complete,
   };
 }
@@ -146,7 +151,7 @@ function ended(c: CatalogueRecord, pidVisible: boolean, now: number): SessionRec
     // Hardcoding it would have the merged row claim "nothing written for 5 minutes" about a
     // file touched a second ago — the split must not invent facts it can derive.
     isActive: now - lastActivity <= ACTIVE_WINDOW_MS,
-    isOpen: pidVisible ? false : null,
+    isOpen: usesPid(c.root) ? (pidVisible ? false : null) : null,
     status: null,
     waitingFor: null,
     waitingSince: null,
