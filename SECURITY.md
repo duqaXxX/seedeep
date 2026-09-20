@@ -32,12 +32,20 @@ and there are no backports.
 
 The interesting surface is small, and specific:
 
-- **The server beyond loopback.** On `127.0.0.1` there is no network to authenticate
-  against and no auth in the way, by design. Naming any other host makes HTTPS mandatory
-  and a bearer token required on every `/api/*` request. Anything that gets session data
-  or configuration out of a remote-mode server without the token, that downgrades or
-  bypasses the TLS requirement, or that makes the server listen beyond loopback without
-  the operator having asked for it.
+- **The server beyond loopback.** Naming any host other than a loopback one makes HTTPS
+  mandatory and a bearer token required on every `/api/*` request. Anything that gets
+  session data or configuration out of a remote-mode server without the token, that
+  downgrades or bypasses the TLS requirement, or that makes the server listen beyond
+  loopback without the operator having asked for it.
+- **The server on loopback, reached from a browser.** On `127.0.0.1` there is no token:
+  a request is trusted because it names this machine, and on anything other than `GET` and
+  `HEAD` it must carry either no `Origin` header or one that is this server's own. The absent
+  case is the whole non-browser path, `seedeep restart` and curl included. A cross-origin `GET`
+  is answered: what keeps the page from reading it is the same-origin policy and the absence of
+  CORS headers ([what those checks do](docs/api.md#which-requests-the-server-answers-at-all)).
+  So anything that gets a page the user merely visited to read a session or change the
+  configuration is in scope, DNS rebinding included. An attacker who is already the local
+  user is not (see below).
 - **The certificate and the tray's pinning.** The server issues its own self-signed
   certificate and prints its SHA-256 fingerprint on every start. The tray pins one leaf
   certificate in Rust (`apps/tray/src-tauri/src/pin.rs`), because the alternative on that

@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { mergeRoster } from '../src/core/roster.ts';
 import type { SessionRecord } from '../src/core/types.ts';
 import { defaultConfig, type SeedDeepConfig } from '../src/server/config.ts';
-import { handOver, isLoopback, parseMarks, selfSpawnPlan, startServer } from '../src/server/server.ts';
+import {
+  handOver,
+  isLoopback,
+  isLoopbackHostHeader,
+  isOwnOrigin,
+  parseMarks,
+  selfSpawnPlan,
+  startServer,
+} from '../src/server/server.ts';
 import type { Channel } from '../src/server/update-cmd.ts';
 import { VERSION } from '../src/server/version.ts';
 
@@ -1081,6 +1090,217 @@ test('POST /api/restart: requires auth on non-loopback host', async () => {
   try {
     const res = await fetch(`${srv.url}/api/restart`, { method: 'POST' });
     assert.equal(res.status, 401);
+  } finally {
+    srv.stop();
+  }
+});
+
+// ── Host and Origin gates ─────────────────────────────────────────────────────
+// Both were shipped vulnerabilities, found 2026-09-20. In loopback mode the only /api/* gate was
+// `if (loopback) return true`, decided by the BIND address, so it said yes to every request that
+// reached the listener — including one from a page whose hostname had been re-resolved to
+// 127.0.0.1, which is same-origin with the server and therefore reads every session. And
+// `POST /api/restart` checked neither `Origin` nor a content type, so any page could stop the
+// server with a bodyless POST, which needs no preflight.
+
+test('isLoopbackHostHeader: the three literals pass, a rebound name and a parser differential do not', () => {
+  for (const ok of ['127.0.0.1:44842', 'localhost:44842', '[::1]:44842', '[::1]', 'localhost', '127.0.0.1:80']) {
+    assert.equal(isLoopbackHostHeader(ok), true, ok);
+  }
+  for (const no of ['evil.test:44842', 'seedeep.example.com', '192.168.1.9:44842', '127.0.0.1.evil.test']) {
+    assert.equal(isLoopbackHostHeader(no), false, no);
+  }
+  // `new URL('http://evil.test@127.0.0.1')` parses to the loopback host with userinfo in front, so
+  // a check that only asked the URL would admit a name the browser treats as evil.test.
+  assert.equal(isLoopbackHostHeader('evil.test@127.0.0.1'), false, 'userinfo must not smuggle a host');
+  assert.equal(isLoopbackHostHeader('127.0.0.1/../evil'), false);
+  // Mandatory in HTTP/1.1: absent is malformed, and this gate is not the place to be lenient.
+  assert.equal(isLoopbackHostHeader(null), false);
+});
+
+test('isOwnOrigin: absent passes, this origin passes, anything else does not', () => {
+  assert.equal(isOwnOrigin(null, '127.0.0.1:44842', false), true, 'curl and `seedeep restart` send none');
+  assert.equal(isOwnOrigin('http://127.0.0.1:44842', '127.0.0.1:44842', false), true);
+  assert.equal(isOwnOrigin('http://evil.test:44842', '127.0.0.1:44842', false), false);
+  assert.equal(isOwnOrigin('http://127.0.0.1:1234', '127.0.0.1:44842', false), false, 'the port is part of it');
+  assert.equal(isOwnOrigin('https://127.0.0.1:44842', '127.0.0.1:44842', false), false, 'so is the scheme');
+  assert.equal(isOwnOrigin('https://box.local:44842', 'box.local:44842', true), true, 'remote mode, own origin');
+  assert.equal(isOwnOrigin('null', '127.0.0.1:44842', false), false, 'the opaque origin of a sandboxed frame');
+});
+
+test('a request carrying a rebound Host reads nothing, whatever the route', async () => {
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => roster, port: 0 });
+  try {
+    // What the rebinding buys the attacker is that their own page may READ the answer. The fix is
+    // that there is no answer: every route, not only the ones holding sessions.
+    for (const path of ['/api/sessions', '/api/config', '/api/live', '/']) {
+      const res = await fetch(`${srv.url}${path}`, { headers: { host: 'evil.test:44842' } });
+      assert.equal(res.status, 403, `${path} must not answer a rebound host`);
+      assert.ok(!(await res.text()).includes(roster[0]!.sessionId), `${path} leaked a session id`);
+    }
+    // The same routes, asked by name, still answer.
+    assert.equal((await fetch(`${srv.url}/api/sessions`)).status, 200);
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/restart from another origin is refused, and the server stays up', async () => {
+  let spawned = false;
+  let exitCode: number | null = null;
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    spawnSelf: () => {
+      spawned = true;
+    },
+    exit: (code) => {
+      exitCode = code;
+    },
+  });
+  try {
+    const res = await fetch(`${srv.url}/api/restart`, {
+      method: 'POST',
+      headers: { origin: 'http://evil.test:44842' },
+    });
+    assert.equal(res.status, 403);
+    // The status alone would pass on a server that answered 403 and restarted anyway: the handover
+    // is what the attack is for, and it runs on a timer 80ms after the route is reached.
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(spawned, false, 'a refused restart must not spawn a successor');
+    assert.equal(exitCode, null, 'a refused restart must not exit');
+    assert.equal((await fetch(`${srv.url}/api/sessions`)).status, 200, 'the server is still serving');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/restart from the GUI, which sends its own Origin, still restarts', async () => {
+  // The panel calls this with a same-origin fetch, and a browser puts `Origin` on every POST
+  // (MDN, read 2026-09-20). A gate that only allowed an ABSENT origin would break the button.
+  let spawned = false;
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    spawnSelf: () => {
+      spawned = true;
+    },
+    exit: () => {},
+  });
+  try {
+    const own = new URL(srv.url);
+    const res = await fetch(`${srv.url}/api/restart`, {
+      method: 'POST',
+      headers: { origin: `${own.protocol}//${own.host}` },
+    });
+    assert.equal(res.status, 200);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(spawned, true);
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config from another origin is refused, and the config is not written', async () => {
+  // The gate covers every state-changing route, but only /api/restart was pinned, so deleting it
+  // left 20 POST tests green: none of them sends an `Origin`. This is the route the rebinding
+  // chain actually wants, since `notifications.webhook.url` is what turns a read into a feed.
+  const cfg = onDisk({ ...defaultConfig(), port: 44842 });
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, ...cfg });
+  try {
+    const res = await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { origin: 'http://evil.test:44842', 'content-type': 'application/json' },
+      body: JSON.stringify({ port: 9999 }),
+    });
+    assert.equal(res.status, 403);
+    // The status is not the assertion: a server that answered 403 and wrote anyway would pass it.
+    assert.equal(JSON.parse(readFileSync(cfg.configPath, 'utf8')).port, 44842, 'the file must be untouched');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config from the panel, which sends its own Origin, still writes', async () => {
+  const cfg = onDisk({ ...defaultConfig(), port: 44842 });
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, ...cfg });
+  try {
+    const own = new URL(srv.url);
+    const res = await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { origin: `${own.protocol}//${own.host}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ port: 9999 }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(JSON.parse(readFileSync(cfg.configPath, 'utf8')).port, 9999, 'the panel must still be able to save');
+  } finally {
+    srv.stop();
+  }
+});
+
+test("a malformed Host is refused by the gate, and never by Bun's fallback page", async () => {
+  // `new URL(req.url)` used to run FIRST, and Bun puts the bare path in `req.url` when the Host
+  // header is absent, empty or unparseable. The throw reached Bun's own error page, which carries
+  // this file's absolute path, the username inside it and the source lines around the throw, to a
+  // caller holding no token. The assertion is the absence of those bytes, not the status.
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0 });
+  const port = Number(new URL(srv.url).port);
+  const raw = (req: string) =>
+    new Promise<string>((resolve) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(req));
+      let body = '';
+      sock.on('data', (d) => {
+        body += d;
+      });
+      sock.on('close', () => resolve(body));
+      setTimeout(() => {
+        sock.destroy();
+        resolve(body);
+      }, 1500);
+    });
+  try {
+    for (const [name, req] of [
+      ['absent', 'GET /api/sessions HTTP/1.0\r\n\r\n'],
+      ['empty', 'GET /api/sessions HTTP/1.1\r\nHost:\r\nConnection: close\r\n\r\n'],
+      ['unparseable', 'GET /api/sessions HTTP/1.1\r\nHost: [::1\r\nConnection: close\r\n\r\n'],
+    ] as [string, string][]) {
+      const res = await raw(req);
+      assert.ok(
+        res.startsWith('HTTP/1.1 403'),
+        `${name} Host must be refused by the gate, got: ${res.split('\r\n')[0]}`,
+      );
+      // Bun's fallback page carries the payload base64-encoded, so a plain substring search over
+      // the response reports no leak while the bytes are right there. Decode before asserting.
+      const blob = res.match(/binary\/peechy">\s*([A-Za-z0-9+/=\s]+)/)?.[1];
+      const decoded = blob ? Buffer.from(blob.replace(/\s/g, ''), 'base64').toString('latin1') : res;
+      assert.ok(!decoded.includes('/Users/'), `${name} Host leaked an absolute path`);
+      assert.ok(!decoded.includes('server.ts'), `${name} Host leaked this file's name`);
+    }
+  } finally {
+    srv.stop();
+  }
+});
+
+test('beyond loopback the Host gate does not apply: the operator chose the name', async () => {
+  const srv = await startServer({
+    watcher: new EventEmitter(),
+    discover: async () => [],
+    port: 0,
+    host: '0.0.0.0',
+    config: { ...defaultConfig(), auth: { token: 'tok' }, tls: { ...defaultConfig().tls, commonName: 'box.local' } },
+    _skipTls: true,
+  });
+  try {
+    // 401, not 403: it got past the Host gate and was stopped by the token, which is the gate that
+    // belongs to this mode. A 403 here would mean remote mode had been made unreachable by name.
+    const res = await fetch(`${srv.url}/api/sessions`, { headers: { host: 'box.local:44842' } });
+    assert.equal(res.status, 401);
+    const ok = await fetch(`${srv.url}/api/sessions`, {
+      headers: { host: 'box.local:44842', authorization: 'Bearer tok' },
+    });
+    assert.equal(ok.status, 200);
   } finally {
     srv.stop();
   }

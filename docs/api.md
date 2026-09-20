@@ -87,6 +87,22 @@ Every JSON response and every static asset goes through one path:
   ETag carries a `-gz` suffix, so a strong validator is never shared between two different sets of
   bytes.
 
+## Which requests the server answers at all
+
+Two checks run before any route, and both answer `403`.
+
+**The `Host` header**, in loopback mode only. It has to name `127.0.0.1`, `[::1]` or `localhost`.
+On `127.0.0.1` there is no token, and the trust would otherwise rest on the address the server
+bound to, which says nothing about who is calling: a page whose hostname has been re-resolved to
+`127.0.0.1` is same-origin with the server and reads every session. Beyond loopback the check is
+off, since the name is the one the operator configured and the bearer token is the gate.
+
+**The `Origin` header**, on every method other than `GET` and `HEAD`. When it is present it has to
+be this server's own origin, which is `Host` with the scheme in front. Absent passes: a browser
+sends `Origin` on every `POST`, same-origin ones included, so absent means the caller is not a
+page. That is what lets `seedeep restart` and curl work while no page can reach `POST /api/config`
+or `POST /api/restart`.
+
 ## CORS
 
 There are no CORS headers, deliberately: a page on another origin must not be able to read a

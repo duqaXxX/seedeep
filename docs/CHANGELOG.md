@@ -31,6 +31,40 @@ Everything released before `0.20.0` — including the pre-publication developmen
   renamed bundled identifiers differently from 1.4.0 and turned that step red on a main nobody had
   touched. Raising the pin is now a deliberate change that rebuilds the bundle in the same commit.
 
+### Security
+
+- **The loopback server now checks the request, not only the address it bound to.** Trust came
+  from the bind address: `authorised()` returned true for everything that reached a listener on
+  `127.0.0.1`, and no code anywhere read the `Host` header. A page whose hostname has been
+  re-resolved to `127.0.0.1` (DNS rebinding) is same-origin with that listener, so the absent
+  CORS headers stopped nothing, and it could read `/api/sessions` and stream `/api/replay` for
+  every session: prompts, file paths, project names. `isLoopbackHostHeader` now runs before
+  routing and answers `403` unless `Host` names `127.0.0.1`, `[::1]` or `localhost`. Beyond
+  loopback the gate does not apply, because there the token is what authorises and the name is
+  the operator's own.
+- **A page can no longer restart the server.** `POST /api/restart` was gated on path and method
+  alone. `POST /api/config` requires `application/json`, which is not a CORS-safelisted content
+  type and so forces a preflight, but a bodyless POST needs none, so a form or a `no-cors` fetch
+  on any page the user visited reached the handover: listener closed, successor spawned, process
+  exited. Every request that is not `GET` or `HEAD` now answers `403` when it carries an `Origin`
+  that is not this server's own. An absent `Origin` still passes, which is what keeps
+  `seedeep restart` and curl working: browsers add the header to every method other than `GET`
+  and `HEAD`, same-origin requests included.
+
+  Both were found by a security scan of the repository on 2026-09-20 and confirmed by reading the
+  source. Neither was observed in use, and no exploit was run against a live server.
+
+- **A malformed `Host` header no longer answers with Bun's error page.** `new URL(req.url)` ran
+  before both gates, and Bun puts the bare path in `req.url` when the `Host` header is absent,
+  empty or unparseable, so the constructor threw on exactly the requests the gates exist to
+  refuse. Bun then answered with its own fallback page, which carries this file's absolute path,
+  the username inside it and the source lines around the throw: 610 bytes of them, measured over
+  a raw socket, returned before any token was checked, so a caller of a remote-mode server got
+  them without one. The gates now run before the URL is parsed, a request whose line cannot be
+  made absolute answers `400`, and `Bun.serve` carries an `error` handler so no throw, present or
+  future, reaches that page again. The throw predates the two gates; what makes it a defect is
+  their promise to run before any route.
+
 ## 0.32.0 (2026-08-30)
 
 ### Added

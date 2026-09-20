@@ -250,6 +250,65 @@ export function isLoopback(host: string): boolean {
 }
 
 /**
+ * True when the request's `Host` header names this machine's loopback interface.
+ *
+ * In loopback mode the trust comes from the BIND address, which says nothing about the request:
+ * a page whose hostname has been re-resolved to 127.0.0.1 (DNS rebinding) is same-origin with
+ * this server, so the absent CORS headers stop nothing and it reads every session. Checking the
+ * name the client actually asked for is what closes that, and it is what a dev server does
+ * (Vite's `server.allowedHosts`, default: localhost and IP literals).
+ *
+ * The `@` and slash rejection is not decoration: `new URL()` would read `evil.test@127.0.0.1` as
+ * userinfo plus a loopback host, and a `Host` a parser and a browser disagree about is the whole
+ * bug class. A `Host` is mandatory in HTTP/1.1, so an absent one is malformed, not lenient.
+ */
+export function isLoopbackHostHeader(hostHeader: string | null): boolean {
+  // LIMIT: the three literals are the whole allowlist, with no way to widen it. Three legitimate
+  // local setups are refused by it: `*.localhost`, which browsers resolve to loopback natively
+  // (RFC 6761); an alias in the hosts file; and the trailing-dot FQDN form of a NAME, where the
+  // parser is asymmetric — it drops the dot reading an IPv4, so `127.0.0.1.` passes while
+  // `localhost.` does not (measured 2026-09-20). Vite ships `server.allowedHosts` for exactly
+  // this, and seedeep takes its default without the valve. Naming a host means remote mode,
+  // which is already how this project answers that question.
+  if (hostHeader === null || /[@/\\]/.test(hostHeader)) return false;
+  try {
+    // `hostname` keeps the brackets an IPv6 literal is written with (`[::1]`), which is the form
+    // the header carries and not the form `isLoopback` compares against.
+    return isLoopback(new URL(`http://${hostHeader}`).hostname.replace(/^\[|\]$/g, ''));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when `origin` may act on this server: absent, or exactly this server's own origin.
+ *
+ * Absent means no browser sent it — a browser adds `Origin` to every request that is not `GET`
+ * or `HEAD`, same-origin ones included (MDN, read 2026-09-20), so `seedeep restart` and curl
+ * pass while no page can reach a state-changing route by forging one. The comparison is against
+ * the request's own `Host` rather than a name the server holds, because in remote mode the
+ * operator chose that name and only the request knows which one it used.
+ */
+export function isOwnOrigin(origin: string | null, hostHeader: string | null, https: boolean): boolean {
+  if (origin === null) return true;
+  try {
+    const parsed = new URL(origin);
+    // The strict equality is DELIBERATE, and normalizing the right-hand side would weaken it.
+    // `parsed.host` is WHATWG-canonical while `hostHeader` is the raw bytes, so `127.1:44842`
+    // and `0x7f.1:44842` fail here after passing the `Host` gate, which parses them. No browser
+    // can produce that pair: it canonicalizes the URL before emitting either header, so both
+    // arrive already canonical. Only a hand-written client sees it, and refusing it costs
+    // nothing.
+    // LIMIT: a null `hostHeader` (HTTP/1.0, or malformed HTTP/1.1) refuses every state-changing
+    // request carrying an `Origin`, since `parsed.host` is always a string.
+    return parsed.protocol === (https ? 'https:' : 'http:') && parsed.host === hostHeader;
+  } catch {
+    // Includes the opaque `null` origin a sandboxed frame or a `data:` URL sends.
+    return false;
+  }
+}
+
+/**
  * Send `body` with conditional GET and compression negotiated: a strong ETag over the exact
  * bytes (a client that already has them gets 304 and no body) and gzip when the caller
  * accepts it and the body is big enough to be worth it.
@@ -466,6 +525,15 @@ export function selfSpawnPlan(
  * - Enforces `Authorization: Bearer <token>` on all routes except `GET /api/config`.
  * - Sets up a self-signed TLS cert (generated once with openssl, reused on every restart).
  * - Throws if `tls.commonName` is not set (caller must configure it before using a remote host).
+ *
+ * Two gates run before any route, on every `host`, because a loopback bind is not on its own a
+ * statement about who is calling:
+ * - On a loopback `host`, the request's `Host` header must name a loopback literal, or the answer
+ *   is `403` ({@link isLoopbackHostHeader}). Beyond loopback the name is the operator's own and
+ *   the token is the gate, so this one does not apply.
+ * - On any method other than `GET` and `HEAD`, an `Origin` that is present must be this server's
+ *   own, or the answer is `403` ({@link isOwnOrigin}). An absent `Origin` passes, which is what
+ *   keeps non-browser callers such as `seedeep restart` working.
  *
  * Serves the GUI's files from the map compiled into the binary ({@link assetPath}) and exposes
  * read-only endpoints — `/api/sessions`,
@@ -781,8 +849,60 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     hostname: host,
     idleTimeout: 0, // SSE connections are long-lived; do not let Bun close them on idle.
     tls: tlsOpts,
+    // Any throw the handler does not catch, answered as a bare 500. Without this Bun replies with
+    // its own fallback page, which carries the absolute path of this file, the username inside it
+    // and the source lines around the throw — 610 bytes of them, measured 2026-09-20 — to a caller
+    // that has presented no token. The handler is the backstop for what nobody foresaw; a fault
+    // worth telling apart is answered where it happens.
+    error() {
+      return new Response(JSON.stringify({ error: 'internal error' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json;charset=utf-8' },
+      });
+    },
     async fetch(req: Request) {
-      const { pathname } = new URL(req.url);
+      // Rebinding gate, before routing rather than per route: "is this request addressed to the
+      // local server" is not a question a route can answer differently, and a route added later
+      // would have to remember to ask it. Loopback mode only — beyond loopback the token is the
+      // gate and the name is the operator's own.
+      //
+      // It also runs before `new URL(req.url)`, which is not tidiness: Bun puts the bare path in
+      // `req.url` when the `Host` header is absent, empty or unparseable, so parsing first threw
+      // on exactly the malformed requests this gate exists to refuse, and they left by the error
+      // handler above instead of as the 403 this promises.
+      if (loopback && !isLoopbackHostHeader(req.headers.get('host'))) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'host not allowed: seedeep answers only to 127.0.0.1, [::1] and localhost. Set `host` and `tls.commonName` to reach it beyond loopback, which then requires the token.',
+          }),
+          { status: 403, headers: { 'content-type': 'application/json;charset=utf-8' } },
+        );
+      }
+
+      // CSRF gate. The two overlap nowhere: a rebinding request carries a non-loopback `Host` and
+      // is caught above, while a cross-origin POST carries a `Host` that is perfectly valid and is
+      // caught here.
+      const stateChanging = req.method !== 'GET' && req.method !== 'HEAD';
+      if (stateChanging && !isOwnOrigin(req.headers.get('origin'), req.headers.get('host'), tlsOpts !== undefined)) {
+        return new Response(JSON.stringify({ error: 'cross-origin request refused' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json;charset=utf-8' },
+        });
+      }
+
+      // Beyond loopback the gate above does not run, so an unparseable `Host` reaches here and a
+      // request line that cannot be made absolute is malformed: say so, rather than letting the
+      // error handler answer a known fault as an internal one.
+      let pathname: string;
+      try {
+        pathname = new URL(req.url).pathname;
+      } catch {
+        return new Response(JSON.stringify({ error: 'malformed request' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json;charset=utf-8' },
+        });
+      }
 
       // Whether this caller has proven it may see everything. Loopback has no token to present and
       // nothing to prove; otherwise it is the Bearer header, or `?token=` for the EventSource routes
