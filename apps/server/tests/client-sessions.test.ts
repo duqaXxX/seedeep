@@ -23,6 +23,7 @@ const rec = (id: string, isActive: boolean, over: Partial<SessionRecord> = {}): 
   waitingSince: null,
   subject: null,
   entrypoint: null,
+  driven: null,
   root: 'cli',
   path: `/x/${id}.jsonl`,
   ...over,

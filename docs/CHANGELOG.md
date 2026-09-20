@@ -9,6 +9,34 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Fixed
+
+- **A session driven by a script no longer notifies.** The rule that keeps automated runs quiet
+  reads `entrypoint`, which only names the hosts that announce themselves (`sdk-cli`, `sdk-py`).
+  A script that opens the ordinary TUI in a pty and types into it announces nothing: measured on
+  2026-09-20 by driving a real session, its session file matches a human one field for field, and
+  `claude agents --json` carries no more. seedeep's own schema probe is built that way, so every
+  run of it announced a finished turn, and the permission prompt one of its scenes provokes on
+  purpose, to an empty room. On one day of local history, 83 of the 117 interactive sessions that
+  would have notified were driven ones.
+
+  The working directory separates them, because a process inherits it from the one that starts it:
+  a person types `claude` in the shell they are already in, a driver has to place the session
+  elsewhere. `isDrivenSession` compares the session's own process against its parent and the digest
+  carries the answer as `driven`, which `isDriven` turns into a verdict. The comparison reads
+  `/proc` on Linux and `lsof` on macOS; where neither exists, on Windows above all, or where the
+  parent has exited, the answer is unknown, and unknown is read as a person so the session notifies
+  as before. Both subprocesses are bounded by the same five-second kill `git.ts` uses, and a
+  failure that is not an exited process is logged once, so a machine without `lsof` says so instead
+  of silently classifying nothing.
+
+  Two things it deliberately does not do. It does not read the parent's name, which would mean
+  keeping a list of runtimes that changes with the environment, and it does not compare terminals,
+  which would file a terminal configured to launch `claude` directly as a driver. Both directories
+  come from the running processes rather than from the transcript: the transcript's first line
+  names where a session was FIRST opened, and `--resume` appends to that same file from wherever
+  you run it, so a session resumed one directory down would have read as driven and gone silent.
+
 ### Added
 
 - Two structural gates, both of which a pull request now has to pass.

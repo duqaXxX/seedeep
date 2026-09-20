@@ -132,6 +132,7 @@ function recordFor(path: string): SessionRecord {
     waitingSince: null,
     subject: 'first prompt',
     entrypoint: 'cli',
+    driven: null,
     root: 'cli',
     path,
   };

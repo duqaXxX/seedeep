@@ -44,6 +44,7 @@ function session(root: string, name: string, body = 'x'): SessionRecord {
     waitingSince: null,
     subject: null,
     entrypoint: null,
+    driven: null,
     root: 'cli',
     path,
   };

@@ -1,5 +1,5 @@
 {
-  "_note": "Claude Code versions the schema probe has passed, with what each run actually covered. A version is listed ONLY when every claim the probe can prove by itself holds — 'nothing broke' is not 'I checked'. `open` lists claims certification does NOT cover: they need the manual checklist the run prints. The probe runs only on a version absent from here, so the guard cannot be forgotten.",
+  "_note": "Claude Code versions the schema probe has passed, with what each run actually covered. A version is listed ONLY when every claim the probe can prove by itself holds — 'nothing broke' is not 'I checked'. `open` lists claims certification does NOT cover: they need the manual checklist the run prints. The probe runs only on a version absent from here, so the guard cannot be forgotten. `retired` lists claims whose scene Claude Code no longer offers any way to cause: they are not pending, and the reader they name stays for sessions written while the shape still existed.",
   "versions": {
     "2.1.212": {
       "certifiedAt": "2026-07-17",
@@ -21,6 +21,15 @@
         "C18",
         "C21",
         "C22"
+      ]
+    },
+    "2.1.278": {
+      "certifiedAt": "2026-09-20",
+      "proven": 29,
+      "open": [],
+      "retired": [
+        "C18",
+        "C21"
       ]
     }
   }

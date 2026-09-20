@@ -47,6 +47,7 @@ const roster: SessionRecord[] = [
     waitingSince: null,
     subject: null,
     entrypoint: null,
+    driven: null,
     root: 'cli',
     path: '/x/a.jsonl',
   },
@@ -266,6 +267,7 @@ test('GET /api/retro and /api/baseline serve the aggregate from a real temp corp
       waitingSince: null,
       subject: null,
       entrypoint: null,
+      driven: null,
       root: 'cli',
       path: sessionPath,
     },
@@ -1341,6 +1343,7 @@ test('GET /api/search returns the sessions whose DIALOGUE holds every term', asy
     waitingSince: null,
     subject: 'do ' + id,
     entrypoint: 'cli',
+    driven: null,
     root: 'cli',
     path: join(dir, id + '.jsonl'),
   }));

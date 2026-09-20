@@ -198,6 +198,14 @@ and effort, the turn's state (`done` | `interrupted` | `live`) and what it is do
 background commands, the subagents, an `error` block when the last call failed, and `waiting` when
 the session is stopped on the user.
 
+It also carries the two facts that say whether anybody is sitting at the session: `entrypoint`
+(`cli` for an interactive terminal session, `claude-desktop` for the desktop app's Code tab, which
+somebody is also sitting at, and `sdk-cli` or `sdk-py` for a headless run) and `driven`, true when
+the session's process works in a directory other than the one its parent process works in, which
+is what a script driving the TUI through a pty looks like. `driven` is `null` when the server
+could not tell, and null means a person. Both are the FACT, not a verdict: the server applies them
+to its own notifications, and a client that notifies decides for itself.
+
 There is no cap on anything in it: sixteen concurrent agents is a legitimate session, and a client
 that draws fewer is making that choice itself.
 

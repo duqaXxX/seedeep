@@ -102,6 +102,13 @@ export interface DigestEntry {
    */
   entrypoint: string | null;
   /**
+   * The session is driven by a program rather than typed into: its process works in a directory
+   * other than the one its parent process works in (see `session-launch.ts`). `null` is unknown,
+   * which every reader must treat as a person, through `isDriven`. The FACT, like `entrypoint`
+   * above: what to do with it is the reader's call.
+   */
+  driven: boolean | null;
+  /**
    * The highest line number applied on ANY of the session's files. NOT a change sentinel: each
    * file has its own seq space starting at 0, so a burst that only moved a subagent's transcript
    * leaves this untouched while the state changes. The ETag is what says "nothing changed".
@@ -301,6 +308,7 @@ export function digestEntry(
     project: rec.project,
     subject: rec.subject,
     entrypoint: rec.entrypoint,
+    driven: rec.driven,
     seq: snap.seq,
     status: rec.status,
     waitingFor: rec.waitingFor,

@@ -706,6 +706,12 @@ is a way of not lying about when something happened:
 - An automated run never announces at all. A notification asks somebody to get up, and nobody is
   sitting at a `claude -p`. It is the one rule applied to the detector's INPUT rather than to its
   output, so such a session has no remembered state that a later change could make announceable.
+- A session a script drives through a pty is dropped by the same filter, on a different test.
+  Claude Code writes `cli` for it, exactly as for a person, so the entrypoint cannot separate the
+  two; the working directory can, because a process inherits its parent's and a driver has to place
+  the session elsewhere. `isDrivenSession` compares the session's process against its parent and
+  the digest carries it as `driven`. Where the comparison cannot be made, including on Windows, the
+  answer is unknown, and `isDriven` is what keeps unknown on the person's side.
 - A failure announces once, and re-arms on recovery. Still-broken is not news on the next tick,
   and only a successful call, which clears the server's `error`, makes the next failure
   announceable. A session that breaks while it was ALSO stopped on the user raises **one** banner,

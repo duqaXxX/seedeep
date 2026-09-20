@@ -9,6 +9,7 @@ import { deriveStatus } from './derived-status.ts';
 import { listOpenSessions, type OpenSession } from './open-sessions.ts';
 import { CONTROL_COMMANDS, userLineIntent } from './parser.ts';
 import { cliRoot, slugToProject } from './roots.ts';
+import { isDrivenSession } from './session-launch.ts';
 
 export interface DiscoverOptions {
   home?: string;
@@ -192,6 +193,11 @@ async function recordFor(
     waitingSince: open?.waitingSince ?? derived?.waitingSince ?? null,
     subject: meta.subject ?? null,
     entrypoint: meta.entrypoint ?? null,
+    // Only a live session has a process to ask. Both directories are read from the processes
+    // themselves, never from the transcript, so a session resumed elsewhere is not mistaken for a
+    // driven one. Answered once per session and then served from cache, so the re-discovery tick
+    // does not pay for it again.
+    driven: open === null ? null : await isDrivenSession(sessionId, open.pid),
     root,
     path,
   };

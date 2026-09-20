@@ -21,6 +21,7 @@ const rec = (id: string, over: Partial<SessionRecord> & { lastActivity: number }
   waitingSince: null,
   subject: null,
   entrypoint: 'cli',
+  driven: null,
   root: 'cli',
   path: `/x/${id}.jsonl`,
   ...over,

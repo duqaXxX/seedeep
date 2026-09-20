@@ -21,6 +21,7 @@ function rec(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
     waitingSince: null,
     subject: 'do ' + id,
     entrypoint: 'cli',
+    driven: null,
     root: 'cli',
     path: '/p/' + id + '.jsonl',
     ...over,

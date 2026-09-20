@@ -31,6 +31,7 @@ apps/server/src/server/own-server.ts
 apps/server/src/server/restart-cmd.ts
 apps/server/src/server/self-update-cmd.ts
 apps/server/src/server/server.ts
+apps/server/src/server/session-launch.ts
 apps/server/src/server/tls.ts'
 
 # A bare `exec(` is absent on purpose: RegExp.prototype.exec accounts for 37 call sites here, and a

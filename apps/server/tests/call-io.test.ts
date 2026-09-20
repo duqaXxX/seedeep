@@ -146,6 +146,7 @@ const roster = (path: string): SessionRecord[] => [
     waitingSince: null,
     subject: null,
     entrypoint: null,
+    driven: null,
     root: 'cli',
     path,
   },

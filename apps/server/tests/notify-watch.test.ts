@@ -21,6 +21,7 @@ function entry(o: {
   apiCalls?: number;
   nowText?: string;
   entrypoint?: string | null;
+  driven?: boolean | null;
 }): DigestEntry {
   return {
     sessionId: o.id as string,
@@ -28,6 +29,8 @@ function entry(o: {
     // Defaults to the interactive terminal, which is what every test above is about. Written out
     // rather than left undefined so a reader can see that `isAutomated` is being asked something.
     entrypoint: o.entrypoint === undefined ? 'cli' : o.entrypoint,
+    // Same reason: a session somebody typed into. `null` is its own case, tested below.
+    driven: o.driven === undefined ? false : o.driven,
     subject: 'add a retry to the uploader',
     status: o.status,
     waitingFor: o.waitingFor ?? null,
@@ -272,6 +275,7 @@ test('Esc produces no finish, in both shapes the transcript writes', () => {
         waitingSince: null,
         subject: 'add a retry to the uploader',
         entrypoint: null,
+        driven: null,
         root: 'cli',
         path: '/synthetic/s1.jsonl',
       },
@@ -329,6 +333,39 @@ test('a headless run never announces — there is nobody at it to get up', () =>
       entry({ id: 'a', status: 'busy', error: { agentId: null, message: 'boom' }, entrypoint: ep }),
     ]);
     assert.deepEqual(f, [], `${ep} failure`);
+  }
+});
+
+test('a session a script drives through a pty never announces either', () => {
+  // The case `entrypoint` cannot see: a driver opens the ORDINARY TUI in a pty and types into it,
+  // so Claude Code writes `cli`, exactly as it does for a person (measured 2026-09-20: the session
+  // file of a driven run matches a human one field by field). seedeep's own probe is built that
+  // way, and each run announced a finished turn — and the permission prompt one of its scenes
+  // provokes on purpose, to certify the waiting-for-approval shape — with nobody there.
+  for (const kind of ['finish', 'wait', 'failure'] as const) {
+    const w = createNotifyWatch();
+    w.step([entry({ id: 'a', status: 'busy', driven: true })]);
+    const next =
+      kind === 'finish'
+        ? entry({ id: 'a', status: 'idle', driven: true })
+        : kind === 'wait'
+          ? entry({ id: 'a', status: 'waiting', waitingFor: 'permission prompt', driven: true })
+          : entry({ id: 'a', status: 'busy', error: { agentId: null, message: 'boom' }, driven: true });
+    assert.deepEqual(w.step([next]), [], kind);
+  }
+});
+
+test('an unknown launch directory announces: null is a person, never a driver', () => {
+  // `driven` is null whenever the comparison could not be made — a platform without the
+  // mechanism, a parent that exited, a transcript whose first line carried no cwd. Reading that
+  // as "driven" would silence a real session on the day the mechanism stops answering, which is
+  // the failure the entrypoint rule already refuses to make.
+  for (const driven of [null, false]) {
+    const w = createNotifyWatch();
+    w.step([entry({ id: 'a', status: 'busy', driven })]);
+    const out = w.step([entry({ id: 'a', status: 'idle', driven })]);
+    assert.equal(out.length, 1, `driven=${driven}`);
+    assert.equal(out[0]!.kind, 'finishes');
   }
 });
 
