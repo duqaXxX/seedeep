@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -1234,6 +1235,49 @@ test('POST /api/config from the panel, which sends its own Origin, still writes'
     });
     assert.equal(res.status, 200);
     assert.equal(JSON.parse(readFileSync(cfg.configPath, 'utf8')).port, 9999, 'the panel must still be able to save');
+  } finally {
+    srv.stop();
+  }
+});
+
+test("a malformed Host is refused by the gate, and never by Bun's fallback page", async () => {
+  // `new URL(req.url)` used to run FIRST, and Bun puts the bare path in `req.url` when the Host
+  // header is absent, empty or unparseable. The throw reached Bun's own error page, which carries
+  // this file's absolute path, the username inside it and the source lines around the throw, to a
+  // caller holding no token. The assertion is the absence of those bytes, not the status.
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0 });
+  const port = Number(new URL(srv.url).port);
+  const raw = (req: string) =>
+    new Promise<string>((resolve) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(req));
+      let body = '';
+      sock.on('data', (d) => {
+        body += d;
+      });
+      sock.on('close', () => resolve(body));
+      setTimeout(() => {
+        sock.destroy();
+        resolve(body);
+      }, 1500);
+    });
+  try {
+    for (const [name, req] of [
+      ['absent', 'GET /api/sessions HTTP/1.0\r\n\r\n'],
+      ['empty', 'GET /api/sessions HTTP/1.1\r\nHost:\r\nConnection: close\r\n\r\n'],
+      ['unparseable', 'GET /api/sessions HTTP/1.1\r\nHost: [::1\r\nConnection: close\r\n\r\n'],
+    ] as [string, string][]) {
+      const res = await raw(req);
+      assert.ok(
+        res.startsWith('HTTP/1.1 403'),
+        `${name} Host must be refused by the gate, got: ${res.split('\r\n')[0]}`,
+      );
+      // Bun's fallback page carries the payload base64-encoded, so a plain substring search over
+      // the response reports no leak while the bytes are right there. Decode before asserting.
+      const blob = res.match(/binary\/peechy">\s*([A-Za-z0-9+/=\s]+)/)?.[1];
+      const decoded = blob ? Buffer.from(blob.replace(/\s/g, ''), 'base64').toString('latin1') : res;
+      assert.ok(!decoded.includes('/Users/'), `${name} Host leaked an absolute path`);
+      assert.ok(!decoded.includes('server.ts'), `${name} Host leaked this file's name`);
+    }
   } finally {
     srv.stop();
   }

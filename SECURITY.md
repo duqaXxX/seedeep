@@ -38,9 +38,11 @@ The interesting surface is small, and specific:
   downgrades or bypasses the TLS requirement, or that makes the server listen beyond
   loopback without the operator having asked for it.
 - **The server on loopback, reached from a browser.** On `127.0.0.1` there is no token:
-  a request is trusted because it names this machine and carries either no `Origin` header or
-  one that is this server's own. The absent case is the whole non-browser path, `seedeep restart`
-  and curl included ([what those two checks do](docs/api.md#which-requests-the-server-answers-at-all)).
+  a request is trusted because it names this machine, and on anything other than `GET` and
+  `HEAD` it must carry either no `Origin` header or one that is this server's own. The absent
+  case is the whole non-browser path, `seedeep restart` and curl included. A cross-origin `GET`
+  is answered: what keeps the page from reading it is the same-origin policy and the absence of
+  CORS headers ([what those checks do](docs/api.md#which-requests-the-server-answers-at-all)).
   So anything that gets a page the user merely visited to read a session or change the
   configuration is in scope, DNS rebinding included. An attacker who is already the local
   user is not (see below).

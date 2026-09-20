@@ -263,9 +263,11 @@ export function isLoopback(host: string): boolean {
  * bug class. A `Host` is mandatory in HTTP/1.1, so an absent one is malformed, not lenient.
  */
 export function isLoopbackHostHeader(hostHeader: string | null): boolean {
-  // LIMIT: the three literals are the whole allowlist, with no way to widen it. Two legitimate
+  // LIMIT: the three literals are the whole allowlist, with no way to widen it. Three legitimate
   // local setups are refused by it: `*.localhost`, which browsers resolve to loopback natively
-  // (RFC 6761), and an alias in the hosts file. Vite ships `server.allowedHosts` for exactly
+  // (RFC 6761); an alias in the hosts file; and the trailing-dot FQDN form of a NAME, where the
+  // parser is asymmetric — it drops the dot reading an IPv4, so `127.0.0.1.` passes while
+  // `localhost.` does not (measured 2026-09-20). Vite ships `server.allowedHosts` for exactly
   // this, and seedeep takes its default without the valve. Naming a host means remote mode,
   // which is already how this project answers that question.
   if (hostHeader === null || /[@/\\]/.test(hostHeader)) return false;
@@ -847,13 +849,27 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     hostname: host,
     idleTimeout: 0, // SSE connections are long-lived; do not let Bun close them on idle.
     tls: tlsOpts,
+    // Any throw the handler does not catch, answered as a bare 500. Without this Bun replies with
+    // its own fallback page, which carries the absolute path of this file, the username inside it
+    // and the source lines around the throw — 610 bytes of them, measured 2026-09-20 — to a caller
+    // that has presented no token. The handler is the backstop for what nobody foresaw; a fault
+    // worth telling apart is answered where it happens.
+    error() {
+      return new Response(JSON.stringify({ error: 'internal error' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json;charset=utf-8' },
+      });
+    },
     async fetch(req: Request) {
-      const { pathname } = new URL(req.url);
-
       // Rebinding gate, before routing rather than per route: "is this request addressed to the
       // local server" is not a question a route can answer differently, and a route added later
       // would have to remember to ask it. Loopback mode only — beyond loopback the token is the
       // gate and the name is the operator's own.
+      //
+      // It also runs before `new URL(req.url)`, which is not tidiness: Bun puts the bare path in
+      // `req.url` when the `Host` header is absent, empty or unparseable, so parsing first threw
+      // on exactly the malformed requests this gate exists to refuse, and they left by the error
+      // handler above instead of as the 403 this promises.
       if (loopback && !isLoopbackHostHeader(req.headers.get('host'))) {
         return new Response(
           JSON.stringify({
@@ -871,6 +887,19 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       if (stateChanging && !isOwnOrigin(req.headers.get('origin'), req.headers.get('host'), tlsOpts !== undefined)) {
         return new Response(JSON.stringify({ error: 'cross-origin request refused' }), {
           status: 403,
+          headers: { 'content-type': 'application/json;charset=utf-8' },
+        });
+      }
+
+      // Beyond loopback the gate above does not run, so an unparseable `Host` reaches here and a
+      // request line that cannot be made absolute is malformed: say so, rather than letting the
+      // error handler answer a known fault as an internal one.
+      let pathname: string;
+      try {
+        pathname = new URL(req.url).pathname;
+      } catch {
+        return new Response(JSON.stringify({ error: 'malformed request' }), {
+          status: 400,
           headers: { 'content-type': 'application/json;charset=utf-8' },
         });
       }
