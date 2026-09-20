@@ -250,6 +250,50 @@ export function isLoopback(host: string): boolean {
 }
 
 /**
+ * True when the request's `Host` header names this machine's loopback interface.
+ *
+ * In loopback mode the trust comes from the BIND address, which says nothing about the request:
+ * a page whose hostname has been re-resolved to 127.0.0.1 (DNS rebinding) is same-origin with
+ * this server, so the absent CORS headers stop nothing and it reads every session. Checking the
+ * name the client actually asked for is what closes that, and it is what a dev server does
+ * (Vite's `server.allowedHosts`, default: localhost and IP literals).
+ *
+ * The `@` and slash rejection is not decoration: `new URL()` would read `evil.test@127.0.0.1` as
+ * userinfo plus a loopback host, and a `Host` a parser and a browser disagree about is the whole
+ * bug class. A `Host` is mandatory in HTTP/1.1, so an absent one is malformed, not lenient.
+ */
+export function isLoopbackHostHeader(hostHeader: string | null): boolean {
+  if (hostHeader === null || /[@/\\]/.test(hostHeader)) return false;
+  try {
+    // `hostname` keeps the brackets an IPv6 literal is written with (`[::1]`), which is the form
+    // the header carries and not the form `isLoopback` compares against.
+    return isLoopback(new URL(`http://${hostHeader}`).hostname.replace(/^\[|\]$/g, ''));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when `origin` may act on this server: absent, or exactly this server's own origin.
+ *
+ * Absent means no browser sent it — a browser adds `Origin` to every request that is not `GET`
+ * or `HEAD`, same-origin ones included (MDN, read 2026-09-20), so `seedeep restart` and curl
+ * pass while no page can reach a state-changing route by forging one. The comparison is against
+ * the request's own `Host` rather than a name the server holds, because in remote mode the
+ * operator chose that name and only the request knows which one it used.
+ */
+export function isOwnOrigin(origin: string | null, hostHeader: string | null, https: boolean): boolean {
+  if (origin === null) return true;
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === (https ? 'https:' : 'http:') && parsed.host === hostHeader;
+  } catch {
+    // Includes the opaque `null` origin a sandboxed frame or a `data:` URL sends.
+    return false;
+  }
+}
+
+/**
  * Send `body` with conditional GET and compression negotiated: a strong ETag over the exact
  * bytes (a client that already has them gets 304 and no body) and gzip when the caller
  * accepts it and the body is big enough to be worth it.
@@ -783,6 +827,32 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
     tls: tlsOpts,
     async fetch(req: Request) {
       const { pathname } = new URL(req.url);
+
+      // Rebinding gate, before routing rather than per route: "is this request addressed to the
+      // local server" is not a question a route can answer differently, and a route added later
+      // would have to remember to ask it. Loopback mode only — beyond loopback the token is the
+      // gate and the name is the operator's own.
+      if (loopback && !isLoopbackHostHeader(req.headers.get('host'))) {
+        return new Response(
+          JSON.stringify({
+            error: 'host not allowed',
+            detail:
+              'seedeep answers only to 127.0.0.1, [::1] and localhost. Reach it beyond loopback by setting `host` and `tls.commonName`, which requires the token.',
+          }),
+          { status: 403, headers: { 'content-type': 'application/json;charset=utf-8' } },
+        );
+      }
+
+      // CSRF gate. A rebound page passes the check above only in the cases the check above cannot
+      // see, so these two overlap nowhere: after a rebinding the page IS this origin, and a
+      // cross-origin POST carries a `Host` that is perfectly valid.
+      const stateChanging = req.method !== 'GET' && req.method !== 'HEAD';
+      if (stateChanging && !isOwnOrigin(req.headers.get('origin'), req.headers.get('host'), tlsOpts !== undefined)) {
+        return new Response(JSON.stringify({ error: 'cross-origin request refused' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json;charset=utf-8' },
+        });
+      }
 
       // Whether this caller has proven it may see everything. Loopback has no token to present and
       // nothing to prove; otherwise it is the Bearer header, or `?token=` for the EventSource routes

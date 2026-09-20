@@ -31,6 +31,29 @@ Everything released before `0.20.0` — including the pre-publication developmen
   renamed bundled identifiers differently from 1.4.0 and turned that step red on a main nobody had
   touched. Raising the pin is now a deliberate change that rebuilds the bundle in the same commit.
 
+### Security
+
+- **The loopback server now checks the request, not only the address it bound to.** Trust came
+  from the bind address: `authorised()` returned true for everything that reached a listener on
+  `127.0.0.1`, and no code anywhere read the `Host` header. A page whose hostname has been
+  re-resolved to `127.0.0.1` (DNS rebinding) is same-origin with that listener, so the absent
+  CORS headers stopped nothing, and it could read `/api/sessions` and stream `/api/replay` for
+  every session: prompts, file paths, project names. `isLoopbackHostHeader` now runs before
+  routing and answers `403` unless `Host` names `127.0.0.1`, `[::1]` or `localhost`. Beyond
+  loopback the gate does not apply, because there the token is what authorises and the name is
+  the operator's own.
+- **A page can no longer restart the server.** `POST /api/restart` was gated on path and method
+  alone. `POST /api/config` requires `application/json`, which is not a CORS-safelisted content
+  type and so forces a preflight, but a bodyless POST needs none, so a form or a `no-cors` fetch
+  on any page the user visited reached the handover: listener closed, successor spawned, process
+  exited. Every request that is not `GET` or `HEAD` now answers `403` when it carries an `Origin`
+  that is not this server's own. An absent `Origin` still passes, which is what keeps
+  `seedeep restart` and curl working: browsers add the header to every method other than `GET`
+  and `HEAD`, same-origin requests included.
+
+  Both were found by a security scan of the repository on 2026-09-20 and confirmed by reading the
+  source. Neither was observed in use, and no exploit was run against a live server.
+
 ## 0.32.0 (2026-08-30)
 
 ### Added
