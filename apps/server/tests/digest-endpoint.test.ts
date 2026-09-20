@@ -143,6 +143,7 @@ function record(path: string, over: Partial<SessionRecord> = {}): SessionRecord 
     waitingSince: null,
     subject: 'first prompt',
     entrypoint: 'cli',
+    driven: null,
     root: 'cli',
     path,
     ...over,

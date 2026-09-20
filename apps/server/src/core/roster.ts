@@ -138,6 +138,9 @@ function ended(c: CatalogueRecord, pidVisible: boolean, now: number): SessionRec
     model: c.model,
     subject: c.subject,
     entrypoint: c.entrypoint,
+    // Unknown, and never false: the comparison needs a running process, and this record is for a
+    // session that has ended. Nothing announces about an ended session anyway.
+    driven: null,
     root: c.root,
     path: c.path,
     lastActivity,

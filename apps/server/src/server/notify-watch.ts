@@ -154,8 +154,9 @@ function finishedAnnouncement(e: DigestEntry): Announcement | null {
  * Ported from the tray, which owned it while it was the only thing that notified. Five rules travel
  * with it, and each exists because something went wrong once:
  *
- * - **Nobody is sitting at an automated run**, so it never reaches the detector at all — see the
- *   filter in `step`, which is the one thing here that touches the INPUT.
+ * - **Nobody is sitting at an automated run**, nor at one a script drives through a pty, so
+ *   neither reaches the detector at all — see the filter in `step`, which is the one thing here
+ *   that touches the INPUT.
  * - **Seeding.** `null` until a reading has actually been made, and back to `null` after any reading
  *   that could not be. A session already waiting when this starts — or when it restarts — is not
  *   something that just happened, and saying so would misdate it.
@@ -191,8 +192,16 @@ export function createNotifyWatch(): { step(entries: DigestEntry[] | null): Anno
       // publish no status, so a session that never left `null` could not transition and the
       // detector never saw one. Deriving their state from the transcript gave them the busy→idle
       // they had always lacked, and every git push started announcing `Turn finished`.
+      //
+      // A DRIVEN session is dropped for the same reason and by the same rule, one step further
+      // out: `isAutomated` only knows the hosts that announce themselves (`entrypoint` starting
+      // with `sdk`), and a script that opens the ordinary TUI in a pty announces nothing — it
+      // writes `entrypoint: "cli"`, exactly like a person. seedeep's own probe is built that way,
+      // and every run of it announced a finished turn, and a pending approval, to an empty room.
+      // `driven` is the directory comparison that separates the two (see session-launch.ts); it
+      // is `null` whenever that comparison could not be made, and null must behave like a person.
       const identified = entries.filter(
-        (e) => typeof e.sessionId === 'string' && e.sessionId.length > 0 && !isAutomated(e),
+        (e) => typeof e.sessionId === 'string' && e.sessionId.length > 0 && !isAutomated(e) && e.driven !== true,
       );
       const before = seen;
       seen = {

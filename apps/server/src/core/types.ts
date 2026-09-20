@@ -213,6 +213,12 @@ export interface SessionRecord {
   // with the interactive ones. What it shares with the headless runs is only that Claude Code is
   // driven over stream-json there, which is why neither publishes a status (see statusDerived).
   entrypoint: string | null;
+  // The session was started BY A PROGRAM rather than typed into: its launch directory differs
+  // from the working directory of the process that started it (see isDrivenSession). `null` is
+  // "unknown" — a closed session, a platform that cannot answer, an unreadable parent — and is
+  // never read as "no". Only the notification detector acts on it: a driven session is still a
+  // session, and every surface still lists it.
+  driven: boolean | null;
   root: Root;
   path: string;
 }

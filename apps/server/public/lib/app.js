@@ -1639,6 +1639,7 @@ function ended(c, pidVisible, now) {
     model: c.model,
     subject: c.subject,
     entrypoint: c.entrypoint,
+    driven: null,
     root: c.root,
     path: c.path,
     lastActivity,

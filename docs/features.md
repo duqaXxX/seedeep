@@ -909,3 +909,21 @@ otherwise announce a finished turn every time. The rule is the picker's own Huma
 (`entrypoint` starting with `sdk`), so the same sessions the picker files under Automated are the
 ones that stay silent. The desktop app's **Code** tab is not one of them, since somebody is
 sitting at it; what it shares with a headless run is only how Claude Code is driven there.
+
+A session a **script drives through a pty** stays silent too, and it takes a second rule to see
+it. Claude Code records such a session as `cli`, the entrypoint a person gets, because it is an
+ordinary interactive session that happens to be typed into by a program: its session file matches
+a human one field for field. What separates them is the directory. A process inherits the working
+directory of the one that starts it, so somebody who types `claude` in their shell launches it
+where that shell already is, while a driver has to place the session somewhere else for the run to
+mean anything. seedeep compares the directory the session started in, which is the first
+transcript line carrying one, against the working directory of the process that started it;
+`isDrivenSession` in `apps/server/src/server/session-launch.ts` makes that comparison and the
+digest carries the answer as `driven`. This is what keeps seedeep's own schema probe quiet, since
+it drives a real session in a temporary directory from a process sitting in the repository.
+
+The comparison reads `/proc` on Linux and runs `lsof` on macOS, and there is no equivalent on
+Windows, so the answer is often simply unknown: a parent that has exited, a session whose first
+line is not written yet, a platform with neither mechanism. **Unknown is read as a person**, and
+such a session notifies exactly as it did before. The two mistakes are not worth the same: one
+banner too many is noise, while one too few is an approval nobody comes back to answer.

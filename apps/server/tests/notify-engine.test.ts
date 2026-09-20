@@ -130,6 +130,7 @@ test('the server really emits a notification on the stream when a session stops 
     waitingSince: null,
     subject: 'add a retry to the uploader',
     entrypoint: 'cli',
+    driven: null,
     root: 'cli',
     path: '/x/S1.jsonl',
   });

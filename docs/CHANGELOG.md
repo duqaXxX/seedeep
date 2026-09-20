@@ -9,6 +9,30 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Fixed
+
+- **A session driven by a script no longer notifies.** The rule that keeps automated runs quiet
+  reads `entrypoint`, which only names the hosts that announce themselves (`sdk-cli`, `sdk-py`).
+  A script that opens the ordinary TUI in a pty and types into it announces nothing: measured on
+  2026-09-20 by driving a real session, its session file matches a human one field for field, and
+  `claude agents --json` carries no more. seedeep's own schema probe is built that way, so every
+  run of it announced a finished turn, and the permission prompt one of its scenes provokes on
+  purpose, to an empty room. On one day of local history, 83 of the 117 interactive sessions that
+  would have notified were driven ones.
+
+  The launch directory separates them, because a process inherits the working directory of the one
+  that starts it: a person types `claude` in the shell they are already in, a driver has to place
+  the session elsewhere. `isDrivenSession` compares the two and the digest carries the answer as
+  `driven`. The comparison reads `/proc` on Linux and `lsof` on macOS; where neither exists, on
+  Windows above all, or where the parent has exited, the answer is unknown, and unknown is read as
+  a person so the session notifies as before.
+
+  Two things it deliberately does not do. It does not read the parent's name, which would mean
+  keeping a list of runtimes that changes with the environment, and it does not compare terminals,
+  which would file a terminal configured to launch `claude` directly as a driver. It also takes the
+  directory from the first transcript line rather than from the session file, because `/cd` rewrites
+  that file and moves the transcript, while the first line stays what it was.
+
 ### Added
 
 - Two structural gates, both of which a pull request now has to pass.
