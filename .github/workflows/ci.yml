@@ -33,7 +33,9 @@ jobs:
       # The range is computed in the shell and the refs arrive through the environment, never
       # interpolated into the script: a branch name on a pull request from a fork is attacker-
       # controlled text, and `${{ }}` inside a `run:` block would paste it straight into bash.
-      - name: Scan the pushed changes
+      # Computed once and written to a file, because more than one gate reads the same range and
+      # duplicating the logic below would mean maintaining the fork-ref handling twice.
+      - name: Compute the pushed range
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
@@ -51,7 +53,16 @@ jobs:
           else
             # First push of a branch, or a force-push whose old tip is gone: scan the tip commit.
             git show "$SHA"
-          fi | bash .github/scripts/scan-sensitive-diff.sh
+          fi > "$RUNNER_TEMP/pushed.diff"
+
+      - name: Scan the pushed changes
+        run: bash .github/scripts/scan-sensitive-diff.sh < "$RUNNER_TEMP/pushed.diff"
+
+      # seedeep READS local session logs. A pull request that teaches the reading path to open a
+      # socket or start a process is a change of kind, not of degree, so it stops here and gets
+      # looked at by a person rather than riding along in a large diff.
+      - name: No new network or process surface
+        run: bash .github/scripts/scan-new-io-surface.sh < "$RUNNER_TEMP/pushed.diff"
 
   check:
     name: Tests, types, client bundle
