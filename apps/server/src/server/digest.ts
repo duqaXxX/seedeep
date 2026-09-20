@@ -102,10 +102,10 @@ export interface DigestEntry {
    */
   entrypoint: string | null;
   /**
-   * The session is driven by a program rather than typed into: it was launched in a directory
+   * The session is driven by a program rather than typed into: its process works in a directory
    * other than the one its parent process works in (see `session-launch.ts`). `null` is unknown,
-   * which every reader must treat as a person. The FACT, like `entrypoint` above: what to do with
-   * it is the reader's call, and today only the notification detector makes one.
+   * which every reader must treat as a person, through `isDriven`. The FACT, like `entrypoint`
+   * above: what to do with it is the reader's call.
    */
   driven: boolean | null;
   /**

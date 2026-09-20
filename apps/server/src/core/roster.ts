@@ -139,7 +139,8 @@ function ended(c: CatalogueRecord, pidVisible: boolean, now: number): SessionRec
     subject: c.subject,
     entrypoint: c.entrypoint,
     // Unknown, and never false: the comparison needs a running process, and this record is for a
-    // session that has ended. Nothing announces about an ended session anyway.
+    // session that has ended. Nothing in the detector can fire on it either, since `ended()` sets
+    // `status: null`, so the session enters none of the sets a transition is read from.
     driven: null,
     root: c.root,
     path: c.path,

@@ -916,14 +916,15 @@ ordinary interactive session that happens to be typed into by a program: its ses
 a human one field for field. What separates them is the directory. A process inherits the working
 directory of the one that starts it, so somebody who types `claude` in their shell launches it
 where that shell already is, while a driver has to place the session somewhere else for the run to
-mean anything. seedeep compares the directory the session started in, which is the first
-transcript line carrying one, against the working directory of the process that started it;
-`isDrivenSession` in `apps/server/src/server/session-launch.ts` makes that comparison and the
-digest carries the answer as `driven`. This is what keeps seedeep's own schema probe quiet, since
+mean anything. seedeep compares the working directory of the session's own process against that
+of the process that started it; `isDrivenSession` in `apps/server/src/server/session-launch.ts`
+makes that comparison and the digest carries the answer as `driven`. Both sides are read from the
+running processes rather than from the transcript, so a session resumed from another directory
+answers about the run in front of you instead of the one it was first opened in. This is what keeps seedeep's own schema probe quiet, since
 it drives a real session in a temporary directory from a process sitting in the repository.
 
 The comparison reads `/proc` on Linux and runs `lsof` on macOS, and there is no equivalent on
-Windows, so the answer is often simply unknown: a parent that has exited, a session whose first
-line is not written yet, a platform with neither mechanism. **Unknown is read as a person**, and
+Windows, so the answer is often simply unknown: a parent that has exited, a process not readable
+yet, a platform with neither mechanism. **Unknown is read as a person** (`isDriven`), and
 such a session notifies exactly as it did before. The two mistakes are not worth the same: one
 banner too many is noise, while one too few is an approval nobody comes back to answer.

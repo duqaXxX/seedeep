@@ -254,7 +254,7 @@ interface SessionRecord {
   waitingSince: number | null; // and when it stopped there (CC's statusUpdatedAt)
   subject: string | null;    // first real prompt, anonymized: the readable picker/tab label
   entrypoint: string | null; // 'cli' (interactive) vs 'sdk-cli'/'sdk-py' (headless)
-  driven: boolean | null;    // started in a directory other than its parent's: a script drives it
+  driven: boolean | null;    // its process works elsewhere than its parent's: a script drives it
   root: 'cli';
   path: string;
 }
@@ -1007,10 +1007,10 @@ happens next and not the backlog it slept through. One thing IS filtered on the 
 opposite reason: an automated run (`isAutomated`, `core/types.ts`) never reaches the detector,
 because a notification asks somebody to get up and nobody is sitting at a `claude -p`. A session a
 script drives through a pty is dropped there too, on a second test: Claude Code records it as
-`cli`, so only the launch directory separates it from a person, and `isDrivenSession`
-(`server/session-launch.ts`) compares that against the working directory of the process that
-started the session. Where the comparison cannot be made, the answer is unknown and unknown counts
-as a person. Evaluation is skipped entirely when nobody is
+`cli`, so only the working directory separates it from a person, and `isDrivenSession`
+(`server/session-launch.ts`) compares the session's process against the process that started it.
+Where the comparison cannot be made, the answer is unknown, and `isDriven` (`core/types.ts`) is
+the rule that keeps unknown on the person's side. Evaluation is skipped entirely when nobody is
 subscribed and no webhook is configured, which is what keeps an unwatched process idle.
 
 Staying connected is not free, and SSE does not give reconnection for free on its own. Four

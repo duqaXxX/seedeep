@@ -340,8 +340,8 @@ test('a session a script drives through a pty never announces either', () => {
   // The case `entrypoint` cannot see: a driver opens the ORDINARY TUI in a pty and types into it,
   // so Claude Code writes `cli`, exactly as it does for a person (measured 2026-09-20: the session
   // file of a driven run matches a human one field by field). seedeep's own probe is built that
-  // way, and each run announced a finished turn — and the permission prompt its scene 12 provokes
-  // on purpose — with nobody there.
+  // way, and each run announced a finished turn — and the permission prompt one of its scenes
+  // provokes on purpose, to certify the waiting-for-approval shape — with nobody there.
   for (const kind of ['finish', 'wait', 'failure'] as const) {
     const w = createNotifyWatch();
     w.step([entry({ id: 'a', status: 'busy', driven: true })]);

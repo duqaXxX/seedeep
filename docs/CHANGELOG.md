@@ -20,18 +20,22 @@ Everything released before `0.20.0` — including the pre-publication developmen
   purpose, to an empty room. On one day of local history, 83 of the 117 interactive sessions that
   would have notified were driven ones.
 
-  The launch directory separates them, because a process inherits the working directory of the one
-  that starts it: a person types `claude` in the shell they are already in, a driver has to place
-  the session elsewhere. `isDrivenSession` compares the two and the digest carries the answer as
-  `driven`. The comparison reads `/proc` on Linux and `lsof` on macOS; where neither exists, on
-  Windows above all, or where the parent has exited, the answer is unknown, and unknown is read as
-  a person so the session notifies as before.
+  The working directory separates them, because a process inherits it from the one that starts it:
+  a person types `claude` in the shell they are already in, a driver has to place the session
+  elsewhere. `isDrivenSession` compares the session's own process against its parent and the digest
+  carries the answer as `driven`, which `isDriven` turns into a verdict. The comparison reads
+  `/proc` on Linux and `lsof` on macOS; where neither exists, on Windows above all, or where the
+  parent has exited, the answer is unknown, and unknown is read as a person so the session notifies
+  as before. Both subprocesses are bounded by the same five-second kill `git.ts` uses, and a
+  failure that is not an exited process is logged once, so a machine without `lsof` says so instead
+  of silently classifying nothing.
 
   Two things it deliberately does not do. It does not read the parent's name, which would mean
   keeping a list of runtimes that changes with the environment, and it does not compare terminals,
-  which would file a terminal configured to launch `claude` directly as a driver. It also takes the
-  directory from the first transcript line rather than from the session file, because `/cd` rewrites
-  that file and moves the transcript, while the first line stays what it was.
+  which would file a terminal configured to launch `claude` directly as a driver. Both directories
+  come from the running processes rather than from the transcript: the transcript's first line
+  names where a session was FIRST opened, and `--resume` appends to that same file from wherever
+  you run it, so a session resumed one directory down would have read as driven and gone silent.
 
 ### Added
 

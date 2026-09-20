@@ -193,11 +193,11 @@ async function recordFor(
     waitingSince: open?.waitingSince ?? derived?.waitingSince ?? null,
     subject: meta.subject ?? null,
     entrypoint: meta.entrypoint ?? null,
-    // Only a live session has a process to ask, and `meta.cwd` is the LAUNCH directory (the first
-    // transcript line that carried one), which is what the comparison needs: the session file's
-    // own `cwd` follows `/cd`. Answered once per session and then served from cache, so the
-    // re-discovery tick does not pay for it again.
-    driven: open === null ? null : await isDrivenSession(sessionId, open.pid, meta.cwd ?? null),
+    // Only a live session has a process to ask. Both directories are read from the processes
+    // themselves, never from the transcript, so a session resumed elsewhere is not mistaken for a
+    // driven one. Answered once per session and then served from cache, so the re-discovery tick
+    // does not pay for it again.
+    driven: open === null ? null : await isDrivenSession(sessionId, open.pid),
     root,
     path,
   };

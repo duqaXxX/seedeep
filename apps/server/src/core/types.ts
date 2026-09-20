@@ -213,11 +213,11 @@ export interface SessionRecord {
   // with the interactive ones. What it shares with the headless runs is only that Claude Code is
   // driven over stream-json there, which is why neither publishes a status (see statusDerived).
   entrypoint: string | null;
-  // The session was started BY A PROGRAM rather than typed into: its launch directory differs
-  // from the working directory of the process that started it (see isDrivenSession). `null` is
-  // "unknown" — a closed session, a platform that cannot answer, an unreadable parent — and is
-  // never read as "no". Only the notification detector acts on it: a driven session is still a
-  // session, and every surface still lists it.
+  // The session is driven BY A PROGRAM rather than typed into: its process works in a directory
+  // other than the one its parent works in (see isDrivenSession). `null` is "unknown" — a closed
+  // session, a platform that cannot answer, an unreadable parent — and is never read as "no",
+  // which is what {@link isDriven} is for. A driven session is still a session, and every surface
+  // still lists it.
   driven: boolean | null;
   root: Root;
   path: string;
@@ -254,6 +254,19 @@ export function isLive(s: Pick<SessionRecord, 'isOpen' | 'isActive'>): boolean {
  */
 export function isAutomated(s: Pick<SessionRecord, 'entrypoint'>): boolean {
   return !!s.entrypoint && s.entrypoint.startsWith('sdk');
+}
+
+/**
+ * A session a program is driving, PROVEN so — never merely "not known to be a person".
+ *
+ * A predicate rather than a bare `=== true` at the call site, because `boolean | null` looks like
+ * every optional boolean in every codebase and invites `=== false` or `!driven`. Those read the
+ * unknown answer as a verdict, which is the one mistake this field must not make: `driven` is null
+ * on Windows, on an exited parent, on any platform without the mechanism, and reading that as
+ * "driven" would silence a person's session on the day the mechanism stops answering.
+ */
+export function isDriven(s: Pick<SessionRecord, 'driven'>): boolean {
+  return s.driven === true;
 }
 
 /**

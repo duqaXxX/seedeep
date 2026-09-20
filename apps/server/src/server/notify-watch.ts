@@ -1,4 +1,4 @@
-import { isAutomated, isWorking, pendingInput } from '../core/types.ts';
+import { isAutomated, isDriven, isWorking, pendingInput } from '../core/types.ts';
 import type { DigestEntry } from './digest.ts';
 
 /** Which switch an announcement answers to. */
@@ -198,10 +198,10 @@ export function createNotifyWatch(): { step(entries: DigestEntry[] | null): Anno
       // with `sdk`), and a script that opens the ordinary TUI in a pty announces nothing — it
       // writes `entrypoint: "cli"`, exactly like a person. seedeep's own probe is built that way,
       // and every run of it announced a finished turn, and a pending approval, to an empty room.
-      // `driven` is the directory comparison that separates the two (see session-launch.ts); it
-      // is `null` whenever that comparison could not be made, and null must behave like a person.
+      // `driven` is the directory comparison that separates the two (see session-launch.ts), and
+      // `isDriven` is what keeps an unknown answer on the person's side of it.
       const identified = entries.filter(
-        (e) => typeof e.sessionId === 'string' && e.sessionId.length > 0 && !isAutomated(e) && e.driven !== true,
+        (e) => typeof e.sessionId === 'string' && e.sessionId.length > 0 && !isAutomated(e) && !isDriven(e),
       );
       const before = seen;
       seen = {
