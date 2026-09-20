@@ -136,7 +136,7 @@ function reportsWindow(e) {
   return Boolean(e.model) || e.fill > 0;
 }
 function createSessionTree(opts) {
-  const windowFor2 = opts.windowFor;
+  const windowFor = opts.windowFor;
   let mainModel = opts.mainModel ?? null;
   const mainModels = [];
   if (mainModel)
@@ -927,7 +927,7 @@ function createSessionTree(opts) {
       const a = agents.get(id);
       const vol = a ? a.volIn + a.volOut + a.volCacheRead + a.volCacheCreation : 0;
       const dur = a?.firstMs != null && a?.lastMs != null ? a.lastMs - a.firstMs : null;
-      const aw = windowFor2(a?.model ?? null);
+      const aw = windowFor(a?.model ?? null);
       return {
         agentId: id,
         agentType: a?.agentType ?? null,
@@ -950,14 +950,14 @@ function createSessionTree(opts) {
       volume: bd.input + bd.output + bd.cacheRead + bd.cacheCreation,
       breakdown: { ...bd },
       weighted,
-      models: [...models.entries()].map(([model, agents2]) => ({ model, agents: agents2 })).sort((x, y) => y.agents - x.agents),
-      tokensByModel: [...tokens.entries()].map(([model, tokens2]) => ({ model, tokens: tokens2 })).sort((x, y) => y.tokens - x.tokens),
+      models: [...models.entries()].map(([model, agents]) => ({ model, agents })).sort((x, y) => y.agents - x.agents),
+      tokensByModel: [...tokens.entries()].map(([model, tokens]) => ({ model, tokens })).sort((x, y) => y.tokens - x.tokens),
       lastActivityAt,
       members: memberList
     };
   }
   function snapshot() {
-    const w = windowFor2(mainModel);
+    const w = windowFor(mainModel);
     const mainTools = [];
     const byAgent = new Map;
     for (const [id, t] of tools.entries()) {
@@ -988,7 +988,7 @@ function createSessionTree(opts) {
       const toolUseId = sp?.toolUseId ?? a?.toolUseId ?? null;
       const spawnTool = toolUseId !== null ? tools.get(toolUseId) ?? null : null;
       const model = a?.model ?? spawnTool?.spawnModel ?? null;
-      const aw = windowFor2(model);
+      const aw = windowFor(model);
       const state = stateOf(sp, toolUseId, a ?? null);
       const startedAt = spawnTool?.startTs ?? a?.launchedAt ?? null;
       const returned = spawnTool?.returned ?? null;
@@ -3376,12 +3376,12 @@ function createSettingsPanel(headerEl) {
       "tls.commonName": "SEEDEEP_TLS_CN"
     };
     for (const field of Object.keys(ENV_OF)) {
-      const el5 = drawer.querySelector(`#s-ov-${CSS.escape(field)}`);
-      if (!el5)
+      const el = drawer.querySelector(`#s-ov-${CSS.escape(field)}`);
+      if (!el)
         continue;
       const source = overrides?.[field];
-      el5.textContent = source ? source === "flag" ? "A command-line flag overrides this while this server runs — saving it takes effect on a start without that flag." : `${ENV_OF[field]} overrides this while this server runs — saving it takes effect on a start without that variable.` : "";
-      el5.style.display = source ? "" : "none";
+      el.textContent = source ? source === "flag" ? "A command-line flag overrides this while this server runs — saving it takes effect on a start without that flag." : `${ENV_OF[field]} overrides this while this server runs — saving it takes effect on a start without that variable.` : "";
+      el.style.display = source ? "" : "none";
     }
   }
   function showMsg(text, isErr = false, durationMs = 3000) {
@@ -3444,11 +3444,11 @@ function createSettingsPanel(headerEl) {
   const customBtn = drawer.querySelector("#s-hook-custom");
   const customRows = [...drawer.querySelectorAll(".scustom")];
   customBtn.addEventListener("click", () => {
-    const open2 = customBtn.getAttribute("aria-expanded") === "true";
-    customBtn.setAttribute("aria-expanded", String(!open2));
-    customBtn.textContent = open2 ? "Send to a webhook…" : "Hide webhook settings";
+    const open = customBtn.getAttribute("aria-expanded") === "true";
+    customBtn.setAttribute("aria-expanded", String(!open));
+    customBtn.textContent = open ? "Send to a webhook…" : "Hide webhook settings";
     for (const row of customRows)
-      row.hidden = open2;
+      row.hidden = open;
   });
   const trayForm = () => ({
     needsYou: traySwitches.needsYou.classList.contains("on"),
@@ -3550,14 +3550,14 @@ function createSettingsPanel(headerEl) {
     urlEl.value = computeAccessUrl();
     persist();
   });
-  function wireCopy(btn2, input) {
-    btn2.addEventListener("click", () => {
+  function wireCopy(btn, input) {
+    btn.addEventListener("click", () => {
       if (!input.value)
         return;
       navigator.clipboard?.writeText(input.value).catch(() => {});
-      btn2.textContent = "Copied!";
+      btn.textContent = "Copied!";
       setTimeout(() => {
-        btn2.textContent = "Copy";
+        btn.textContent = "Copy";
       }, 1800);
     });
   }
@@ -3797,16 +3797,16 @@ function createTabBar(container, { onSwitch, onClose }) {
     for (const [id, t] of tabs)
       t.el.classList.toggle("active", id === activeId);
   }
-  const titleFor = (label, ended2, waiting = null, failed = false) => label + (ended2 ? " — ended" : failed ? " — its last API call failed" : waiting === "permission" ? " — waiting for your approval" : waiting === "input" ? " — waiting for your answer" : "");
+  const titleFor = (label, ended, waiting = null, failed = false) => label + (ended ? " — ended" : failed ? " — its last API call failed" : waiting === "permission" ? " — waiting for your approval" : waiting === "input" ? " — waiting for your answer" : "");
   return {
-    add(sessionId, { label, ended: ended2, busy: isBusy }) {
+    add(sessionId, { label, ended, busy: isBusy }) {
       if (tabs.has(sessionId))
         return;
-      const el5 = document.createElement("div");
-      el5.className = "tab" + (ended2 ? " ended" : "");
-      el5.title = titleFor(label, ended2);
+      const el = document.createElement("div");
+      el.className = "tab" + (ended ? " ended" : "");
+      el.title = titleFor(label, ended);
       const busy = document.createElement("span");
-      busy.className = "tab-busy" + (isBusy && !ended2 ? " on" : "");
+      busy.className = "tab-busy" + (isBusy && !ended ? " on" : "");
       const name = document.createElement("span");
       name.textContent = label;
       const closeEl = document.createElement("button");
@@ -3816,10 +3816,10 @@ function createTabBar(container, { onSwitch, onClose }) {
         e.stopPropagation();
         onClose(sessionId);
       };
-      el5.onclick = () => onSwitch(sessionId);
-      el5.append(busy, name, closeEl);
-      container.append(el5);
-      tabs.set(sessionId, { el: el5, busy, name, label, waiting: null, failed: false });
+      el.onclick = () => onSwitch(sessionId);
+      el.append(busy, name, closeEl);
+      container.append(el);
+      tabs.set(sessionId, { el, busy, name, label, waiting: null, failed: false });
       render();
     },
     setEnded(sessionId) {
@@ -4211,13 +4211,13 @@ function displayFiles(files, roots, scratch = false) {
 
 // apps/server/src/core/graph-derive.ts
 var WF_SILENT_MS = 300000;
-function toolDuration(ms, ended2) {
-  return ms == null && ended2 ? "cut off" : formatToolMs(ms);
+function toolDuration(ms, ended) {
+  return ms == null && ended ? "cut off" : formatToolMs(ms);
 }
-function displayState(a, ended2, now = Date.now()) {
+function displayState(a, ended, now = Date.now()) {
   if (a.state !== "running")
     return a.state;
-  if (ended2)
+  if (ended)
     return "unknown";
   if (a.kind === "workflow" && a.workflow?.lastActivityAt) {
     if (now - a.workflow.lastActivityAt > WF_SILENT_MS)
@@ -4227,10 +4227,10 @@ function displayState(a, ended2, now = Date.now()) {
     return "unknown";
   return "running";
 }
-function delegatedWork(turnIndex, subs, ended2, now = Date.now()) {
+function delegatedWork(turnIndex, subs, ended, now = Date.now()) {
   let out = null;
   for (const a of subs) {
-    if (a.turnIndex !== turnIndex || displayState(a, ended2, now) !== "running")
+    if (a.turnIndex !== turnIndex || displayState(a, ended, now) !== "running")
       continue;
     const parsed = a.startedAt ? Date.parse(a.startedAt) : Number.NaN;
     const since = Number.isNaN(parsed) ? null : parsed;
@@ -4253,12 +4253,12 @@ function turnIsWorking(turn, isLast, session) {
     return false;
   return turn.state === "live" || isLast && session.busy;
 }
-function returnedWork(turnIndex, subs, ended2, now = Date.now()) {
+function returnedWork(turnIndex, subs, ended, now = Date.now()) {
   let best = null;
   for (const a of subs) {
     if (a.turnIndex !== turnIndex)
       continue;
-    const state = displayState(a, ended2, now);
+    const state = displayState(a, ended, now);
     if (state === "running" || state === "unknown")
       continue;
     const started = a.startedAt ? Date.parse(a.startedAt) : Number.NaN;
@@ -4268,14 +4268,14 @@ function returnedWork(turnIndex, subs, ended2, now = Date.now()) {
   }
   return best;
 }
-function turnCls(t, working2 = t.state === "live") {
+function turnCls(t, working = t.state === "live") {
   if (t.state === "interrupted")
     return "esc";
   if (t.kind === "context" || t.compaction)
     return "cmp";
   if (t.kind === "local")
     return "loc";
-  if (working2)
+  if (working)
     return "lv";
   return "";
 }
@@ -4319,12 +4319,12 @@ function runningBackground(tools) {
 }
 function backgroundCommands(tools, opts) {
   return tools.filter((t) => t.background && t.startedTs).map((t) => {
-    const ended2 = t.outcomeStatus != null;
+    const ended = t.outcomeStatus != null;
     const clean = t.outcomeStatus === "completed" || t.outcomeStatus === "stopped";
-    const state = !ended2 ? opts.ended || t.vanishedTs ? "unknown" : "running" : clean ? "done" : "failed";
+    const state = !ended ? opts.ended || t.vanishedTs ? "unknown" : "running" : clean ? "done" : "failed";
     const since = t.startedTs;
     const endedAt = t.outcomeTs ?? null;
-    const bound = ended2 ? null : t.lastSeenAliveTs ?? null;
+    const bound = ended ? null : t.lastSeenAliveTs ?? null;
     const a = Date.parse(since);
     const b = endedAt === null ? bound === null ? Number.NaN : Date.parse(bound) : Date.parse(endedAt);
     return {
@@ -5403,16 +5403,16 @@ function renderMarkdown(src) {
         const f = FENCE.exec(l);
         return !!f && (f[1] ?? "")[0] === marker;
       };
-      const body2 = [];
+      const body = [];
       i++;
       while (i < lines.length && !closes(at(i)))
-        body2.push(at(i++));
+        body.push(at(i++));
       i++;
       const pre = el7("pre");
       const code = el7("code");
       if (fence[2])
         code.className = "lang-" + fence[2];
-      code.textContent = body2.join(`
+      code.textContent = body.join(`
 `);
       pre.append(code);
       out.push(pre);
@@ -5430,16 +5430,16 @@ function renderMarkdown(src) {
       continue;
     }
     if (QUOTE.test(line)) {
-      const body2 = [];
+      const body = [];
       while (i < lines.length) {
         const quoted = QUOTE.exec(at(i));
         if (!quoted)
           break;
-        body2.push(quoted[1] ?? "");
+        body.push(quoted[1] ?? "");
         i++;
       }
       const q = el7("blockquote");
-      for (const n of renderMarkdown(body2.join(`
+      for (const n of renderMarkdown(body.join(`
 `)))
         q.append(n);
       out.push(q);
@@ -6136,8 +6136,8 @@ function createTrace(container, opts = {}) {
     _model.forEach((m, i) => {
       const isOpen = openTurns.has(i);
       const seg = document.createElement("div");
-      const isLive2 = m.isLive;
-      seg.className = "tseg" + (isOpen ? " open" : "") + (m.hasError ? " has-err" : "") + (isLive2 ? " is-live" : "") + (m.isIdle ? " is-idle" : "");
+      const isLive = m.isLive;
+      seg.className = "tseg" + (isOpen ? " open" : "") + (m.hasError ? " has-err" : "") + (isLive ? " is-live" : "") + (m.isIdle ? " is-idle" : "");
       const th = document.createElement("div");
       th.className = "thead";
       const hdDiv = document.createElement("div");
@@ -6178,8 +6178,8 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
           errSlot.append(badge);
         }
         hdDiv.append(errSlot);
-        const dur2 = document.createElement("div");
-        dur2.className = "tdur";
+        const dur = document.createElement("div");
+        dur.className = "tdur";
         const bar = document.createElement("div");
         bar.className = "tbar";
         const fill = document.createElement("i");
@@ -6188,9 +6188,9 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
         bar.append(fill);
         const durTxt = document.createElement("b");
         durTxt.textContent = fmtDur(m.ms);
-        dur2.title = fmtDur(m.ms) + " — " + share + "% of the longest turn in this session (" + fmtDur(maxTurnMs) + ")";
-        dur2.append(bar, durTxt);
-        hdDiv.append(dur2);
+        dur.title = fmtDur(m.ms) + " — " + share + "% of the longest turn in this session (" + fmtDur(maxTurnMs) + ")";
+        dur.append(bar, durTxt);
+        hdDiv.append(dur);
       }
       th.append(hdDiv);
       th.onclick = () => toggleTurn(i);
@@ -6273,9 +6273,9 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     if (!_hitSpanId)
       return;
     for (const rec of _segs) {
-      const el8 = rec._stepEls ? rec._stepEls.get(_hitSpanId) : null;
-      if (el8 && el8.classList)
-        el8.classList.add("hit");
+      const el = rec._stepEls ? rec._stepEls.get(_hitSpanId) : null;
+      if (el && el.classList)
+        el.classList.add("hit");
     }
   }
   function makeConnSVG(col) {
@@ -6326,9 +6326,9 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
       else if (usable.length > 1) {
         let at = 0;
         const stops = usable.map((p) => {
-          const from2 = at;
+          const from = at;
           at = Math.min(100, at + p.weight * 100);
-          return `${p.colour} ${from2.toFixed(1)}% ${at.toFixed(1)}%`;
+          return `${p.colour} ${from.toFixed(1)}% ${at.toFixed(1)}%`;
         });
         i.style.background = `linear-gradient(to bottom, ${stops.join(", ")})`;
       }
@@ -6478,8 +6478,8 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     const tools = lanes.reduce((n, ln) => n + ln.toolCount, 0);
     const ms = lanes.length ? Math.max(...lanes.map((ln) => ln.subspan.t1 - ln.subspan.t0)) : 0;
     const sn = document.createElement("div");
-    const open2 = item.spans.every((s) => openLanes.has(s.id));
-    sn.className = "snode spawn par" + (open2 ? " on" : "");
+    const open = item.spans.every((s) => openLanes.has(s.id));
+    sn.className = "snode spawn par" + (open ? " on" : "");
     const slDiv = document.createElement("div");
     slDiv.className = "sl";
     const st = document.createElement("span");
@@ -6490,7 +6490,7 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     ssDiv.className = "ss";
     const base = lanes.length ? plural2(lanes.length, "subagent") + " · " + plural2(tools, "tool") + " · " + fmtDur(ms) : plural2(item.spans.length, "subagent") + " · no child data yet";
     const openHint = " · ▾ fold", closedHint = " · ▸ expand flow";
-    ssDiv.textContent = base + (open2 ? openHint : closedHint);
+    ssDiv.textContent = base + (open ? openHint : closedHint);
     sn._traceSsBase = base;
     sn._traceHints = { openHint, closedHint };
     const pk = document.createElement("div");
@@ -6615,8 +6615,8 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
   const stripMax = (items) => Math.max(1, ...items.map(itemMs));
   const BLOCK_CLASSES = new Set(["snode", "gnode"]);
   const walkBlocks = (root) => walkClass(root, BLOCK_CLASSES);
-  function markLiveTail(container2) {
-    const blocks = walkBlocks(container2);
+  function markLiveTail(container) {
+    const blocks = walkBlocks(container);
     const tail = blocks[blocks.length - 1];
     if (tail && tail.classList && tail.className.includes("snode"))
       tail.classList.add("tail");
@@ -6651,14 +6651,14 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
       openLanes.delete(spawnId);
     else
       openLanes.add(spawnId);
-    const open2 = openLanes.has(spawnId);
+    const open = openLanes.has(spawnId);
     if (spawnEl && spawnEl.classList)
-      spawnEl.classList.toggle("on", open2);
+      spawnEl.classList.toggle("on", open);
     const spawnNode = spawnEl;
     if (spawnNode._traceSsBase != null) {
       const ss = walkClass(spawnEl, "ss")[0];
       if (ss)
-        ss.textContent = spawnNode._traceSsBase + (open2 ? spawnNode._traceHints.openHint : spawnNode._traceHints.closedHint);
+        ss.textContent = spawnNode._traceSsBase + (open ? spawnNode._traceHints.openHint : spawnNode._traceHints.closedHint);
     }
     renderLanes(rec);
     scheduleAnchor();
@@ -6801,11 +6801,11 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     _hitSpanId = t.spanId;
     build();
     const fresh = _segs[rec.i];
-    const el8 = fresh && fresh._stepEls ? fresh._stepEls.get(t.spanId) : null;
-    if (!el8)
+    const el = fresh && fresh._stepEls ? fresh._stepEls.get(t.spanId) : null;
+    if (!el)
       return;
-    if (typeof el8.scrollIntoView === "function")
-      el8.scrollIntoView({ block: "center", inline: "center" });
+    if (typeof el.scrollIntoView === "function")
+      el.scrollIntoView({ block: "center", inline: "center" });
     if (stageEl)
       _expectedTop = stageEl.scrollTop;
   }
@@ -6833,9 +6833,9 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     const named = snap.turns.find((t) => t.spans.some((s) => s.lane === 0 && (s.type === "api" || s.type === "tool")));
     hsubjEl.textContent = short((named ?? snap.turns[0])?.title ?? "session", 90);
   }
-  function open(snap, scopeTurn, ended2 = false) {
+  function open(snap, scopeTurn, ended = false) {
     _snap = snap;
-    _ended = ended2;
+    _ended = ended;
     _scopeTurn = scopeTurn ?? null;
     _model = adaptSnapshot(snap, _scopeTurn);
     openTurns.clear();
@@ -6864,11 +6864,11 @@ Click to jump to ` + (m.failed === 1 ? "it" : "each of them in turn") + ".";
     if (_following)
       raf(focusLastTurn);
   }
-  function update(snap, ended2 = false) {
+  function update(snap, ended = false) {
     if (!_isOpen)
       return;
     _snap = snap;
-    _ended = ended2;
+    _ended = ended;
     _model = adaptSnapshot(snap, _scopeTurn);
     if (_following && _scopeTurn == null && _model.length > 0) {
       openTurns.add(_model.length - 1);
@@ -7051,10 +7051,10 @@ function turnGroup(label, meta, rows, open, onToggle) {
 }
 function createGraph(container, state, opts = {}) {
   const root = E("div", "graph-root");
-  let ended2 = opts.ended ?? false;
+  let ended = opts.ended ?? false;
   let busy = false;
-  const working2 = (t, s = lastSnap) => !!t && turnIsWorking(t, s?.turnList.at(-1)?.index === t.index, { ended: ended2, busy });
-  if (ended2)
+  const working = (t, s = lastSnap) => !!t && turnIsWorking(t, s?.turnList.at(-1)?.index === t.index, { ended, busy });
+  if (ended)
     root.classList.add("ended");
   let waiting = null;
   let waitingSince = null;
@@ -7358,7 +7358,7 @@ function createGraph(container, state, opts = {}) {
       d.append(document.createTextNode(p));
     });
   }
-  function kpi2(label, value, unit) {
+  function kpi(label, value, unit) {
     const t = E("div", "kpi");
     const v = E("div", "kv");
     v.append(document.createTextNode(value));
@@ -7381,7 +7381,7 @@ function createGraph(container, state, opts = {}) {
     v.replaceChildren(document.createTextNode(value), ...unit ? [E("small", null, " " + unit)] : []);
   }
   function kpiWait(label) {
-    const t = kpi2(label, "···");
+    const t = kpi(label, "···");
     t.children[1]?.classList.add("wait");
     return t;
   }
@@ -7410,17 +7410,17 @@ function createGraph(container, state, opts = {}) {
     bl.append(head, bar, leg);
     return bl;
   }
-  function fillBar(label, caption, pct3, grad) {
+  function fillBar(label, caption, pct, grad) {
     const c = E("div", "crow");
     const head = E("div", "chead");
     head.append(E("span", "clbl", label), E("span", "cval", caption));
     const track = E("div", "ctrack");
     const bar = E("div", "cbar");
     const fill = E("i");
-    fill.style.width = Math.max(0, Math.min(100, pct3)) + "%";
+    fill.style.width = Math.max(0, Math.min(100, pct)) + "%";
     fill.style.background = grad;
     bar.append(fill);
-    track.append(bar, E("span", "cpct", Math.round(pct3) + "%"));
+    track.append(bar, E("span", "cpct", Math.round(pct) + "%"));
     c.append(head, track);
     return c;
   }
@@ -7462,10 +7462,10 @@ function createGraph(container, state, opts = {}) {
       }
     }
     col.append(seg);
-    const legend2 = E("div", "seglegend");
+    const legend = E("div", "seglegend");
     for (const [color, , label] of parts)
-      legend2.append(legendItem(color, label));
-    col.append(legend2);
+      legend.append(legendItem(color, label));
+    col.append(legend);
     w.append(d, col);
     ctxCard.append(w);
   }
@@ -7496,11 +7496,11 @@ function createGraph(container, state, opts = {}) {
       bar.append(seg);
     }
     wrap.append(bar);
-    const legend2 = E("div", "seglegend");
+    const legend = E("div", "seglegend");
     for (const [family, tokens] of rows) {
-      legend2.append(legendItem(modelTint(family), `${family} ${Math.round(tokens / total * 100)}%`));
+      legend.append(legendItem(modelTint(family), `${family} ${Math.round(tokens / total * 100)}%`));
     }
-    wrap.append(legend2);
+    wrap.append(legend);
     host.append(wrap);
   }
   function renderTokenUsage(s, full) {
@@ -7629,7 +7629,7 @@ function createGraph(container, state, opts = {}) {
       if (t.deltaFill > 0 || isMarker(t)) {
         const i = E("i");
         i.style.height = isMarker(t) ? MARKER_H : Math.max(4, t.deltaFill / maxUp * 100) + "%";
-        const c = turnCls(t, working2(t, s));
+        const c = turnCls(t, working(t, s));
         if (c)
           i.className = c;
         up.append(i);
@@ -7637,7 +7637,7 @@ function createGraph(container, state, opts = {}) {
       if (t.deltaFill < 0) {
         const i = E("i");
         i.style.height = Math.max(4, -t.deltaFill / maxDn * 100) + "%";
-        const c = turnCls(t, working2(t, s));
+        const c = turnCls(t, working(t, s));
         if (c)
           i.className = c;
         dn.append(i);
@@ -7706,7 +7706,7 @@ function createGraph(container, state, opts = {}) {
     } else if (activeFilter !== "all") {
       const fl = E("div", "flist");
       for (const t of filteredTurns(s)) {
-        const c = turnCls(t, working2(t, s));
+        const c = turnCls(t, working(t, s));
         const row = E("div", "frow" + (t.index === selectedTurn ? " sel" : ""));
         row.append(E("span", "st" + (c ? " " + c : "")), E("span", "id", "#" + t.index), E("span", "pr", entryLabel(t, 160) || "(no text)"), E("span", "dv", kd(t.deltaFill)));
         row.onclick = () => selectTurn(t.index);
@@ -7743,12 +7743,12 @@ function createGraph(container, state, opts = {}) {
   function appendModelChips(host, models, efforts) {
     if (models.length) {
       const current = models[models.length - 1];
-      const chip2 = E("span", "sbmodel", modelLabel3(current));
+      const chip = E("span", "sbmodel", modelLabel3(current));
       if (models.length > 1) {
-        chip2.classList.add("mixed");
-        chip2.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
+        chip.classList.add("mixed");
+        chip.textContent = modelLabel3(current) + " · was " + models.slice(0, -1).map(modelLabel3).join(", ");
       }
-      host.append(chip2);
+      host.append(chip);
     }
     if (efforts.length)
       host.append(E("span", "sbeffort", efforts.join(" · ")));
@@ -7764,27 +7764,27 @@ function createGraph(container, state, opts = {}) {
     nowTickArmed = false;
   }
   function liveElapsed(turn) {
-    const el8 = E("span", "sblive");
+    const el = E("span", "sblive");
     const since = turn.startedAt ? Date.parse(turn.startedAt) : NaN;
     if (Number.isNaN(since)) {
-      el8.textContent = "● running turn";
-      return el8;
+      el.textContent = "● running turn";
+      return el;
     }
-    const render2 = () => "● " + formatDuration(Math.max(0, Date.now() - since)) + " turn";
-    el8.textContent = render2();
-    liveCounters.push({ el: el8, render: render2 });
-    return el8;
+    const render = () => "● " + formatDuration(Math.max(0, Date.now() - since)) + " turn";
+    el.textContent = render();
+    liveCounters.push({ el, render });
+    return el;
   }
   function sessionWorked(s) {
-    const el8 = E("span", "sbstats");
+    const el = E("span", "sbstats");
     const base = workingMs(s);
-    const open = ended2 ? undefined : s.turnList.find((t) => t.state === "live");
+    const open = ended ? undefined : s.turnList.find((t) => t.state === "live");
     const since = open?.startedAt ? Date.parse(open.startedAt) : NaN;
-    const render2 = () => formatDuration(base + (Number.isNaN(since) ? 0 : Math.max(0, Date.now() - since))) + " total";
-    el8.textContent = render2();
+    const render = () => formatDuration(base + (Number.isNaN(since) ? 0 : Math.max(0, Date.now() - since))) + " total";
+    el.textContent = render();
     if (!Number.isNaN(since))
-      liveCounters.push({ el: el8, render: render2 });
-    return el8;
+      liveCounters.push({ el, render });
+    return el;
   }
   let tickTimer = null;
   function syncTicker() {
@@ -7814,17 +7814,17 @@ function createGraph(container, state, opts = {}) {
   }
   function backgroundChip(fullSnap) {
     const running = runningBackground(fullSnap.mainTools);
-    if (!running.length || ended2)
+    if (!running.length || ended)
       return null;
-    const chip2 = E("span", "sbbg");
+    const chip = E("span", "sbbg");
     const oldest = Date.parse(running[0].since);
     const label = running.length === 1 ? "1 background command" : running.length + " background commands";
     const renderAge = () => label + (Number.isNaN(oldest) ? "" : " · " + formatDuration(Math.max(0, Date.now() - oldest)));
-    chip2.textContent = renderAge();
-    liveCounters.push({ el: chip2, render: renderAge });
-    chip2.title = running.map((c) => c.command).join(`
+    chip.textContent = renderAge();
+    liveCounters.push({ el: chip, render: renderAge });
+    chip.title = running.map((c) => c.command).join(`
 `);
-    return chip2;
+    return chip;
   }
   function renderScopeBanner(fullSnap) {
     scopeBanner.replaceChildren();
@@ -7860,7 +7860,7 @@ function createGraph(container, state, opts = {}) {
         span.title = gloss.join(" · ");
         scopeBanner.append(span);
       }
-      const open = fullSnap.turnList.find((t) => working2(t, fullSnap));
+      const open = fullSnap.turnList.find((t) => working(t, fullSnap));
       const worked = fullSnap.turnList.some((t) => t.durationMs !== null);
       if (work.length && (open || worked))
         scopeBanner.append(E("span", "sbsep group", "|"));
@@ -7870,7 +7870,7 @@ function createGraph(container, state, opts = {}) {
         scopeBanner.append(E("span", "sbsep", "·"));
       if (worked)
         scopeBanner.append(sessionWorked(fullSnap));
-      const finalTurn = open && !ended2 ? null : finalResultTurn(fullSnap);
+      const finalTurn = open && !ended ? null : finalResultTurn(fullSnap);
       if (finalTurn) {
         const finBtn = E("button", "sbout", "Result");
         finBtn.onclick = (ev) => {
@@ -7921,19 +7921,19 @@ function createGraph(container, state, opts = {}) {
       scopeBanner.append(E("span", "sbstats", statParts.join(" · ")));
     const v = verdicts.get(turn.index);
     if (v && v.severity !== "good") {
-      const chip2 = E("button", "sbverdict " + v.severity);
-      chip2.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
-      chip2.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
+      const chip = E("button", "sbverdict " + v.severity);
+      chip.append(E("span", "wdot " + v.severity), document.createTextNode(verdictHeadline(v)));
+      chip.title = v.findings.map((f) => f.text + (f.cost ? " · " + f.cost : "")).join(`
 `);
-      chip2.onclick = (ev) => {
+      chip.onclick = (ev) => {
         ev.stopPropagation();
         stripOpen = true;
         activeFilter = "waste";
         render();
       };
-      scopeBanner.append(chip2);
+      scopeBanner.append(chip);
     }
-    if (turn.state === "live" && !ended2)
+    if (turn.state === "live" && !ended)
       scopeBanner.append(liveElapsed(turn));
     if (turn.prompt) {
       const shortened = line !== turn.prompt.trim();
@@ -8013,10 +8013,10 @@ function createGraph(container, state, opts = {}) {
     const cmds = s.commands || [];
     if (cmds.length) {
       for (const c of cmds) {
-        const chip2 = E("span", "tchip clk");
-        chip2.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
-        chip2.onclick = () => openCommand(c);
-        chips.append(chip2);
+        const chip = E("span", "tchip clk");
+        chip.append(document.createTextNode("/" + c.name + " "), E("b", null, "×" + c.count));
+        chip.onclick = () => openCommand(c);
+        chips.append(chip);
       }
     } else {
       chips.append(E("span", "wdesc", "none yet"));
@@ -8129,18 +8129,18 @@ function createGraph(container, state, opts = {}) {
     subLiveCard.className = "card sublivecard";
     subLiveCard.onclick = null;
     const subs = s.subagents || [];
-    if (ended2) {
+    if (ended) {
       const all = full.subagents || [];
       subLiveCard.classList.add("fulllist");
-      const slHead2 = E("div", "slhead");
-      const slTitleWrap2 = E("div");
-      slTitleWrap2.append(E("div", "wtitle", "Subagents"), E("div", "wdesc slcount", (all.length ? all.length + " ran" : "none ran") + " this session"));
-      slHead2.append(slTitleWrap2);
-      subLiveCard.append(slHead2);
+      const slHead = E("div", "slhead");
+      const slTitleWrap = E("div");
+      slTitleWrap.append(E("div", "wtitle", "Subagents"), E("div", "wdesc slcount", (all.length ? all.length + " ran" : "none ran") + " this session"));
+      slHead.append(slTitleWrap);
+      subLiveCard.append(slHead);
       if (!all.length) {
-        const empty2 = E("div", "slempty");
-        empty2.append(E("div", "slempty-t", "No subagents ran"), E("div", "slempty-s", "This session spawned none"));
-        subLiveCard.append(empty2);
+        const empty = E("div", "slempty");
+        empty.append(E("div", "slempty-t", "No subagents ran"), E("div", "slempty-s", "This session spawned none"));
+        subLiveCard.append(empty);
         return;
       }
       const host = E("div", "sublist");
@@ -8150,14 +8150,14 @@ function createGraph(container, state, opts = {}) {
       subLiveCard.append(host);
       return;
     }
-    const active = subs.filter((a) => displayState(a, ended2) === "running");
+    const active = subs.filter((a) => displayState(a, ended) === "running");
     const finished = subs.length - active.length;
     if (wfStaleTimer !== null) {
       clearTimeout(wfStaleTimer);
       timers.delete(wfStaleTimer);
       wfStaleTimer = null;
     }
-    if (!ended2) {
+    if (!ended) {
       const deadlines = subs.filter((a) => a.kind === "workflow" && a.state === "running" && a.workflow?.lastActivityAt).map((a) => a.workflow.lastActivityAt + WF_SILENT_MS - Date.now()).filter((ms) => ms > 0);
       if (deadlines.length) {
         wfStaleTimer = later(() => {
@@ -8166,7 +8166,7 @@ function createGraph(container, state, opts = {}) {
         }, Math.min(...deadlines) + 1000);
       }
     }
-    const bgAll = ended2 ? [] : backgroundCommands(full.mainTools, { ended: false });
+    const bgAll = ended ? [] : backgroundCommands(full.mainTools, { ended: false });
     const commands = bgAll.filter((c) => c.state === "running");
     const failedCount = bgAll.filter((c) => c.state === "failed").length;
     const failedBelow = failedCount ? `${failedCount} command${failedCount === 1 ? "" : "s"} failed below` : "";
@@ -8514,29 +8514,29 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     }
     return null;
   }
-  function renderPlainPanel(state2) {
+  function renderPlainPanel(state) {
     dropNowCounters();
     nowPanel.classList.remove("hidden");
-    nowPanel.classList.toggle("waiting", state2.kind === "waiting");
-    nowLbl.textContent = state2.label;
+    nowPanel.classList.toggle("waiting", state.kind === "waiting");
+    nowLbl.textContent = state.label;
     nowText.classList.add("plain");
-    nowText.textContent = state2.text;
+    nowText.textContent = state.text;
     nowMore.onclick = () => {};
     nowTextWrap.classList.remove("clamped");
     nowAge.textContent = "";
-    if (state2.ageFrom !== null) {
-      const renderAge = () => fmtAge(Math.max(0, Date.now() - state2.ageFrom));
+    if (state.ageFrom !== null) {
+      const renderAge = () => fmtAge(Math.max(0, Date.now() - state.ageFrom));
       nowAge.textContent = renderAge();
       liveCounters.push({ el: nowAge, render: renderAge, owner: "now" });
     }
     scheduleNowMeasure();
   }
   let wordSeen = null;
-  function renderActivityPanel(state2, g, isLive2, turn) {
+  function renderActivityPanel(state, g, isLive, turn) {
     nowPanel.classList.remove("hidden");
-    nowLbl.textContent = state2.label;
+    nowLbl.textContent = state.label;
     nowText.classList.add("plain");
-    const line = state2.text;
+    const line = state.text;
     nowText.textContent = line;
     nowMore.onclick = () => openOutput("Now", entryTitle(lastSnap, turn) || "", line);
     nowTextWrap.classList.remove("clamped");
@@ -8544,53 +8544,53 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       const since = runningSince(g.open, Date.now());
       return since === null ? "" : formatToolMs(Math.max(0, Date.now() - since));
     };
-    nowAge.textContent = isLive2 ? renderAge() : "";
-    if (isLive2 && g.open.length)
+    nowAge.textContent = isLive ? renderAge() : "";
+    if (isLive && g.open.length)
       liveCounters.push({ el: nowAge, render: renderAge, owner: "now" });
     scheduleNowMeasure();
   }
   function renderNowPanel() {
     dropNowCounters();
-    const blocked = waiting && !ended2 && selectedTurn === null ? waiting : null;
+    const blocked = waiting && !ended && selectedTurn === null ? waiting : null;
     nowText.classList.remove("plain", "empty");
     const list = lastSnap?.turnList ?? [];
     const panelTurn = selectedTurn !== null ? list.find((t) => t.index === selectedTurn) ?? null : list.find((t) => t.state === "live") ?? list[list.length - 1] ?? null;
-    const isLive2 = working2(panelTurn);
+    const isLive = working(panelTurn);
     const group = panelTurn?.activity ?? null;
     const wordTs = panelTurn?.lastWordTs ?? null;
     const narr = panelTurn?.lastNarration ?? null;
     const result = panelTurn?.result ?? null;
     if (wordTs !== null && wordSeen?.ts !== wordTs)
       wordSeen = { ts: wordTs, at: Date.now() };
-    const state2 = nowLine({
+    const state = nowLine({
       waiting: blocked,
       pendingTool: blocked ? pendingTool() : null,
       waitingSince,
-      live: isLive2,
+      live: isLive,
       result,
       narration: narr,
       wordTs,
       wordSeenAt: wordSeen?.at ?? null,
       activity: group,
-      delegated: panelTurn && lastSnap ? delegatedWork(panelTurn.index, lastSnap.subagents, ended2) : null,
-      returned: panelTurn && lastSnap ? returnedWork(panelTurn.index, lastSnap.subagents, ended2) : null,
+      delegated: panelTurn && lastSnap ? delegatedWork(panelTurn.index, lastSnap.subagents, ended) : null,
+      returned: panelTurn && lastSnap ? returnedWork(panelTurn.index, lastSnap.subagents, ended) : null,
       apiCalls: panelTurn?.apiCalls ?? 0,
       startedAt: panelTurn?.startedAt ? tsMs(panelTurn.startedAt) : null
     }, Date.now());
-    if (state2?.kind === "waiting") {
-      renderPlainPanel(state2);
+    if (state?.kind === "waiting") {
+      renderPlainPanel(state);
       return;
     }
     nowPanel.classList.remove("waiting");
-    if (state2?.kind === "activity") {
-      renderActivityPanel(state2, group, isLive2, panelTurn);
+    if (state?.kind === "activity") {
+      renderActivityPanel(state, group, isLive, panelTurn);
       return;
     }
-    if (state2?.kind === "working") {
-      renderPlainPanel(state2);
+    if (state?.kind === "working") {
+      renderPlainPanel(state);
       return;
     }
-    if (group && isLive2 && !nowTickArmed) {
+    if (group && isLive && !nowTickArmed) {
       nowTickArmed = true;
       liveCounters.push({
         el: nowTick,
@@ -8601,22 +8601,22 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         owner: "now"
       });
     }
-    if (state2 === null) {
+    if (state === null) {
       nowPanel.classList.add("hidden");
       scheduleNowMeasure();
       return;
     }
     nowPanel.classList.remove("hidden");
-    const showingResult = state2.kind === "output";
-    nowLbl.textContent = state2.label;
-    const glance = stripMarkdown(state2.text);
+    const showingResult = state.kind === "output";
+    nowLbl.textContent = state.label;
+    const glance = stripMarkdown(state.text);
     const empty = glance === "";
     nowText.textContent = empty ? "(no text)" : glance;
     nowText.classList.toggle("empty", empty);
     scheduleNowMeasure();
-    nowMore.onclick = () => openOutput(showingResult ? "Output" : "Intent", entryTitle(lastSnap, panelTurn) || "", state2.text);
+    nowMore.onclick = () => openOutput(showingResult ? "Output" : "Intent", entryTitle(lastSnap, panelTurn) || "", state.text);
     nowAge.textContent = "";
-    const since = state2.ageFrom;
+    const since = state.ageFrom;
     if (since !== null) {
       const renderAge = () => fmtAge(Math.max(0, Date.now() - since));
       nowAge.textContent = renderAge();
@@ -8630,8 +8630,8 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const turn = selectedTurn !== null && lastSnap ? lastSnap.turnList.find((t) => t.index === selectedTurn) : null;
     const scoped = selectedTurn !== null;
     liveTitle.textContent = scoped ? (entryTitle(lastSnap, turn) || "Entry") + " activity" : "Live activity";
-    liveBadge.classList.toggle("hidden", ended2 || scoped && turn?.state !== "live");
-    endBadge.classList.toggle("hidden", !ended2 || scoped);
+    liveBadge.classList.toggle("hidden", ended || scoped && turn?.state !== "live");
+    endBadge.classList.toggle("hidden", !ended || scoped);
     feedHost.replaceChildren();
     const ring = (scoped ? feed.items(selectedTurn) : feed.items()).slice(-feedVisibleCap);
     if (!ring.length) {
@@ -8642,18 +8642,18 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     for (let i = ring.length - 1;i >= 0; i--) {
       const it = ring[i];
       if (it.apiCall) {
-        const r2 = E("div", "fev api" + (it.error ? " err" : ""));
-        r2.onclick = () => openFeedItem(it);
-        r2.append(E("span", "fn", "API call"), E("span", "fa", it.error && it.errorMessage || it.arg || "—"));
-        const t2 = E("span", "ft");
+        const r = E("div", "fev api" + (it.error ? " err" : ""));
+        r.onclick = () => openFeedItem(it);
+        r.append(E("span", "fn", "API call"), E("span", "fa", it.error && it.errorMessage || it.arg || "—"));
+        const t = E("span", "ft");
         if (it.sub)
-          t2.append(E("span", "fagent", "subagent"));
+          t.append(E("span", "fagent", "subagent"));
         if (it.error)
-          t2.append(E("span", "ferr", "error"));
+          t.append(E("span", "ferr", "error"));
         else
-          t2.append(document.createTextNode(it.ms != null ? formatToolMs(it.ms) : "—"));
-        r2.append(t2);
-        feedHost.append(r2);
+          t.append(document.createTextNode(it.ms != null ? formatToolMs(it.ms) : "—"));
+        r.append(t);
+        feedHost.append(r);
         continue;
       }
       const r = E("div", "fev" + (it.error ? " err" : ""));
@@ -8670,7 +8670,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       if (it.error)
         t.append(E("span", "ferr", "error"));
       if (!it.note)
-        t.append(document.createTextNode(toolDuration(it.ms, ended2)));
+        t.append(document.createTextNode(toolDuration(it.ms, ended)));
       r.append(t);
       feedHost.append(r);
     }
@@ -8681,7 +8681,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     c.onclick = () => openWorkflow(a);
     const top = E("div", "top");
     const topRow = E("div", "top-row");
-    const st = displayState(a, ended2);
+    const st = displayState(a, ended);
     topRow.append(E("span", "atype", w.name || "workflow"), E("span", `badge b-${st}`, st));
     top.append(topRow, E("span", "wfkind", "workflow run"));
     c.append(top);
@@ -8700,9 +8700,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     if (w.models.length) {
       const chips = E("div", "wfmodels");
       for (const m of w.models) {
-        const chip2 = E("span", "amodel-chip");
-        chip2.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
-        chips.append(chip2);
+        const chip = E("span", "amodel-chip");
+        chip.append(E("span", null, m.model), E("span", "wfcalls", ` ${m.agents}`));
+        chips.append(chip);
       }
       c.append(chips);
     }
@@ -8737,7 +8737,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
   function renderSubs(s) {
     subsHost.replaceChildren();
     bgHost.replaceChildren();
-    const cmds = backgroundCommands(s.mainTools, { ended: ended2 });
+    const cmds = backgroundCommands(s.mainTools, { ended });
     const showTabs = s.subagents.length > 0 && cmds.length > 0;
     if (!s.subagents.length && cmds.length)
       bottomTab = "bg";
@@ -8750,7 +8750,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       return;
     }
     if (!s.subagents.length) {
-      subsHost.append(E("div", "wdesc", selectedTurn !== null ? "no subagents in this entry" : ended2 ? "no subagents ran in this session" : "no subagents yet"));
+      subsHost.append(E("div", "wdesc", selectedTurn !== null ? "no subagents in this entry" : ended ? "no subagents ran in this session" : "no subagents yet"));
       return;
     }
     const sorted = subagentsChronological(s.subagents);
@@ -8764,7 +8764,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       c.onclick = () => openSub(a);
       const top = E("div", "top");
       const topRow = E("div", "top-row");
-      const st = displayState(a, ended2);
+      const st = displayState(a, ended);
       topRow.append(E("span", "atype", a.title), E("span", `badge b-${st}`, st));
       top.append(topRow);
       const chips = E("div", "chips");
@@ -8861,14 +8861,14 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       shortModel2(a.model),
       a.efforts && a.efforts.length ? "effort " + a.efforts.join("/") : null
     ]));
-    dbody.append(kpis(kpi2("Duration", formatDuration(a.durationMs)), kpi2("Tool calls", String(a.tools.length)), kpi2("Returned", typeof a.outLen === "number" ? kc(a.outLen) : "—", typeof a.outLen === "number" ? "chars" : null)));
+    dbody.append(kpis(kpi("Duration", formatDuration(a.durationMs)), kpi("Tool calls", String(a.tools.length)), kpi("Returned", typeof a.outLen === "number" ? kc(a.outLen) : "—", typeof a.outLen === "number" ? "chars" : null)));
     const bars = E("div", "block");
     bars.append(fillBar("Context", k(a.fill) + " / " + k(a.window), a.window > 0 ? a.fill / a.window * 100 : 0, "linear-gradient(90deg,var(--cache),var(--agent))"));
     const b = a.volumeBreakdown;
     if (b) {
       const detail = (v) => {
-        const pct3 = a.volume > 0 ? Math.round(v / a.volume * 100) : 0;
-        return k(v) + (pct3 >= 1 ? " · " + pct3 + "%" : "");
+        const pct = a.volume > 0 ? Math.round(v / a.volume * 100) : 0;
+        return k(v) + (pct >= 1 ? " · " + pct + "%" : "");
       };
       const vol = stackBlock("Volume", (a.volumeEstimated ? "~" : "") + k(a.volume) + " tokens", [
         { label: "cache read", value: b.cacheRead, color: "var(--cache)", detail: detail(b.cacheRead) },
@@ -8925,9 +8925,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     dbody.replaceChildren();
     renderCrumbs();
     const w = a.workflow;
-    const st = displayState(a, ended2);
+    const st = displayState(a, ended);
     dbody.append(dhead("workflow run", w.name || "workflow", [st, w.runId.slice(0, 16)]));
-    dbody.append(kpis(kpi2("Subagents", String(w.agents)), kpi2("Volume", k(w.volume), "tokens")));
+    dbody.append(kpis(kpi("Subagents", String(w.agents)), kpi("Volume", k(w.volume), "tokens")));
     if (a.prompt) {
       const prompt = a.prompt;
       const pre = E("pre");
@@ -8944,11 +8944,11 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       const grid = E("div", "wf-members");
       const unreturned = st !== "running";
       for (const m of w.members) {
-        const card2 = E("div", "wf-mcard");
-        card2.append(E("div", "wfmc-id", m.agentId));
+        const card = E("div", "wf-mcard");
+        card.append(E("div", "wfmc-id", m.agentId));
         const typeLine = E("div", "wfmc-type");
         typeLine.append(document.createTextNode(m.agentType || "subagent"), E("span", null, " · "), E("b", null, m.model ? shortModel2(m.model) : "—"));
-        card2.append(typeLine);
+        card.append(typeLine);
         const krow = E("div", "wfmc-kpis");
         const mkpi = (lbl, val) => {
           const t = E("div", "wfmc-kpi");
@@ -8964,7 +8964,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         if (m.toolCount > 0)
           krow.append(mkpi("Tools", String(m.toolCount)));
         if (krow.children.length)
-          card2.append(krow);
+          card.append(krow);
         const meta = [];
         if (m.outLen > 0)
           meta.push("→ " + kc(m.outLen) + " chars");
@@ -8973,10 +8973,10 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         if (meta.length) {
           const md = E("div", "wfmc-meta");
           meta.forEach((s) => md.append(E("span", null, s)));
-          card2.append(md);
+          card.append(md);
         }
         const badgeCls = m.returned ? "ret" : unreturned ? "miss" : "live";
-        card2.append(E("span", "wfmc-badge " + badgeCls, m.returned ? "returned" : unreturned ? "never returned" : "running"));
+        card.append(E("span", "wfmc-badge " + badgeCls, m.returned ? "returned" : unreturned ? "never returned" : "running"));
         if (loadAgentPrompt) {
           const agentId = m.agentId;
           const btn = E("button", "morebtn wfmc-prompt-btn", "prompt ▾");
@@ -8992,14 +8992,14 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
               btn.remove();
               const pre = E("pre", "wfmc-prompt");
               pre.textContent = res.text + (res.truncated ? " …" : "");
-              card2.append(pre);
+              card.append(pre);
             }).catch(() => {
               btn.textContent = "error loading";
             });
           };
-          card2.append(btn);
+          card.append(btn);
         }
-        grid.append(card2);
+        grid.append(card);
       }
       dbody.append(block("Agents (" + w.members.length + ")", grid));
     }
@@ -9027,7 +9027,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       dbody.append(blockD("Hook note", [n.source, n.hook].filter(Boolean).join(" · ") || null, E("pre", null, n.text)));
     }
     const bgRan = t.background && t.startedTs && t.outcomeTs ? Date.parse(t.outcomeTs) - Date.parse(t.startedTs) : null;
-    dbody.append(kpis(kpi2(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended2)), t.background ? kpi2("Ran for", bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : "—") : kpi2("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));
+    dbody.append(kpis(kpi(t.background ? "Launch" : "Duration", toolDuration(t.ms, ended)), t.background ? kpi("Ran for", bgRan !== null && Number.isFinite(bgRan) ? formatDuration(Math.max(0, bgRan)) : "—") : kpi("Output size", t.ctx ? kc(t.ctx) : "—", t.ctx ? "chars" : null)));
     if (t.background) {
       dbody.append(blockD("Outcome", t.outcome ? null : "Claude Code reports a background command only when it ends.", E("pre", null, t.outcome ? outcomeLine(t.outcome) : "still running")));
       dbody.append(blockD("Output file", t.outputFile ? null : "named only by the notification that ends the command.", E("pre", null, t.outputFile || "not reported yet")));
@@ -9097,9 +9097,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     } else {
       dbody.append(head);
     }
-    const inTile = wired ? kpiWait("Input") : kpi2("Input", "—");
-    const newTile = wired ? kpiWait("New this call") : kpi2("New this call", "—");
-    const outTile = wired ? kpiWait("Output") : kpi2("Output", "—");
+    const inTile = wired ? kpiWait("Input") : kpi("Input", "—");
+    const newTile = wired ? kpiWait("New this call") : kpi("New this call", "—");
+    const outTile = wired ? kpiWait("Output") : kpi("Output", "—");
     dbody.append(kpis(inTile, newTile, outTile));
     const compBlock = E("div", "block");
     dbody.append(compBlock);
@@ -9194,7 +9194,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         return;
       }
       for (const a of s.subagents) {
-        const t = a.tools.find((t2) => t2.id === handle.toolUseId);
+        const t = a.tools.find((t) => t.id === handle.toolUseId);
         if (t) {
           openTool(t, a.agentType || a.agentId, back);
           return;
@@ -9219,7 +9219,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
   traceBtn.onclick = () => {
     if (!trace)
       trace = createTrace(container, { onBlock: openBlock });
-    trace.open(spanStore.snapshot(selectedTurn), selectedTurn, ended2);
+    trace.open(spanStore.snapshot(selectedTurn), selectedTurn, ended);
   };
   function openFeedItem(it) {
     if (it.apiCall) {
@@ -9244,7 +9244,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       return;
     }
     for (const a of s.subagents) {
-      const t = a.tools.find((t2) => t2.id === it.id);
+      const t = a.tools.find((t) => t.id === it.id);
       if (t) {
         openTool(t, a.agentType || a.agentId);
         return;
@@ -9263,9 +9263,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const totalCtx = list.reduce((n, t) => n + (t.ctx ?? 0), 0);
     const totalMs = list.reduce((n, t) => n + (t.ms ?? 0), 0);
     const hasTiming = list.some((t) => t.ms !== null);
-    const tiles = [kpi2("Calls", String(list.length)), kpi2("Total output", kc(totalCtx), "chars")];
+    const tiles = [kpi("Calls", String(list.length)), kpi("Total output", kc(totalCtx), "chars")];
     if (hasTiming)
-      tiles.push(kpi2("Total time", formatToolMs(totalMs)));
+      tiles.push(kpi("Total time", formatToolMs(totalMs)));
     dbody.append(kpis(...tiles));
     const backToType = { label: name, open: () => openToolType(name, s) };
     const filterInput = E("input", "tfilter");
@@ -9309,7 +9309,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     renderCrumbs();
     dbody.append(dhead("skill", sk.name, ["invoked by the model"]));
     const share = skillShare(sk, skills);
-    dbody.append(kpis(kpi2("Model invocations", String(sk.invokes)), kpi2("Active for", String(sk.turns), "API turns")));
+    dbody.append(kpis(kpi("Model invocations", String(sk.invokes)), kpi("Active for", String(sk.turns), "API turns")));
     if (share != null) {
       const bl = E("div", "block");
       bl.append(fillBar("Share of turns", sk.turns + " turns", share, "linear-gradient(90deg,var(--good),var(--cache))"));
@@ -9357,9 +9357,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const totalCtx = s.mainTools.reduce((n, t) => n + (t.ctx ?? 0), 0);
     const hasTiming = s.mainTools.some((t) => t.ms !== null);
     const totalMs = s.mainTools.reduce((n, t) => n + (t.ms ?? 0), 0);
-    const tiles = [kpi2("Calls", String(s.mainTools.length)), kpi2("Total output", kc(totalCtx), "chars")];
+    const tiles = [kpi("Calls", String(s.mainTools.length)), kpi("Total output", kc(totalCtx), "chars")];
     if (hasTiming)
-      tiles.push(kpi2("Total time", formatToolMs(totalMs)));
+      tiles.push(kpi("Total time", formatToolMs(totalMs)));
     dbody.append(kpis(...tiles));
     let sortByTime = false;
     const sortBtn = E("button", "tsort", "size ↓");
@@ -9458,7 +9458,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       scratchTotal ? scratchTotal + " scratchpad" : null,
       artifacts.length ? artifacts.length + " published" : null
     ]));
-    dbody.append(artifacts.length ? kpis(kpi2("Project", String(projectTotal)), kpi2("Scratchpad", String(scratchTotal)), kpi2("Published", String(artifacts.length))) : kpis(kpi2("Project", String(projectTotal)), kpi2("Scratchpad", String(scratchTotal))));
+    dbody.append(artifacts.length ? kpis(kpi("Project", String(projectTotal)), kpi("Scratchpad", String(scratchTotal)), kpi("Published", String(artifacts.length))) : kpis(kpi("Project", String(projectTotal)), kpi("Scratchpad", String(scratchTotal))));
     const filterInput = E("input", "tfilter");
     filterInput.placeholder = "filter by path";
     const filterBar = E("div", "tfilterbar");
@@ -9481,8 +9481,8 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       typeBar.append(c);
     };
     const paintChips = () => {
-      for (const [ext, el8] of chipEls)
-        el8.classList.toggle("on", typeFilter === ext || typeFilter === null && ext === null);
+      for (const [ext, el] of chipEls)
+        el.classList.toggle("on", typeFilter === ext || typeFilter === null && ext === null);
     };
     const renderRows = () => {
       const q = filterInput.value.toLowerCase();
@@ -9584,7 +9584,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
     const tools = rows.filter((r) => r.type === "tool" || r.type === "subspan").length;
     const calls = rows.filter((r) => r.type === "api").length;
     const elapsed = rows.length ? rows[rows.length - 1].t0 - rows[0].t0 : 0;
-    dbody.append(kpis(kpi2("Activities", String(rows.length)), kpi2("Tool calls", String(tools)), kpi2("API calls", String(calls)), kpi2("Elapsed", formatToolMs(elapsed))));
+    dbody.append(kpis(kpi("Activities", String(rows.length)), kpi("Tool calls", String(tools)), kpi("API calls", String(calls)), kpi("Elapsed", formatToolMs(elapsed))));
     let oldestFirst = true;
     const sortBtn = E("button", "tsort", "oldest ↓");
     const filterInput = E("input", "tfilter");
@@ -9616,10 +9616,10 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         nm.append(E("span", "aagent", r.agent));
       if (r.detail)
         nm.append(E("span", "targ", r.detail));
-      const dur2 = E("div", "tv");
-      const durText = r.status === "running" ? toolDuration(null, ended2) : r.ms != null ? formatToolMs(r.ms) : "—";
-      dur2.append(E("span", r.status === "running" ? "run" : null, durText));
-      row.append(nm, dur2, E("div", "tv", formatOffset(r.t0 - t0)));
+      const dur = E("div", "tv");
+      const durText = r.status === "running" ? toolDuration(null, ended) : r.ms != null ? formatToolMs(r.ms) : "—";
+      dur.append(E("span", r.status === "running" ? "run" : null, durText));
+      row.append(nm, dur, E("div", "tv", formatOffset(r.t0 - t0)));
       if (r.handle) {
         const h = r.handle;
         row.onclick = () => openBlock(h, backToList);
@@ -9848,7 +9848,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
         const _trace = trace;
         requestAnimationFrame(() => {
           traceRafPending = false;
-          _trace.update(spanStore.snapshot(selectedTurn), ended2);
+          _trace.update(spanStore.snapshot(selectedTurn), ended);
         });
       }
     }
@@ -9920,12 +9920,12 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       pushToast({ sub: true, name: e.agentType ?? "agent", agentId: e.agentId ?? undefined, model: known });
     } else if (e.type === "turn-end" && e.agentId == null) {
       const snap = state.snapshot();
-      const ended3 = snap.turnList.filter((t) => t.state !== "live").at(-1);
-      if (ended3 && ended3.kind === "work" && !announced.has(ended3.index)) {
-        const v = computeVerdict(ended3, snap);
-        announced.add(ended3.index);
+      const ended = snap.turnList.filter((t) => t.state !== "live").at(-1);
+      if (ended && ended.kind === "work" && !announced.has(ended.index)) {
+        const v = computeVerdict(ended, snap);
+        announced.add(ended.index);
         if (v.severity === "crit")
-          pushToast({ name: "Verdict · turn #" + ended3.index, arg: verdictHeadline(v), sev: "crit" });
+          pushToast({ name: "Verdict · turn #" + ended.index, arg: verdictHeadline(v), sev: "crit" });
       }
     }
   });
@@ -9972,7 +9972,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       live = true;
       render();
       refreshOutput();
-      if (!ended2 && !commitsTimer)
+      if (!ended && !commitsTimer)
         commitsTimer = setInterval(refreshOutput, COMMITS_REFRESH_MS);
     },
     setWaiting(kind, since) {
@@ -9981,7 +9981,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       const entering = kind !== null && waiting === null;
       waiting = kind;
       waitingSince = kind === null ? null : since;
-      if (entering && toastsArmed && !ended2) {
+      if (entering && toastsArmed && !ended) {
         const tool = pendingTool();
         pushToast({
           name: kind === "permission" ? "Waiting for your approval" : "Waiting for your answer",
@@ -9992,16 +9992,16 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       }
       scheduleRender();
     },
-    setBusy(working3) {
-      if (working3 === busy)
+    setBusy(working) {
+      if (working === busy)
         return;
-      busy = working3;
+      busy = working;
       scheduleRender();
     },
     setEnded() {
-      if (ended2)
+      if (ended)
         return;
-      ended2 = true;
+      ended = true;
       root.classList.add("ended");
       scheduleRender();
       if (commitsTimer) {
@@ -10011,9 +10011,9 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
       refreshOutput();
     },
     setLive() {
-      if (!ended2)
+      if (!ended)
         return;
-      ended2 = false;
+      ended = false;
       root.classList.remove("ended");
       scheduleRender();
       if (live && !commitsTimer)
@@ -10043,7 +10043,7 @@ last event: ` + c.lastEvent : c.sentence ?? c.command;
 
 // apps/server/src/client/view.ts
 function createView(container, treeState, opts = {}) {
-  let ended2 = opts.ended ?? false;
+  let ended = opts.ended ?? false;
   const body = document.createElement("div");
   const graphHost = document.createElement("div");
   body.append(graphHost);
@@ -10057,7 +10057,7 @@ function createView(container, treeState, opts = {}) {
     loadCommits: opts.loadCommits,
     loadFiles: opts.loadFiles,
     loadCards: opts.loadCards,
-    ended: ended2,
+    ended,
     sessionId: opts.sessionId
   });
   let replayEnded = false;
@@ -10068,22 +10068,22 @@ function createView(container, treeState, opts = {}) {
   mount();
   return {
     setEnded() {
-      ended2 = true;
+      ended = true;
       graph.setEnded();
     },
     setLive() {
-      ended2 = false;
+      ended = false;
       graph.setLive();
     },
     setWaiting(kind, since) {
-      if (ended2)
+      if (ended)
         return;
       graph.setWaiting(kind, since);
     },
-    setBusy(working2) {
-      if (ended2)
+    setBusy(working) {
+      if (ended)
         return;
-      graph.setBusy(working2);
+      graph.setBusy(working);
     },
     onReplayEnd() {
       if (replayEnded)
@@ -10099,32 +10099,32 @@ function createView(container, treeState, opts = {}) {
   };
 }
 function buildLoader() {
-  const el8 = (tag, cls) => {
+  const el = (tag, cls) => {
     const n = document.createElement(tag);
     n.className = cls;
     return n;
   };
-  const card2 = (...bars) => {
-    const c = el8("div", "card sk-card");
+  const card = (...bars) => {
+    const c = el("div", "card sk-card");
     for (const w of bars) {
-      const b = el8("div", "sk-bar");
+      const b = el("div", "sk-bar");
       b.style.setProperty("width", w);
       c.append(b);
     }
     return c;
   };
-  const root = el8("div", "skeleton");
-  const note = el8("div", "sk-note");
+  const root = el("div", "skeleton");
+  const note = el("div", "sk-note");
   note.textContent = "Reading the session…";
-  const toprow = el8("div", "toprow");
-  const stack = el8("div", "stack");
-  const monitor = card2("40%", "70%", "55%");
+  const toprow = el("div", "toprow");
+  const stack = el("div", "stack");
+  const monitor = card("40%", "70%", "55%");
   monitor.classList.add("sublivecard");
-  stack.append(card2("30%", "90%", "60%"), monitor);
-  toprow.append(stack, card2("35%", "80%", "65%", "80%", "50%"));
-  const statsrow = el8("div", "statsrow");
+  stack.append(card("30%", "90%", "60%"), monitor);
+  toprow.append(stack, card("35%", "80%", "65%", "80%", "50%"));
+  const statsrow = el("div", "statsrow");
   for (let i = 0;i < 3; i++)
-    statsrow.append(card2("30%", "85%", "60%"));
+    statsrow.append(card("30%", "85%", "60%"));
   root.append(note, toprow, statsrow);
   return root;
 }
@@ -10138,10 +10138,10 @@ authFetch("/api/config").then((r) => r.json()).then((cfg) => {
 }).catch(() => {});
 var stream = createStream({ EventSourceImpl: AuthEventSource });
 function rootEl(id) {
-  const el8 = document.getElementById(id);
-  if (!el8)
+  const el = document.getElementById(id);
+  if (!el)
     throw new Error(`seedeep: #${id} is missing from index.html`);
-  return el8;
+  return el;
 }
 var navEl = rootEl("nav");
 var tabsEl = rootEl("tabs");

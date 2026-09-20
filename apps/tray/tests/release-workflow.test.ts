@@ -287,13 +287,17 @@ test('every Windows platform the server ships has a tray installer of its own', 
 test('every command the Windows-bearing jobs run is bash, Windows included', () => {
   // `windows` runs on nothing BUT Windows, so the rule matters there even more than in `smoke`.
   for (const [name, expected] of [
-    ['smoke', 5],
+    ['smoke', 6],
     ['windows', 4],
   ] as const) {
     const steps = job(name)
       .split(/\n {6}- /)
       .filter((s) => /(^|\n)\s*run:/.test(s));
-    assert.equal(steps.length, expected, `${name}: the version, the tag download, and the scripts`);
+    assert.equal(
+      steps.length,
+      expected,
+      `${name}: the version, the tag download, the scripts, and in smoke the macOS signature gate`,
+    );
     for (const step of steps) {
       assert.match(step, /shell: bash/, `${name}: a step runs outside bash:\n${step}`);
     }

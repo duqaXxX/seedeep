@@ -9,7 +9,33 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.33.0 (2026-09-21)
+
 ### Fixed
+
+- **The macOS executables are compiled with a Bun that macOS 27 does not kill.** `packageManager`
+  had pinned `bun@1.3.13` since 2026-09-05, and a binary compiled by that version is SIGKILLed at
+  exec on macOS 27.0 (build 26A428). Nothing of it runs, so `start`, `stop` and `--version` alike
+  print nothing and exit 137, and a server already running cannot even be asked to stop. Measured
+  on 2026-09-21 by reproducing the release path itself, a Linux x64 container cross-compiling the
+  `bun-darwin-arm64` target with the result run on macOS 27: Bun 1.3.13 is killed, 1.3.14 runs,
+  1.4.2 runs. The published binaries split the same way and say which one built them without being
+  run, `grep -ao 'Bun/1\.[0-9]*\.[0-9]*'`: 0.28.1 through 0.31.0 carry `Bun/1.3.14` and run,
+  0.31.1 through 0.32.0 carry `Bun/1.4.0` and are killed. The pin is now `bun@1.4.2`, which
+  `oven-sh/setup-bun` reads when the workflow passes no `bun-version`.
+
+  An installation already on an affected version is repaired in place, without waiting for this
+  release: `codesign --force --sign - "$(readlink -f "$(which seedeep)")"` rewrites the signature
+  Bun wrote, and the binary runs again until the next reinstall replaces it.
+
+  `smoke` did not catch this and still cannot reproduce it. Its macOS leg runs on `macos-latest`,
+  which is macOS 26, and no macOS 27 runner image exists, so a binary that dies only on 27 starts
+  there. It now also asserts `codesign -v` on `macos-arm64`, the one signal separating the two on a
+  macOS 26 machine. The implication holds in one direction, a valid signature means the binary
+  runs, and that is what makes it usable as a gate: 0.28.1 through 0.31.0 fail it and run. The
+  `macos-x64` target is left out because Bun 1.4.2 writes an invalid signature for it as well, from
+  a Linux host and from a macOS one, and whether such a binary survives macOS 27 on Intel is
+  UNTESTED. No Intel Mac running 27 was available, and GitHub's newest Intel image is macOS 26.
 
 - **A session driven by a script no longer notifies.** The rule that keeps automated runs quiet
   reads `entrypoint`, which only names the hosts that announce themselves (`sdk-cli`, `sdk-py`).
