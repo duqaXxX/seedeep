@@ -9,6 +9,25 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+## 0.33.1 (2026-09-21)
+
+### Fixed
+
+- **The tray panel opens again on macOS 27.** `tray-icon` 0.24.2 attaches the menu to the
+  NSStatusItem once, at creation, and on macOS 27 AppKit presents that menu before the click
+  reaches the view the crate installs to read it. The branch that tells a left click from a right
+  one is never reached, so the menu opened on BOTH buttons and `toggle_panel` never ran: the icon
+  showed the right state and the sessions window could not be opened at all. Measured on macOS
+  27.0 (26A428). This is not a regression in seedeep. 0.31.0, 0.32.0 and 0.33.0 carry identical
+  `tauri`, `tray-icon`, `tao`, `wry` and `muda`, and the symptom appeared on the evening the
+  machine was upgraded to 27.
+
+  Upstream fixed it in `tray-icon` 0.25.1, which Tauri 2 cannot resolve because it requires
+  `^0.24`, 2.11.6 included, while Tauri 3 alpha already asks for `^0.25`. That single commit is
+  cherry-picked onto the `v0.24.2` tag, where it applies without conflict, and comes in through
+  `[patch.crates-io]` pinned by `rev`. The comment in `apps/tray/src-tauri/Cargo.toml` states the
+  condition for removing it again: a Tauri 2 release that asks for 0.25 or newer.
+
 ## 0.33.0 (2026-09-21)
 
 ### Fixed

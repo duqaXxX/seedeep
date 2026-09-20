@@ -74,3 +74,22 @@ strip = true
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["macros", "rt"] }
+
+# `tray-icon` 0.24.2 attaches the tray menu to the NSStatusItem once, at creation. On macOS 27
+# AppKit presents that menu before the click reaches the view tray-icon installs for the purpose,
+# so the branch that tells left from right is never reached: the menu opens on BOTH buttons and
+# the panel never opens at all. Measured on macOS 27.0 (26A428) against 0.32.0 and 0.33.0, which
+# carry byte-identical tray crates, so what changed is the OS and not seedeep.
+#
+# Upstream fixed it in 0.25.1 (commit 42eb44e, "restore tray click event forwarding on macOS 27")
+# by attaching the menu only while it is being presented. Tauri 2 requires `tray-icon ^0.24` and
+# therefore cannot resolve 0.25, 2.11.6 included; Tauri 3 alpha already asks for ^0.25. What
+# follows is that single commit cherry-picked onto the v0.24.2 tag, which applies without conflict
+# and leaves the crate version at 0.24.2, so nothing is misrepresented to the resolver.
+#
+# REMOVE THIS the moment a Tauri 2 release requires `tray-icon` 0.25 or newer. The fork exists
+# only to bridge that gap, and a dependency served from a personal fork is a supply-chain cost
+# this project should not carry a day longer than it must. Pinned by `rev` and never by branch,
+# so what gets built cannot move underneath us.
+[patch.crates-io]
+tray-icon = { git = "https://github.com/duqaXxX/tray-icon.git", rev = "acbff4b356b0cf6dfd92bfacd269c173c01b793a" }
