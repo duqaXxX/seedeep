@@ -463,6 +463,34 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: .github/scripts/smoke-server.sh "bin/seedeep-server_${VERSION}_${ASSET}" "$VERSION"
 
+      # macOS 27 SIGKILLs a binary over the signature Bun wrote, and THIS JOB CANNOT REPRODUCE THAT:
+      # `macos-latest` is macOS 26 and no macOS 27 runner image exists, so a binary that dies only on
+      # 27 starts here and the step above passes it. That is exactly how 0.31.1, 0.31.2 and 0.32.0
+      # shipped executables which print nothing and exit 137 on a machine running 27.
+      #
+      # `codesign -v` is the one signal that separates them from a macOS 26 runner: it fails on what
+      # Bun 1.3.13 and 1.4.0 compile, and passes on what 1.4.2 compiles. The implication holds ONE
+      # WAY ONLY, a valid signature means the binary runs, and 0.28.1 through 0.31.0 fail it while
+      # running perfectly. One way is all a gate needs, because it asks for the sufficient condition.
+      #
+      # arm64 alone. Bun writes an invalid signature for the `macos-x64` target as well, from a Linux
+      # host and from a macOS one, and no Intel Mac on macOS 27 exists to say whether those die:
+      # GitHub's newest Intel image is macOS 26. Asserting it there would fail every release over a
+      # danger nobody has measured.
+      - if: matrix.asset == 'macos-arm64'
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          binary="bin/seedeep-server_${VERSION}_${ASSET}"
+          if codesign -v "$binary"; then
+            echo "signature valid: $binary"
+            exit 0
+          fi
+          compiled_by=$(grep -ao 'Bun/1\.[0-9]*\.[0-9]*' "$binary" | head -1)
+          echo "::error::$binary carries a signature macOS rejects, and on macOS 27 it is SIGKILLed at exec before one instruction runs. Compiled by ${compiled_by:-an unknown Bun}; the pin lives in packageManager." >&2
+          exit 1
+
       # STARTING IS NOT SURVIVING, and the step above is seconds of work: a process that dies at
       # t+11s passes it and reaches a stranger. Three starts with a 20-second idle window, each left
       # completely alone, is the REGRESSION - cheap, and on every platform, because nothing says the
