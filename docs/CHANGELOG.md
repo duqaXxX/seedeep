@@ -9,6 +9,19 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- Two structural gates, both of which a pull request now has to pass.
+  `apps/server/tests/root-coverage.test.ts` reads the `Root` union from its declaration and
+  fails until every variant has a case in `golden-transcript.test.ts`, so a new session source
+  cannot land as a parser alone: a line of it has to reach the reducer in a test. And
+  `.github/scripts/scan-new-io-surface.sh`, a second scan in the existing diff job, blocks an
+  added line under `apps/server/src/` that introduces `fetch(`, `Bun.spawn`, `child_process`,
+  `execFile`, `eval(` or `new Function` in a file that has none. Eleven files legitimately hold
+  one today and are listed as `ALLOWED` in the script. Measured over the 60 commits before it
+  was written, that scan would have fired 0 times, which is the property that makes it a gate
+  rather than noise.
+
 ### Changed
 
 - The Bun version is pinned, in `package.json` under `packageManager`. CI and the release workflow

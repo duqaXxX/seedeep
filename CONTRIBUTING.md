@@ -41,6 +41,15 @@ deleted. The maintainer goes through a pull request on the same terms:
   job blocks the change rather than warning about it. The check is
   `.github/scripts/scan-sensitive-diff.sh`; you can run it yourself with
   `git diff main...HEAD | .github/scripts/scan-sensitive-diff.sh`.
+- **New network or process surface:** a second scan in the same job, over the same
+  added lines. seedeep reads local session files, so a line under `apps/server/src/`
+  that introduces `fetch(`, `Bun.spawn`, `child_process`, `execFile`, `eval(` or
+  `new Function` blocks the change unless that file already holds one. The eleven files
+  that legitimately do are listed as `ALLOWED` in
+  `.github/scripts/scan-new-io-surface.sh`. If your change genuinely needs a twelfth,
+  add it there in the same pull request and say in the description what it talks to and
+  why. Run it with
+  `git diff main...HEAD | .github/scripts/scan-new-io-surface.sh`.
 
 ## How we work together
 
@@ -261,6 +270,19 @@ not be accepted.
   There is no coverage quota, so delete a test that can't fail meaningfully.
 - Fix-on-touch: when you change a source file that has tests, update those
   tests in the same commit.
+- Never invent the shape of a jsonl line. seedeep parses logs it does not own, so open a
+  real session file and read the field names before you write a fixture or a parser
+  branch. A fixture may be synthetic in content, and must be, but it has to be faithful
+  in shape: one whose field names you guessed tests nothing.
+- A feature that reads session data needs a case in
+  `apps/server/tests/golden-transcript.test.ts`, which starts from raw jsonl lines and
+  drives them through the real `parseLine` and the real reducer to an asserted snapshot.
+  Hand-built events are fine for one reducer branch, but they can never discover that the
+  parser drops a whole class of real lines, which is how three shipped bugs got past a
+  green suite. Adding a session source is the clearest case:
+  `apps/server/tests/root-coverage.test.ts` fails until every variant of the `Root` union
+  has a golden case, so a new adapter is not done when it parses, it is done when a line
+  of that source has reached the reducer in a test.
 - Run before you push: `bun run test` and `bun run typecheck` must pass, plus
   `bun run test:tray` if you touched `apps/tray/src-tauri/`, since `bun run test`
   does not reach the Rust side. CI runs all three on every push and pull request, so a
