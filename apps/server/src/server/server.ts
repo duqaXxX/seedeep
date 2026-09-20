@@ -263,6 +263,11 @@ export function isLoopback(host: string): boolean {
  * bug class. A `Host` is mandatory in HTTP/1.1, so an absent one is malformed, not lenient.
  */
 export function isLoopbackHostHeader(hostHeader: string | null): boolean {
+  // LIMIT: the three literals are the whole allowlist, with no way to widen it. Two legitimate
+  // local setups are refused by it: `*.localhost`, which browsers resolve to loopback natively
+  // (RFC 6761), and an alias in the hosts file. Vite ships `server.allowedHosts` for exactly
+  // this, and seedeep takes its default without the valve. Naming a host means remote mode,
+  // which is already how this project answers that question.
   if (hostHeader === null || /[@/\\]/.test(hostHeader)) return false;
   try {
     // `hostname` keeps the brackets an IPv6 literal is written with (`[::1]`), which is the form
@@ -286,6 +291,14 @@ export function isOwnOrigin(origin: string | null, hostHeader: string | null, ht
   if (origin === null) return true;
   try {
     const parsed = new URL(origin);
+    // The strict equality is DELIBERATE, and normalizing the right-hand side would weaken it.
+    // `parsed.host` is WHATWG-canonical while `hostHeader` is the raw bytes, so `127.1:44842`
+    // and `0x7f.1:44842` fail here after passing the `Host` gate, which parses them. No browser
+    // can produce that pair: it canonicalizes the URL before emitting either header, so both
+    // arrive already canonical. Only a hand-written client sees it, and refusing it costs
+    // nothing.
+    // LIMIT: a null `hostHeader` (HTTP/1.0, or malformed HTTP/1.1) refuses every state-changing
+    // request carrying an `Origin`, since `parsed.host` is always a string.
     return parsed.protocol === (https ? 'https:' : 'http:') && parsed.host === hostHeader;
   } catch {
     // Includes the opaque `null` origin a sandboxed frame or a `data:` URL sends.
@@ -510,6 +523,15 @@ export function selfSpawnPlan(
  * - Enforces `Authorization: Bearer <token>` on all routes except `GET /api/config`.
  * - Sets up a self-signed TLS cert (generated once with openssl, reused on every restart).
  * - Throws if `tls.commonName` is not set (caller must configure it before using a remote host).
+ *
+ * Two gates run before any route, on every `host`, because a loopback bind is not on its own a
+ * statement about who is calling:
+ * - On a loopback `host`, the request's `Host` header must name a loopback literal, or the answer
+ *   is `403` ({@link isLoopbackHostHeader}). Beyond loopback the name is the operator's own and
+ *   the token is the gate, so this one does not apply.
+ * - On any method other than `GET` and `HEAD`, an `Origin` that is present must be this server's
+ *   own, or the answer is `403` ({@link isOwnOrigin}). An absent `Origin` passes, which is what
+ *   keeps non-browser callers such as `seedeep restart` working.
  *
  * Serves the GUI's files from the map compiled into the binary ({@link assetPath}) and exposes
  * read-only endpoints — `/api/sessions`,
@@ -835,17 +857,16 @@ export async function startServer(deps: ServerDeps): Promise<RunningServer> {
       if (loopback && !isLoopbackHostHeader(req.headers.get('host'))) {
         return new Response(
           JSON.stringify({
-            error: 'host not allowed',
-            detail:
-              'seedeep answers only to 127.0.0.1, [::1] and localhost. Reach it beyond loopback by setting `host` and `tls.commonName`, which requires the token.',
+            error:
+              'host not allowed: seedeep answers only to 127.0.0.1, [::1] and localhost. Set `host` and `tls.commonName` to reach it beyond loopback, which then requires the token.',
           }),
           { status: 403, headers: { 'content-type': 'application/json;charset=utf-8' } },
         );
       }
 
-      // CSRF gate. A rebound page passes the check above only in the cases the check above cannot
-      // see, so these two overlap nowhere: after a rebinding the page IS this origin, and a
-      // cross-origin POST carries a `Host` that is perfectly valid.
+      // CSRF gate. The two overlap nowhere: a rebinding request carries a non-loopback `Host` and
+      // is caught above, while a cross-origin POST carries a `Host` that is perfectly valid and is
+      // caught here.
       const stateChanging = req.method !== 'GET' && req.method !== 'HEAD';
       if (stateChanging && !isOwnOrigin(req.headers.get('origin'), req.headers.get('host'), tlsOpts !== undefined)) {
         return new Response(JSON.stringify({ error: 'cross-origin request refused' }), {

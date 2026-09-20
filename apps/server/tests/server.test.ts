@@ -1103,7 +1103,7 @@ test('POST /api/restart: requires auth on non-loopback host', async () => {
 // server with a bodyless POST, which needs no preflight.
 
 test('isLoopbackHostHeader: the three literals pass, a rebound name and a parser differential do not', () => {
-  for (const ok of ['127.0.0.1:44842', 'localhost:44842', '[::1]:44842', 'localhost', '127.0.0.1:80']) {
+  for (const ok of ['127.0.0.1:44842', 'localhost:44842', '[::1]:44842', '[::1]', 'localhost', '127.0.0.1:80']) {
     assert.equal(isLoopbackHostHeader(ok), true, ok);
   }
   for (const no of ['evil.test:44842', 'seedeep.example.com', '192.168.1.9:44842', '127.0.0.1.evil.test']) {
@@ -1197,6 +1197,43 @@ test('POST /api/restart from the GUI, which sends its own Origin, still restarts
     assert.equal(res.status, 200);
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(spawned, true);
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config from another origin is refused, and the config is not written', async () => {
+  // The gate covers every state-changing route, but only /api/restart was pinned, so deleting it
+  // left 20 POST tests green: none of them sends an `Origin`. This is the route the rebinding
+  // chain actually wants, since `notifications.webhook.url` is what turns a read into a feed.
+  const cfg = onDisk({ ...defaultConfig(), port: 44842 });
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, ...cfg });
+  try {
+    const res = await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { origin: 'http://evil.test:44842', 'content-type': 'application/json' },
+      body: JSON.stringify({ port: 9999 }),
+    });
+    assert.equal(res.status, 403);
+    // The status is not the assertion: a server that answered 403 and wrote anyway would pass it.
+    assert.equal(JSON.parse(readFileSync(cfg.configPath, 'utf8')).port, 44842, 'the file must be untouched');
+  } finally {
+    srv.stop();
+  }
+});
+
+test('POST /api/config from the panel, which sends its own Origin, still writes', async () => {
+  const cfg = onDisk({ ...defaultConfig(), port: 44842 });
+  const srv = await startServer({ watcher: new EventEmitter(), discover: async () => [], port: 0, ...cfg });
+  try {
+    const own = new URL(srv.url);
+    const res = await fetch(`${srv.url}/api/config`, {
+      method: 'POST',
+      headers: { origin: `${own.protocol}//${own.host}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ port: 9999 }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(JSON.parse(readFileSync(cfg.configPath, 'utf8')).port, 9999, 'the panel must still be able to save');
   } finally {
     srv.stop();
   }
