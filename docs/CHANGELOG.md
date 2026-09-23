@@ -9,6 +9,12 @@ Everything released before `0.20.0` — including the pre-publication developmen
 
 ## Unreleased
 
+### Added
+
+- CI: the Published text scan workflow runs `.github/scripts/scan-sensitive-diff.sh` over every
+  issue, pull request description and comment once it is published, and fails on a match. It
+  cannot block the text, which is already public; the failed run is the alert.
+
 ## 0.33.1 (2026-09-21)
 
 ### Fixed

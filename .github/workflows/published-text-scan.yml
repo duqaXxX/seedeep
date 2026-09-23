@@ -1,0 +1,44 @@
+# Scans the text of issues, pull request descriptions and comments after they are published, for
+# the personal data the repository's own diff scan knows: real home paths, personal emails,
+# private tracker references. It reuses .github/scripts/scan-sensitive-diff.sh by prefixing every
+# line with "+", so the patterns stay in one public file.
+#
+# It cannot block: GitHub has already published the text when the event fires. A failed run is
+# the alert, and GitHub notifies the account that triggered it, so it reaches the maintainer for
+# text they wrote on github.com. Secrets are left to GitHub secret scanning, which covers issue
+# and pull request titles, descriptions and comments on public repositories.
+#
+# The event text is read from $GITHUB_EVENT_PATH with jq and never interpolated into the script,
+# so a title or a body cannot inject shell. pull_request_target checks out the default branch
+# only, never the pull request's code.
+
+name: Published text scan
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Published text scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts/scan-sensitive-diff.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Scan the published text
+        run: |
+          jq -r '[.issue.title, .issue.body, .comment.body, .pull_request.title, .pull_request.body]
+                 | map(select(. != null)) | .[]' "$GITHUB_EVENT_PATH" \
+            | sed 's/^/+/' \
+            | bash .github/scripts/scan-sensitive-diff.sh
