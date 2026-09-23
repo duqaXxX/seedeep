@@ -51,6 +51,11 @@ deleted. The maintainer goes through a pull request on the same terms:
   why. Run it with
   `git diff main...HEAD | .github/scripts/scan-new-io-surface.sh`.
 
+Issues, pull request descriptions and comments are scanned with `scan-sensitive-diff.sh` once GitHub
+has published them, by the **Published text scan** workflow. It cannot block, since the text
+is already public when the event fires: a failed run is the alert. Secrets in that text are
+left to GitHub secret scanning, which covers issues and pull requests on public repositories.
+
 ## How we work together
 
 Everyone taking part is covered by the [Contributor Covenant](CODE_OF_CONDUCT.md), and reporting
