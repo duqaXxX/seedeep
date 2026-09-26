@@ -1,16 +1,24 @@
-# Scans the text of issues, pull request descriptions and comments after they are published, for
+# Scans the text of issues, pull request descriptions, reviews and comments after they are published, for
 # the personal data the repository's own diff scan knows: real home paths, personal emails,
 # private tracker references. It reuses .github/scripts/scan-sensitive-diff.sh by prefixing every
 # line with "+", so the patterns stay in one public file.
 #
+# Each run scans only the text its own event published. An issue_comment payload also carries
+# the issue, and a review payload the pull request, but rescanning those would charge a match in
+# someone else's text to whoever commented.
+#
 # It cannot block: GitHub has already published the text when the event fires. A failed run is
-# the alert, and GitHub notifies the account that triggered it, so it reaches the maintainer for
-# text they wrote on github.com. Secrets are left to GitHub secret scanning, which covers issue
-# and pull request titles, descriptions and comments on public repositories.
+# the alert, and GitHub notifies the account that triggered the run. For text the maintainer
+# wrote on github.com that is the maintainer; for text written by anyone else it is that author,
+# and the maintainer sees the failure only in the Actions tab. Secrets are left to GitHub secret
+# scanning, which covers issue and pull request titles, descriptions and comments on public
+# repositories.
 #
 # The event text is read from $GITHUB_EVENT_PATH with jq and never interpolated into the script,
 # so a title or a body cannot inject shell. pull_request_target checks out the default branch
-# only, never the pull request's code.
+# only, never the pull request's code. The two review events run the workflow as the pull
+# request carries it, which for a fork means a read-only token and no secrets: a fork can skip
+# the scan of its own review text, and reach nothing else.
 
 name: Published text scan
 
@@ -21,6 +29,10 @@ on:
     types: [created, edited]
   pull_request_target:
     types: [opened, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
 
 permissions:
   contents: read
@@ -37,8 +49,15 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Scan the published text
+        # Named explicitly for pipefail, which the default shell (`bash -e`) lacks: without it a jq
+        # that fails passes nothing to the scanner, and the scanner reports clean.
+        shell: bash
         run: |
-          jq -r '[.issue.title, .issue.body, .comment.body, .pull_request.title, .pull_request.body]
+          jq -r --arg event "$GITHUB_EVENT_NAME" '
+                 if $event == "issues" then [.issue.title, .issue.body]
+                 elif $event == "pull_request_target" then [.pull_request.title, .pull_request.body]
+                 elif $event == "pull_request_review" then [.review.body]
+                 else [.comment.body] end
                  | map(select(. != null)) | .[]' "$GITHUB_EVENT_PATH" \
             | sed 's/^/+/' \
             | bash .github/scripts/scan-sensitive-diff.sh

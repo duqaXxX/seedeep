@@ -51,10 +51,13 @@ deleted. The maintainer goes through a pull request on the same terms:
   why. Run it with
   `git diff main...HEAD | .github/scripts/scan-new-io-surface.sh`.
 
-Issues, pull request descriptions and comments are scanned with `scan-sensitive-diff.sh` once GitHub
-has published them, by the **Published text scan** workflow. It cannot block, since the text
-is already public when the event fires: a failed run is the alert. Secrets in that text are
-left to GitHub secret scanning, which covers issues and pull requests on public repositories.
+Issues, pull request descriptions, reviews and comments are scanned with `scan-sensitive-diff.sh`
+once GitHub has published them, by the **Published text scan** workflow. Each run reads only the
+text its own event published. It cannot block, since the text is already public when the event
+fires: a failed run is the alert, and GitHub sends it to whoever triggered the run, so a match in
+your own text reaches you and a match in someone else's reaches them (the maintainer sees it in
+the Actions tab). Secrets in that text are left to GitHub secret scanning, which covers issues and
+pull requests on public repositories.
 
 ## How we work together
 
