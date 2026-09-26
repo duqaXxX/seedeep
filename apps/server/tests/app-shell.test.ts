@@ -270,7 +270,15 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     assert.equal(findByClass(panelsEl, 'panel').length, 0);
   } finally {
     g.document = prev.document;
-    g.EventSource = prev.EventSource;
+    // The live stream leaks the same way the roster poll below does: app.js never closes it, and
+    // its staleness watchdog rebuilds the connection through the GLOBAL EventSource once nothing
+    // has arrived for STALE_MS. Bun has none, so restoring it outright made that rebuild throw
+    // "between tests" in whichever file happened to be running 45-60s later, failing the suite on
+    // timing alone. An inert source instead: it connects to nothing and delivers nothing.
+    g.EventSource = class {
+      addEventListener() {}
+      close() {}
+    };
     // Before the fetch shim, and for the same reason it exists: the leaked poll re-arms itself
     // through the GLOBAL setTimeout on every tick, so leaving the shortened clock in place would
     // hand the rest of the suite a roster polling every 5 ms.
