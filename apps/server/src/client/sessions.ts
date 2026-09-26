@@ -180,6 +180,9 @@ export function createRoster(deps: {
         return;
       }
     }
+    // Checked after the awaits, not before them: stop() can land while a reading is in flight,
+    // and what it promises is that nothing reaches a listener afterwards.
+    if (stopped) return;
     const next = mergeRoster(catalogue, live);
     // Serve the fresh rows ALWAYS, notify only on identity. The two are different questions:
     // `openFromDropdown` builds a tab out of `current()`, so a row parked behind an unchanged

@@ -628,6 +628,18 @@ roster.start().then(() => {
 });
 
 /**
+ * Ends the two loops this module starts for the life of the page: the live stream (and its
+ * staleness watchdog, which reconnects on its own) and the roster poll. A browser never calls it,
+ * since unloading the page ends both; the shell's boot test does, because its process outlives
+ * the page, and a watchdog left running rebuilt its stream through whatever `EventSource` a later
+ * test file found. Open tabs are not covered: closing a tab is what releases its own resources.
+ */
+export function dispose(): void {
+  stream.close();
+  roster.stop();
+}
+
+/**
  * The session a deep link asks for, CONSUMED: the parameter is taken out of the URL as it is read,
  * for the same reason `initAuth` strips the token — a reload must not yank the tab back to wherever
  * one click sent it, possibly minutes later. Reading and clearing are one act so no caller can do

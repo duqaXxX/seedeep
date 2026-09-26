@@ -19,7 +19,10 @@ class FakeES {
   addEventListener(type: string, fn: (ev: { data: string }) => void) {
     (this.listeners[type] ||= []).push(fn);
   }
-  close() {}
+  closed = false;
+  close() {
+    this.closed = true;
+  }
   fire(type: string) {
     for (const fn of this.listeners[type] ?? []) fn({ data: '{}' });
   }
@@ -105,8 +108,9 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
       );
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error(`no fake for ${url}`)) });
   };
+  let dispose: (() => void) | null = null;
   try {
-    await import('../src/client/app.ts');
+    ({ dispose } = await import('../src/client/app.ts'));
     await new Promise((r) => setTimeout(r, 0)); // let roster.start() → fetch → openTab settle
 
     // Boot: exactly the OPEN session got a tab, marked busy, with a live panel behind it.
@@ -268,30 +272,22 @@ test('app boot: auto-opens open sessions, opens ended tabs from the dropdown, cl
     for (const t of [...tabs]) t.children[2].onclick({ stopPropagation: () => {} });
     assert.equal(findByClass(tabsEl, 'tab').length, 0);
     assert.equal(findByClass(panelsEl, 'panel').length, 0);
+
+    // Teardown: after dispose() the stream is closed and the roster reads
+    // nothing more, polling every 5 ms under this test's clock. Without it both outlive the
+    // test, and the stream's watchdog rebuilt its connection through the GLOBAL EventSource
+    // 45-60s later, throwing "between tests" in whichever file was running by then.
+    dispose!();
+    const stream = sources.filter((s) => s.url.startsWith('/api/stream')).at(-1); // the current connection
+    assert.ok(stream?.closed, 'dispose closes the live stream');
+    const readingsAtDispose = liveReadings;
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(liveReadings, readingsAtDispose, 'dispose stops the roster poll');
   } finally {
+    dispose?.(); // idempotent, and it must run even when an assertion above did not
     g.document = prev.document;
-    // The live stream leaks the same way the roster poll below does: app.js never closes it, and
-    // its staleness watchdog rebuilds the connection through the GLOBAL EventSource once nothing
-    // has arrived for STALE_MS. Bun has none, so restoring it outright made that rebuild throw
-    // "between tests" in whichever file happened to be running 45-60s later, failing the suite on
-    // timing alone. An inert source instead: it connects to nothing and delivers nothing.
-    g.EventSource = class {
-      addEventListener() {}
-      close() {}
-    };
-    // Before the fetch shim, and for the same reason it exists: the leaked poll re-arms itself
-    // through the GLOBAL setTimeout on every tick, so leaving the shortened clock in place would
-    // hand the rest of the suite a roster polling every 5 ms.
+    g.EventSource = prev.EventSource;
     g.setTimeout = prev.setTimeout;
-    // app.js exposes no way to stop its 3s roster poll, and the leaked timer chain reads the
-    // GLOBAL fetch on every tick: restoring the real fetch outright would hand later tests
-    // phantom '/api/sessions' calls. Scoped shim instead — and it REFUSES rather than answers,
-    // because an answer is what repaints: `refresh()` bails on the catch it already has (keeping
-    // its last good roster, notifying nobody), while an empty roster read as a change, refreshed
-    // Home, and threw from inside a surface whose fake DOM this block had just taken away.
-    g.fetch = (input: any, ...rest: any[]) => {
-      if (String(input).startsWith('/api/')) return Promise.reject(new Error('app-shell: the page is gone'));
-      return prev.fetch(input, ...rest);
-    };
+    g.fetch = prev.fetch;
   }
 });

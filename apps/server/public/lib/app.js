@@ -1726,6 +1726,8 @@ function createRoster(deps) {
         return;
       }
     }
+    if (stopped)
+      return;
     const next = mergeRoster(catalogue, live);
     rows = next;
     taken++;
@@ -10461,6 +10463,10 @@ roster.start().then(() => {
   if (activeId === null)
     switchTo(HOME_ID);
 });
+function dispose() {
+  stream.close();
+  roster.stop();
+}
 function takeDeepLink() {
   try {
     const params = new URLSearchParams(location.search);
@@ -10475,3 +10481,6 @@ function takeDeepLink() {
     return null;
   }
 }
+export {
+  dispose
+};
