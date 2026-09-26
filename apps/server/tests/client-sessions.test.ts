@@ -393,6 +393,36 @@ test('readings() counts what actually landed, not polls attempted', async () => 
   r.stop();
 });
 
+test('a reading in flight when stop() is called never lands', async () => {
+  // stop() is how the page is torn down (app.ts `dispose`), so it has to end the work, not just
+  // the next poll: a reading that answers afterwards would repaint a page that no longer exists.
+  const sched = manualSchedule();
+  const pending: { answer: (() => void) | null } = { answer: null };
+  let rows = [rec('A', true)];
+  const r = createRoster({
+    fetchCatalogue: async () => rows.map(toCatalogue),
+    fetchLive: () =>
+      pending.answer === null && r.readings() > 0
+        ? new Promise((resolve) => {
+            pending.answer = () => resolve(liveOf(rows));
+          })
+        : Promise.resolve(liveOf(rows)),
+    schedule: sched.schedule as any,
+  });
+  await r.start();
+  let notified = 0;
+  r.onChange(() => notified++);
+  rows = [rec('A', true), rec('B', true)];
+  await sched.tick(); // the poll starts and waits on its reading
+  assert.ok(pending.answer, 'the poll is in flight');
+  r.stop();
+  pending.answer();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(notified, 0, 'no listener hears from a stopped roster');
+  assert.equal(r.readings(), 1, 'and nothing it read afterwards counts');
+  assert.equal(r.current().length, 1);
+});
+
 // Latent, found while tracing the freeze: the poll re-arms itself with
 // `refresh().then(arm)`. Only the two fetches were guarded — the merge, the key and the
 // LISTENERS were not, so one throwing listener rejected the promise, `arm` never ran and the
